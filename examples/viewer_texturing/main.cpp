@@ -8,20 +8,21 @@
 
 #include <fstream>
 #include <iostream>
-#include "viewer_config.h"
-#include "Shader.h"
-#include "stb_image.h"
-#include "QuatCamera.h"
-#include "MeshBase.h"
+#include <Render/Shader.h>
+#include <Render/QuatCamera.h>
+#include <stb_image.h>
+#include <Mesh/MeshLoader.h>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-#include <ShadowMapping.h>
-#include <Sphere.h>
-#include <LineSegment.h>
-#include "Accessories.h"
+#include <Geometry/ShadowMapping.h>
+#include <Geometry/Sphere.h>
+#include <Geometry/LineSegment.h>
+#include <Object/Light.h>
+#include <Object/Floor.h>
+#include <Object/Background.h>
 
 int width = 1600;
 int height = 900;
@@ -89,7 +90,7 @@ int main()
     bool shadowMapping = true;
     std::vector<Point> points;
     points.push_back({glm::vec3(2.), glm::vec3(1., 1., 0.)});
-    Spheres spheres(points, glm::vec2(0., 1.));
+    Sphere spheres(points, glm::vec2(0., 1.));
     std::vector<glm::vec3> lineVerts;
     lineVerts.push_back(glm::vec3(-1., 0.0, -1.));
     lineVerts.push_back(glm::vec3(-1., 0.0,  1.));

@@ -9,20 +9,22 @@
 
 #include <fstream>
 #include <iostream>
-#include "viewer_config.h"
-#include "Shader.h"
-#include "stb_image.h"
-#include "QuatCamera.h"
-#include "MeshBase.h"
+#include <Render/Shader.h>
+#include <Render/QuatCamera.h>
+#include <stb_image.h>
+#include <Mesh/MeshLoader.h>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-#include <ShadowMapping.h>
-#include <Sphere.h>
-#include <LineSegment.h>
-#include "Accessories.h"
+#include <Geometry/ShadowMapping.h>
+#include <Geometry/Sphere.h>
+#include <Geometry/LineSegment.h>
+#include <Object/Light.h>
+#include <Object/Floor.h>
+#include <Object/Background.h>
+
 const unsigned int nLights = 4;
 
 class scene
@@ -70,7 +72,7 @@ protected:
     bool shadowMapping = true;
     int width = 1600, height = 900;
     std::vector<std::shared_ptr<SurfaceMesh>> meshes;
-    std::vector<std::shared_ptr<Spheres>> particles;
+    std::vector<std::shared_ptr<Sphere>> particles;
     std::vector<glm::mat4> lightSpaceMatrices;
     glm::mat4 model, view, projection;
     std::vector<glm::vec3> lightPoses;

@@ -76,8 +76,7 @@ void scene::loadSurfaceMeshFromOBJ(std::string inputfile, float scale,
 		glm::vec3 translate, glm::vec3 rotate, // pitch, yaw, roll
 		std::vector<glm::vec3> material)
 {
-    MeshLoader mesh(inputfile, scale, translate, rotate, material, isShadowMappingCubic);
-    static_mesh_loaders.push_back(mesh);
+    static_mesh_loaders.emplace_back(inputfile, scale, translate, rotate, material, isShadowMappingCubic);
 }
 
 
@@ -86,8 +85,7 @@ void scene::loadSurfaceMeshFromOBJ(std::string inputfile, float scale,
 		std::string albedo, std::string metallic,
 		std::string normal, std::string roughness, std::string ao)
 {
-    MeshLoader mesh(inputfile, scale, translate, rotate, isShadowMappingCubic, albedo, metallic, normal, roughness, ao);
-    static_mesh_loaders.push_back(mesh);
+    static_mesh_loaders.emplace_back(inputfile, scale, translate, rotate, isShadowMappingCubic, albedo, metallic, normal, roughness, ao);
 }
 
 void scene::loadStaticParticles(glm::vec3 lower_bound, glm::vec3 upper_bound, float delta,
@@ -98,7 +96,7 @@ void scene::loadStaticParticles(glm::vec3 lower_bound, glm::vec3 upper_bound, fl
     {
         points.push_back({ glm::vec3(x, y, z), color });
     }
-    std::shared_ptr<Spheres> spheres = std::make_shared<Spheres>(points, material);
+    std::shared_ptr<Sphere> spheres = std::make_shared<Sphere>(points, material);
     spheres->radius = radius;
     particles.push_back(spheres);
 }

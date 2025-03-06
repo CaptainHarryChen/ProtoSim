@@ -342,7 +342,7 @@ void simulation_scene<Real>::loadParticles(glm::vec3 lower_bound, glm::vec3 uppe
     m_particles_positions_offsets.push_back(positions_start_at + m_particles_positions.size());
     m_areParticlesDynamic.push_back(isDynamic);
 
-    std::shared_ptr<Spheres> spheres = std::make_shared<Spheres>(points, material);
+    std::shared_ptr<Sphere> spheres = std::make_shared<Sphere>(points, material);
     spheres->radius = radius;
     particles.push_back(spheres);
     m_render_particles.push_back(spheres);
@@ -372,7 +372,7 @@ void simulation_scene<Real>::loadParticles_pertubation(glm::vec3 lower_bound, gl
     m_particles_positions_offsets.push_back(positions_start_at + m_particles_positions.size());
     m_areParticlesDynamic.push_back(isDynamic);
 
-    std::shared_ptr<Spheres> spheres = std::make_shared<Spheres>(points, material);
+    std::shared_ptr<Sphere> spheres = std::make_shared<Sphere>(points, material);
     spheres->radius = radius;
     particles.push_back(spheres);
     m_render_particles.push_back(spheres);
@@ -501,7 +501,7 @@ void simulation_scene<Real>::makeSpaceForParticles(unsigned int nParticles, unsi
     m_particles_positions_offsets.push_back(positions_start_at + m_particles_positions.size());
     m_areParticlesDynamic.push_back(isDynamic);
 
-    std::shared_ptr<Spheres> spheres = std::make_shared<Spheres>(points, material);
+    std::shared_ptr<Sphere> spheres = std::make_shared<Sphere>(points, material);
     spheres->radius = radius;
     particles.push_back(spheres);
     m_render_particles.push_back(spheres);

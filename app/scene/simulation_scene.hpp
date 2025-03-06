@@ -59,7 +59,7 @@ protected:
     std::vector<unsigned int> m_tetrahedras; std::vector<unsigned int> m_tetrahedras_offsets;
     std::vector<unsigned int> m_isObjectDynamic;
 
-    std::vector<std::shared_ptr<Spheres>> m_render_particles; std::vector<glm::vec3> m_colors_particles;
+    std::vector<std::shared_ptr<Sphere>> m_render_particles; std::vector<glm::vec3> m_colors_particles;
     std::vector<Real> m_particles_positions; std::vector<unsigned int> m_particles_positions_offsets;
     std::vector<unsigned int> m_areParticlesDynamic;
 
