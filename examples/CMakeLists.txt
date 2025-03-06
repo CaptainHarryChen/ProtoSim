@@ -1,0 +1,33 @@
+function(add_examples name)
+    foreach(module IN ITEMS ${ARGN})
+        if(NOT TARGET ${module})
+            return()
+        endif()
+    endforeach()
+
+    message(STATUS "Creating viewer examples: ${name}")
+    add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}/main.cpp)
+    target_link_libraries(${name} PRIVATE
+        Viewer
+        ${ARGN}
+    )
+
+    set_target_properties(${name} PROPERTIES FOLDER Examples)
+endfunction()
+
+macro(subdirlist result curdir)
+    file(GLOB children RELATIVE ${curdir} ${curdir}/*)
+    set(dirlist "")
+    foreach(child ${children})
+        if(IS_DIRECTORY ${curdir}/${child})
+            list(APPEND dirlist ${child})
+        endif()
+    endforeach()
+    set(${result} ${dirlist})
+endmacro()
+
+subdirlist(subdirs ${CMAKE_CURRENT_SOURCE_DIR})
+
+foreach(dir ${subdirs})
+    add_examples(${dir})
+endforeach()
