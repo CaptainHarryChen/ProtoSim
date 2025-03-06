@@ -9,6 +9,8 @@ function(add_examples name)
     add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}/main.cpp)
     target_link_libraries(${name} PRIVATE
         Viewer
+        Physics
+        App
         ${ARGN}
     )
 

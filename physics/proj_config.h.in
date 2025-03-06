@@ -1,0 +1,2 @@
+#define PROJ_DIR "@Proj_Dir@"
+#define ASSET_DIR "@Asset_Dir@"
