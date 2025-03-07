@@ -20,10 +20,10 @@
 
 
 
-class QuatCamera
+class OrbitControl
 {
 public:
-    QuatCamera(GLFWwindow* window, float YAW = - PI * 0.1, float PITCH = - PI * 0.1, float dist2Target = 10.0);
+    OrbitControl(GLFWwindow* window, float YAW = - PI * 0.1, float PITCH = - PI * 0.1, float dist2Target = 10.0);
 
     static void framebuffer_size_callback(GLFWwindow* window, int widthIn, int heightIn);
     static void mousebutton_callback(GLFWwindow* window, int button, int action, int mods);

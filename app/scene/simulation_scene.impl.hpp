@@ -434,10 +434,10 @@ void simulation_scene<Real>::lightingSetUp()
         meshes.push_back(static_mesh_loaders[i].getMesh());
     for(unsigned int i = 0; i < m_render_meshes.size(); ++i)
         meshes.push_back(m_render_meshes[i]);
-    lights.push_back(Light(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(1.0, 0.0, 0.0), meshes, isShadowMappingCubic));
-    lights.push_back(Light(glm::vec3(-3.0f, 3.0f, 3.0f), glm::vec3(0.0, 1.0, 0.0), meshes, isShadowMappingCubic));
-    lights.push_back(Light(glm::vec3(3.0f, 3.0f, -3.0f), glm::vec3(0.0, 0.0, 1.0), meshes, isShadowMappingCubic));
-    lights.push_back(Light(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(1.0, 1.0, 1.0), meshes, isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(1.0, 0.0, 0.0), isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(-3.0f, 3.0f, 3.0f), glm::vec3(0.0, 1.0, 0.0), isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(3.0f, 3.0f, -3.0f), glm::vec3(0.0, 0.0, 1.0), isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(1.0, 1.0, 1.0), isShadowMappingCubic));
 }
     
 template<typename Real>

@@ -1,32 +1,32 @@
-#include "QuatCamera.h"
+#include "OrbitControl.h"
 
-GLFWwindow* QuatCamera::win = nullptr;
-int QuatCamera::width;
-int QuatCamera::height;
-bool QuatCamera::buttons[GLFW_MOUSE_BUTTON_LAST] = { 0 };
-glm::vec3 QuatCamera::cameraPos;
-glm::vec3 QuatCamera::cameraFront;
-glm::vec3 QuatCamera::cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
-glm::vec3 QuatCamera::cameraUp = glm::vec3(0.0, 1.0, 0.0);
-float QuatCamera::yaw;
-float QuatCamera::pitch;
-float QuatCamera::lastX;
-float QuatCamera::lastY;
-float QuatCamera::zoom = 45.0f;
-double QuatCamera::deltaTime = 0.0f;
-double QuatCamera::lastFrame = 0.0f;
-bool  QuatCamera::firstMouse = true;
-float QuatCamera::xoffset = 0.0f;
-float QuatCamera::yoffset = 0.0f;
-const float QuatCamera::scroll_sensitivity = 1.0f;
-const float QuatCamera::cursor_sensitivity = 10.0f;
-const float QuatCamera::WASD_sensitivity = 2.5f;
-float QuatCamera::mouse_left_sensitivity = 1.0f;
-float QuatCamera::mouse_right_sensitivity = 1.0f;
-unsigned int QuatCamera::space_count = 0;
-unsigned int QuatCamera::sim_mode = 0;
+GLFWwindow* OrbitControl::win = nullptr;
+int OrbitControl::width;
+int OrbitControl::height;
+bool OrbitControl::buttons[GLFW_MOUSE_BUTTON_LAST] = { 0 };
+glm::vec3 OrbitControl::cameraPos;
+glm::vec3 OrbitControl::cameraFront;
+glm::vec3 OrbitControl::cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+glm::vec3 OrbitControl::cameraUp = glm::vec3(0.0, 1.0, 0.0);
+float OrbitControl::yaw;
+float OrbitControl::pitch;
+float OrbitControl::lastX;
+float OrbitControl::lastY;
+float OrbitControl::zoom = 45.0f;
+double OrbitControl::deltaTime = 0.0f;
+double OrbitControl::lastFrame = 0.0f;
+bool  OrbitControl::firstMouse = true;
+float OrbitControl::xoffset = 0.0f;
+float OrbitControl::yoffset = 0.0f;
+const float OrbitControl::scroll_sensitivity = 1.0f;
+const float OrbitControl::cursor_sensitivity = 10.0f;
+const float OrbitControl::WASD_sensitivity = 2.5f;
+float OrbitControl::mouse_left_sensitivity = 1.0f;
+float OrbitControl::mouse_right_sensitivity = 1.0f;
+unsigned int OrbitControl::space_count = 0;
+unsigned int OrbitControl::sim_mode = 0;
 
-QuatCamera::QuatCamera(GLFWwindow* window, float YAW, float PITCH, float dist2Target)
+OrbitControl::OrbitControl(GLFWwindow* window, float YAW, float PITCH, float dist2Target)
 {
     initYAW = YAW; initPITCH = PITCH; initD2T = dist2Target;
 
@@ -42,14 +42,14 @@ QuatCamera::QuatCamera(GLFWwindow* window, float YAW, float PITCH, float dist2Ta
     cameraPos = cameraTarget - dist2Target * cameraFront;
 }
 
-void QuatCamera::framebuffer_size_callback(GLFWwindow* window, int widthIn, int heightIn)
+void OrbitControl::framebuffer_size_callback(GLFWwindow* window, int widthIn, int heightIn)
 {
     glViewport(0, 0, widthIn, heightIn);
     width = widthIn;
     height = heightIn;
 }
 
-void QuatCamera::mousebutton_callback(GLFWwindow* window, int button, int action, int mods)
+void OrbitControl::mousebutton_callback(GLFWwindow* window, int button, int action, int mods)
 {
     if (ImGui::GetIO().WantCaptureMouse) return;
     if (action != GLFW_RELEASE)
@@ -58,7 +58,7 @@ void QuatCamera::mousebutton_callback(GLFWwindow* window, int button, int action
     else buttons[button] = false;
 }
 
-void QuatCamera::cursor_callback(GLFWwindow* window, double xposIn, double yposIn)
+void OrbitControl::cursor_callback(GLFWwindow* window, double xposIn, double yposIn)
 {
     if (ImGui::GetIO().WantCaptureMouse) return;
     float xpos = static_cast<float>(xposIn);
@@ -102,7 +102,7 @@ void QuatCamera::cursor_callback(GLFWwindow* window, double xposIn, double yposI
     }
 }
 
-void QuatCamera::scroll_callback(GLFWwindow* window, double xoffsetIn, double yoffsetIn)
+void OrbitControl::scroll_callback(GLFWwindow* window, double xoffsetIn, double yoffsetIn)
 {
     if (ImGui::GetIO().WantCaptureMouse) return;
     //zoom -= scroll_sensitivity * static_cast<float>(yoffsetIn);
@@ -110,7 +110,7 @@ void QuatCamera::scroll_callback(GLFWwindow* window, double xoffsetIn, double yo
     cameraTarget += glm::vec3((float)yoffsetIn) * cameraFront * scroll_sensitivity;
 }
 
-void QuatCamera::keyboard_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void OrbitControl::keyboard_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 
     if (action != GLFW_PRESS)
@@ -129,7 +129,7 @@ void QuatCamera::keyboard_callback(GLFWwindow* window, int key, int scancode, in
     }
 }
 
-void QuatCamera::NDC(float* xpos, float* ypos)
+void OrbitControl::NDC(float* xpos, float* ypos)
 {
     *xpos = float(*xpos) / float(width);
     *ypos = float(height - *ypos) / float(height);
@@ -137,18 +137,18 @@ void QuatCamera::NDC(float* xpos, float* ypos)
     //*ypos = float(height - *ypos) / float(height) - 0.5f;
 }
 
-glm::vec3 QuatCamera::rotateVecQuat(glm::quat q, glm::vec3 v)
+glm::vec3 OrbitControl::rotateVecQuat(glm::quat q, glm::vec3 v)
 {
     glm::vec3 u(q.x, q.y, q.z);
     float s = q.w;
     return 2.0f * glm::dot(u, v) * u + (s * s - glm::dot(u, u)) * v + 2.0f * s * glm::cross(u, v);
 }
 
-int QuatCamera::getWidth() { return width; }
-int QuatCamera::getHeight() { return height; }
+int OrbitControl::getWidth() { return width; }
+int OrbitControl::getHeight() { return height; }
 
 
-void QuatCamera::processInput(GLFWwindow* window)
+void OrbitControl::processInput(GLFWwindow* window)
 {
     double currentFrame = glfwGetTime();
     deltaTime = currentFrame - lastFrame;
@@ -210,7 +210,7 @@ void QuatCamera::processInput(GLFWwindow* window)
     //yoffset = 0.;
 }
 
-void QuatCamera::computeMVP(glm::mat4& model, glm::mat4& view, glm::mat4& projection)
+void OrbitControl::computeMVP(glm::mat4& model, glm::mat4& view, glm::mat4& projection)
 {
     model = glm::mat4(1.0f);
     //model = glm::rotate(model, glm::radians(15.0f), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -220,17 +220,17 @@ void QuatCamera::computeMVP(glm::mat4& model, glm::mat4& view, glm::mat4& projec
     projection = glm::perspective(glm::radians(zoom), static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.0f);
 }
 
-glm::vec3 QuatCamera::getPos()
+glm::vec3 OrbitControl::getPos()
 {
     return cameraPos;
 }
 
-glm::vec3 QuatCamera::getFront()
+glm::vec3 OrbitControl::getFront()
 {
     return cameraFront;
 }
 
-glm::mat4 QuatCamera::getView()
+glm::mat4 OrbitControl::getView()
 {
     return glm::lookAt(cameraPos, cameraTarget, cameraUp);
 }

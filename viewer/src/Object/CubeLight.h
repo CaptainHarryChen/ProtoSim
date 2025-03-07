@@ -3,19 +3,20 @@
 
 class ShadowMapping;
 
-class Light : public MeshBase // render light cube + render shadow map
+class CubeLight : public MeshBase // render light cube + render shadow map
 {
 public:
-    Light(glm::vec3 position, glm::vec3 color, std::vector<std::shared_ptr<SurfaceMesh>> meshes, bool isCubic = true);
-
-    std::shared_ptr<ShadowMapping> shadowMapping;
-    std::vector<std::shared_ptr<SurfaceMesh>> shadowMeshes;
+    CubeLight(glm::vec3 position, glm::vec3 color, bool isCubic = true);
 
     glm::vec3 getPos();
-    unsigned int getDepthMap();
-    void generateShadowMap();
-    glm::mat4 getlightSpaceMatrix();
     glm::vec3 getColor();
+    bool IsOn();
+    void setIsOn(bool on);
+
+    unsigned int getDepthMap();
+    void generateShadowMap(std::vector<std::shared_ptr<SurfaceMesh>> &shadowMeshes);
+    glm::mat4 getlightSpaceMatrix();
+    float getFarPlane();
 
     template <typename T>
     void setPos(T p)
@@ -33,6 +34,8 @@ private:
     static std::vector<Vertex> __CUBE_VERTICES;
     static std::vector<unsigned int> __CUBE_INDICES;
 
+    std::shared_ptr<ShadowMapping> shadowMapping;
     glm::vec3 lightPos;
     glm::vec3 lightColor;
+    bool isOn = true;
 };

@@ -9,7 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <Render/Shader.h>
-#include <Render/QuatCamera.h>
+#include <Render/OrbitControl.h>
 #include <stb_image.h>
 #include <Mesh/MeshLoader.h>
 
@@ -20,7 +20,7 @@
 #include <Geometry/ShadowMapping.h>
 #include <Geometry/Sphere.h>
 #include <Geometry/LineSegment.h>
-#include <Object/Light.h>
+#include <Object/CubeLight.h>
 #include <Object/Floor.h>
 #include <Object/Background.h>
 
@@ -42,12 +42,12 @@ int main()
 #endif
 
     GLFWwindow* window = glfwCreateWindow(width, height, name.c_str(), nullptr, nullptr);
-    QuatCamera camera(window);
+    OrbitControl camera(window);
     glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, QuatCamera::framebuffer_size_callback);
-    glfwSetScrollCallback(window, QuatCamera::scroll_callback);
-    glfwSetMouseButtonCallback(window, QuatCamera::mousebutton_callback);
-    glfwSetCursorPosCallback(window, QuatCamera::cursor_callback);
+    glfwSetFramebufferSizeCallback(window, OrbitControl::framebuffer_size_callback);
+    glfwSetScrollCallback(window, OrbitControl::scroll_callback);
+    glfwSetMouseButtonCallback(window, OrbitControl::mousebutton_callback);
+    glfwSetCursorPosCallback(window, OrbitControl::cursor_callback);
 
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glEnable(GL_DEPTH_TEST);
@@ -73,11 +73,11 @@ int main()
     float IG_lightPoses[nLights][3] = {-3.0f, 3.0f, -3.0f, -3.0f, 3.0f, 3.0f, 3.0f, 3.0f, -3.0f, 3.0f, 3.0f, 3.0f};
     float IG_lightColors[nLights][3] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
 
-    std::vector<Light> lights;
-    lights.push_back(Light(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(1.0, 0.0, 0.0), meshes, false));
-    lights.push_back(Light(glm::vec3(-3.0f, 3.0f, 3.0f), glm::vec3(0.0, 1.0, 0.0), meshes, false));
-    lights.push_back(Light(glm::vec3(3.0f, 3.0f, -3.0f), glm::vec3(0.0, 0.0, 1.0), meshes, false));
-    lights.push_back(Light(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(1.0, 1.0, 1.0), meshes, false));
+    std::vector<CubeLight> lights;
+    lights.push_back(CubeLight(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(1.0, 0.0, 0.0), false));
+    lights.push_back(CubeLight(glm::vec3(-3.0f, 3.0f, 3.0f), glm::vec3(0.0, 1.0, 0.0), false));
+    lights.push_back(CubeLight(glm::vec3(3.0f, 3.0f, -3.0f), glm::vec3(0.0, 0.0, 1.0), false));
+    lights.push_back(CubeLight(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(1.0, 1.0, 1.0), false));
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -147,7 +147,7 @@ int main()
         for (int i = 0; i < lights.size(); ++i)
         {
             if (lightsOn[i] == false || !shadowMapping) continue;
-            lights[i].generateShadowMap();
+            lights[i].generateShadowMap(meshes);
         }
         /************************* depth map *************************/
         // debugDepth.use();

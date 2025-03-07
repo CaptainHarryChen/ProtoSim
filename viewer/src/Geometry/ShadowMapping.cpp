@@ -51,7 +51,7 @@ ShadowMapping::ShadowMapping(bool cubic)
     }
 }
 
-void ShadowMapping::Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<SurfaceMesh>> meshes)
+void ShadowMapping::Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<SurfaceMesh>> &meshes)
 {
     if (isCubic)
     {

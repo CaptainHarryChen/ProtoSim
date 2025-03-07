@@ -10,7 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <Render/Shader.h>
-#include <Render/QuatCamera.h>
+#include <Render/OrbitControl.h>
 #include <stb_image.h>
 #include <Mesh/MeshLoader.h>
 
@@ -21,7 +21,7 @@
 #include <Geometry/ShadowMapping.h>
 #include <Geometry/Sphere.h>
 #include <Geometry/LineSegment.h>
-#include <Object/Light.h>
+#include <Object/CubeLight.h>
 #include <Object/Floor.h>
 #include <Object/Background.h>
 
@@ -58,7 +58,7 @@ public:
 
 protected:
     GLFWwindow* window;
-    std::shared_ptr<QuatCamera> camera;
+    std::shared_ptr<OrbitControl> camera;
     std::shared_ptr<Floor> floor;
 
     std::string name = "Scene";
@@ -66,7 +66,7 @@ protected:
 
     float IG_lightPoses[nLights][3] = { -3.0f, 3.0f, -3.0f, -3.0f, 3.0f, 3.0f, 3.0f, 3.0f, -3.0f, 3.0f, 3.0f, 3.0f };
     float IG_lightColors[nLights][3] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    std::vector<Light> lights;
+    std::vector<CubeLight> lights;
     bool IG_lightsOn[nLights] = { 0, 0, 0, 1 };
     bool IG_hideLights[nLights] = { 0, 0, 0, 0 };
     bool shadowMapping = true;

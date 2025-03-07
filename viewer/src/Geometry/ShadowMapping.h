@@ -11,7 +11,7 @@ class ShadowMapping
 public:
     ShadowMapping(bool cubic = true);
 
-    void Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<SurfaceMesh>> meshes);
+    void Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<SurfaceMesh>> &meshes);
     unsigned int getDepthMap();
     glm::mat4 getlightSpaceMatrix();
 

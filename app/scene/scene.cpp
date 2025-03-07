@@ -17,13 +17,13 @@ scene::scene(std::string _name, bool _isShadowMappingCubic)
 #endif
 
     window = glfwCreateWindow(width, height, name.c_str(), nullptr, nullptr);
-    camera = std::make_shared<QuatCamera>(window);
+    camera = std::make_shared<OrbitControl>(window);
     glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, QuatCamera::framebuffer_size_callback);
-    glfwSetScrollCallback(window, QuatCamera::scroll_callback);
-    glfwSetKeyCallback(window, QuatCamera::keyboard_callback);
-    glfwSetMouseButtonCallback(window, QuatCamera::mousebutton_callback);
-    glfwSetCursorPosCallback(window, QuatCamera::cursor_callback);
+    glfwSetFramebufferSizeCallback(window, OrbitControl::framebuffer_size_callback);
+    glfwSetScrollCallback(window, OrbitControl::scroll_callback);
+    glfwSetKeyCallback(window, OrbitControl::keyboard_callback);
+    glfwSetMouseButtonCallback(window, OrbitControl::mousebutton_callback);
+    glfwSetCursorPosCallback(window, OrbitControl::cursor_callback);
 
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glEnable(GL_DEPTH_TEST);
@@ -46,10 +46,10 @@ void scene::lightingSetUp()
     }
     for(unsigned int i = 0; i < static_mesh_loaders.size(); ++i)
         meshes.push_back(static_mesh_loaders[i].getMesh());
-    lights.push_back(Light(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(1.0, 0.0, 0.0), meshes, isShadowMappingCubic));
-    lights.push_back(Light(glm::vec3(-3.0f, 3.0f, 3.0f), glm::vec3(0.0, 1.0, 0.0), meshes, isShadowMappingCubic));
-    lights.push_back(Light(glm::vec3(3.0f, 3.0f, -3.0f), glm::vec3(0.0, 0.0, 1.0), meshes, isShadowMappingCubic));
-    lights.push_back(Light(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(1.0, 1.0, 1.0), meshes, isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(1.0, 0.0, 0.0), isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(-3.0f, 3.0f, 3.0f), glm::vec3(0.0, 1.0, 0.0), isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(3.0f, 3.0f, -3.0f), glm::vec3(0.0, 0.0, 1.0), isShadowMappingCubic));
+    lights.push_back(CubeLight(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(1.0, 1.0, 1.0), isShadowMappingCubic));
 }
 
 
@@ -59,7 +59,6 @@ void scene::updateLighting()
     lightsOn = { IG_lightsOn[0], IG_lightsOn[1], IG_lightsOn[2], IG_lightsOn[3] };
     for (int i = 0; i < nLights; ++i)
     {
-        lights[i].shadowMeshes = meshes;
         lights[i].setPos(IG_lightPoses[i]);
         lights[i].setColor(IG_lightColors[i]);
         if (shadowMapping) depthMapIDs.push_back(lights[i].getDepthMap());
@@ -67,7 +66,7 @@ void scene::updateLighting()
         lightColors.push_back(lights[i].getColor());
         lightSpaceMatrices.push_back(lights[i].getlightSpaceMatrix());
         if (lightsOn[i] == false || !shadowMapping) continue;
-        lights[i].generateShadowMap();
+        lights[i].generateShadowMap(meshes);
     }
 }
 
@@ -139,7 +138,7 @@ void scene::drawMeshes()
                 lightPoses, lightColors,
                 camera->getPos(),
                 lightsOn,
-                lights[0].shadowMapping->far_plane,
+                lights[0].getFarPlane(),
                 shadowMapping
             );
             //if (i == 0)
