@@ -41,11 +41,7 @@ float ShadowCalculation(vec3 fragPos, const int i)
         {
             for (float z = -offset; z < offset; z += offset / (samples * 0.5))
             {
-                float closestDepth;
-                if (i == 0) closestDepth = texture(depthMap3D[0], fragToLight + vec3(x, y, z)).r;
-                if (i == 1) closestDepth = texture(depthMap3D[1], fragToLight + vec3(x, y, z)).r;
-                if (i == 2) closestDepth = texture(depthMap3D[2], fragToLight + vec3(x, y, z)).r;
-                if (i == 3) closestDepth = texture(depthMap3D[3], fragToLight + vec3(x, y, z)).r;
+                float closestDepth = texture(depthMap3D[i], fragToLight + vec3(x, y, z)).r;;
                 closestDepth *= far_plane;
                 if (currentDepth - bias > closestDepth)
                     shadow += 1.0;

@@ -36,29 +36,17 @@ float ShadowCalculation(vec4 fragPosLightSpace, int i)
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
     if (projCoords.z > 1.0) return 0.0;
-    float closestDepth;
-    if (i == 0) closestDepth = texture(depthMap2D[0], projCoords.xy).r;
-    if (i == 1) closestDepth = texture(depthMap2D[1], projCoords.xy).r;
-    if (i == 2) closestDepth = texture(depthMap2D[2], projCoords.xy).r;
-    if (i == 3) closestDepth = texture(depthMap2D[3], projCoords.xy).r;
+    float closestDepth = texture(depthMap2D[i], projCoords.xy).r;
     float currentDepth = projCoords.z;
     vec3 normal = normalize(Normal);
     vec3 lightDir = normalize(lightPos[i] - FragPos);
     // float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
     float bias = 0.0002;
     float shadow = 0.0;
-    vec2 texelSize;
-    if (i == 0) texelSize = 1.0 / textureSize(depthMap2D[0], 0);
-    if (i == 1) texelSize = 1.0 / textureSize(depthMap2D[1], 0);
-    if (i == 2) texelSize = 1.0 / textureSize(depthMap2D[2], 0);
-    if (i == 3) texelSize = 1.0 / textureSize(depthMap2D[3], 0);
+    vec2 texelSize = 1.0 / textureSize(depthMap2D[i], 0);
     for (int k = 0; k < 17; ++k)
     {
-        float pcfDepth;
-        if (i == 0) pcfDepth = texture(depthMap2D[0], projCoords.xy + gridSamplingDisk[k] * texelSize).r;
-        if (i == 1) pcfDepth = texture(depthMap2D[1], projCoords.xy + gridSamplingDisk[k] * texelSize).r;
-        if (i == 2) pcfDepth = texture(depthMap2D[2], projCoords.xy + gridSamplingDisk[k] * texelSize).r;
-        if (i == 3) pcfDepth = texture(depthMap2D[3], projCoords.xy + gridSamplingDisk[k] * texelSize).r;
+        float pcfDepth = texture(depthMap2D[i], projCoords.xy + gridSamplingDisk[k] * texelSize).r;
         shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
     }
     shadow /= 17.0;
