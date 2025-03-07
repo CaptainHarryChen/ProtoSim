@@ -23,7 +23,6 @@
 #include <Geometry/LineSegment.h>
 #include <Object/CubeLight.h>
 #include <Object/Floor.h>
-#include <Object/Background.h>
 
 const unsigned int nLights = 4;
 

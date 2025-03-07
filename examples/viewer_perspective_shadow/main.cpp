@@ -22,7 +22,7 @@
 #include <Geometry/LineSegment.h>
 #include <Object/CubeLight.h>
 #include <Object/Floor.h>
-#include <Object/Background.h>
+
 int width = 1600;
 int height = 900;
 std::string name = "Viewer";
