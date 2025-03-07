@@ -60,7 +60,7 @@ bool OrbitCameraRenderer::ProcessControl()
         return false;
     glfwPollEvents();
     camera->processInput(window);
-    return false;
+    return true;
 }
 
 void OrbitCameraRenderer::RenderOneFrame()
@@ -83,7 +83,7 @@ void OrbitCameraRenderer::RenderOneFrame()
     std::vector<glm::vec3> lightColors;
     std::vector<unsigned int> depthMapIDs;
     std::vector<bool> lightsOn;
-    float far_plane = cubelights[0]->getFarPlane();
+    float far_plane = 1000.0f;//cubelights[0]->getFarPlane();
     for (auto &light : cubelights)
     {
         if (light->IsOn())
