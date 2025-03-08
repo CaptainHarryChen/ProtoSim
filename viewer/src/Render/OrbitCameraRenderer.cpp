@@ -69,12 +69,6 @@ void OrbitCameraRenderer::RenderOneFrame()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    int width, height;
-    glfwGetWindowSize(window, &width, &height);
-    glViewport(0, 0, width, height);
-    glClearColor(clearColor.x, clearColor.y, clearColor.z, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     CameraInfo camera_info;
     camera->computeMVP(camera_info.model, camera_info.view, camera_info.projection);
     camera_info.viewPos = camera->getPos();
@@ -88,6 +82,13 @@ void OrbitCameraRenderer::RenderOneFrame()
             light->generateShadowMap(render_objects);
         shadow_mapping_infos.push_back(ShadowMappingInfo{light->getDepthMap(), light->getFarPlane()});
     }
+
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    glViewport(0, 0, width, height);
+    glClearColor(clearColor.x, clearColor.y, clearColor.z, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     // GLint viewport[4];
     // glGetIntegerv(GL_VIEWPORT, viewport);
     // glm::vec4 __viewport = {1.0f * viewport[0], 1.0f * viewport[1], 1.0f * viewport[2], 1.0f * viewport[3]};

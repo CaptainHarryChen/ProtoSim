@@ -44,7 +44,7 @@ OrbitControl::OrbitControl(GLFWwindow* window, float YAW, float PITCH, float dis
 
 void OrbitControl::framebuffer_size_callback(GLFWwindow* window, int widthIn, int heightIn)
 {
-    glViewport(0, 0, widthIn, heightIn);
+    // glViewport(0, 0, widthIn, heightIn);
     width = widthIn;
     height = heightIn;
 }
