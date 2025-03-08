@@ -7,12 +7,7 @@ function(add_examples name)
 
     message(STATUS "Creating viewer examples: ${name}")
     add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}/main.cpp)
-    target_link_libraries(${name} PRIVATE
-        Viewer
-        Physics
-        # App
-        ${ARGN}
-    )
+    target_link_libraries(${name} PRIVATE App ${ARGN})
 
     set_target_properties(${name} PROPERTIES FOLDER Examples)
 endfunction()

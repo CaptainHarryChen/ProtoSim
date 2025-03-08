@@ -1,10 +1,10 @@
-#include "TextureMesh.h"
+#include "TextureRenderer.h"
 #include <glad/glad.h>
 #include <stb_image.h>
 #include <Render/Shader.h>
+#include <Mesh/Mesh.h>
 
-TextureMesh::TextureMesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<std::string> textures)
-    : Mesh(vertices, indices)
+TextureRenderer::TextureRenderer(std::vector<std::string> textures)
 {
     assert(textures.size() == 5);
     albedoID = loadTexture(textures[0].c_str());
@@ -15,20 +15,18 @@ TextureMesh::TextureMesh(std::vector<Vertex> vertices, std::vector<unsigned int>
     shader = std::make_shared<Shader>("pbr_texture", true);
 }
 
-void TextureMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos)
+void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
 {
-    Draw(camera, light_infos, std::vector<ShadowMappingInfo>());
-}
+    auto mesh = dynamic_cast<const Mesh *>(object);
+    assert(mesh != nullptr);
 
-void TextureMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos)
-{
-    assert(light_infos.size() < TextureMesh::MAX_LIGHTS);
+    assert(light_infos.size() < TextureRenderer::MAX_LIGHTS);
     bool enable_shadow = shadow_mapping_infos.size() > 0;
-    if(enable_shadow)
+    if (enable_shadow)
         assert(shadow_mapping_infos.size() == light_infos.size());
 
     shader->use();
-    shader->setMat4("model", this->model);
+    shader->setMat4("model", mesh->model);
     shader->setMat4("view", camera.view);
     shader->setMat4("projection", camera.projection);
     shader->setVec3("viewPos", camera.viewPos);
@@ -41,14 +39,19 @@ void TextureMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &l
         shader->setBool("lightsOn[" + std::to_string(i) + "]", light_infos[i].isOn);
     }
     // set the rest lights off
-    for (size_t i = light_infos.size(); i < TextureMesh::MAX_LIGHTS; ++i)
+    for (size_t i = light_infos.size(); i < TextureRenderer::MAX_LIGHTS; ++i)
         shader->setBool("lightsOn[" + std::to_string(i) + "]", false);
 
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, albedoID);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, normalID);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, metallicID);
-    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, roughnessID);
-    glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, aoID);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, albedoID);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, normalID);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, metallicID);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, roughnessID);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, aoID);
     for (size_t i = 0; i < shadow_mapping_infos.size(); ++i)
     {
         glActiveTexture(GL_TEXTURE5 + (int)i);
@@ -65,16 +68,15 @@ void TextureMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &l
         shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", shadow_mapping_infos[i].far_plane);
     }
     // set the rest shadow maps to the first shadow map, preventing texture conflict with albedo
-    for (size_t i = shadow_mapping_infos.size(); i < TextureMesh::MAX_LIGHTS; ++i)
+    for (size_t i = shadow_mapping_infos.size(); i < TextureRenderer::MAX_LIGHTS; ++i)
     {
         shader->setInt("depthMap3D[" + std::to_string(i) + "]", 5);
         shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", 0.0f);
     }
-    Mesh::Draw();
+    mesh->DrawVAO();
 }
 
-
-unsigned int TextureMesh::loadTexture(const char *path)
+unsigned int TextureRenderer::loadTexture(const char *path)
 {
     unsigned int texture;
     glGenTextures(1, &texture);
@@ -86,11 +88,14 @@ unsigned int TextureMesh::loadTexture(const char *path)
     stbi_set_flip_vertically_on_load(true);
 
     int texture_width, texture_height, nrChannels;
-    unsigned char* texture_data = stbi_load(path, &texture_width, &texture_height, &nrChannels, 0);
+    unsigned char *texture_data = stbi_load(path, &texture_width, &texture_height, &nrChannels, 0);
     GLenum format;
-    if (nrChannels == 1) format = GL_RED;
-    if (nrChannels == 3) format = GL_RGB;
-    if (nrChannels == 4) format = GL_RGBA;
+    if (nrChannels == 1)
+        format = GL_RED;
+    if (nrChannels == 3)
+        format = GL_RGB;
+    if (nrChannels == 4)
+        format = GL_RGBA;
 
     glTexImage2D(GL_TEXTURE_2D, 0, format, texture_width, texture_height, 0, format, GL_UNSIGNED_BYTE, texture_data);
     glGenerateMipmap(GL_TEXTURE_2D);

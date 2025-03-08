@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <memory>
 #include <glm/glm.hpp>
 #include <Render/Light.h>
 #include <Geometry/ShadowMapping.h>
@@ -11,6 +12,8 @@ struct CameraInfo
     glm::vec3 viewPos;
 };
 
+class Renderer;
+
 class RenderObject
 {
 public:
@@ -21,6 +24,9 @@ public:
     /// @details for mesh object, this is usually the identity matrix. Because the vertices are usually already in the world space.
     glm::mat4 model = glm::mat4(1.0f);
 
-    virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos);
-    virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos);
+    virtual void AddRenderer(std::shared_ptr<Renderer> renderer);
+    virtual void Draw(const CameraInfo &camera_info, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos = {});
+
+protected:
+    std::vector<std::shared_ptr<Renderer>> renderers;
 };

@@ -31,7 +31,7 @@ void Mesh::UpdateVertices(const std::vector<Vertex> &data)
     glBindVertexArray(0);
 }
 
-void Mesh::Draw()
+void Mesh::DrawVAO() const
 {
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);

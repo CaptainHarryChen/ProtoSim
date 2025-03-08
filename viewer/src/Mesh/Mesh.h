@@ -20,7 +20,7 @@ public:
     std::vector<unsigned int> indices;
 
     virtual void UpdateVertices(const std::vector<Vertex> &data);
-    virtual void Draw();
+    virtual void DrawVAO() const;
 protected:
     unsigned int VAO;
     unsigned int VBO, EBO;

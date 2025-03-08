@@ -1,11 +1,18 @@
 #pragma once
 #include <vector>
-#include <Mesh/MeshBase.h>
+#include <memory>
+#include <Object/Object.h>
+#include <Mesh/Mesh.h>
 
-class Floor : public MeshBase
+class Floor : public Object
 {
 public:
     Floor(float scale = 1.0);
+
+    std::shared_ptr<Mesh> GetMesh();
+
+protected:
+    std::shared_ptr<Mesh> mesh;
 
 private:
     static std::vector<Vertex> __PLANE_VERTICES;

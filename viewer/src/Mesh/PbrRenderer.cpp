@@ -1,27 +1,26 @@
-#include "SurfaceMesh.h"
-#include <Render/Shader.h>
+#include "PbrRenderer.h"
 #include <stb_image.h>
+#include <Render/Shader.h>
+#include <Mesh/Mesh.h>
 
-SurfaceMesh::SurfaceMesh(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices, const std::vector<glm::vec3> &material)
-    : Mesh(vertices, indices), material(material)
+PbrRenderer::PbrRenderer(const std::vector<glm::vec3> &material)
+    : material(material)
 {
     shader = std::make_shared<Shader>("pbr", true);
 }
 
-void SurfaceMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos)
+void PbrRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
 {
-    Draw(camera, light_infos, std::vector<ShadowMappingInfo>());
-}
+    auto mesh = dynamic_cast<const Mesh *>(object);
+    assert(mesh != nullptr);
 
-void SurfaceMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos)
-{
-    assert(light_infos.size() < SurfaceMesh::MAX_LIGHTS);
+    assert(light_infos.size() < PbrRenderer::MAX_LIGHTS);
     bool enable_shadow = shadow_mapping_infos.size() > 0;
     if (enable_shadow)
         assert(shadow_mapping_infos.size() == light_infos.size());
 
     shader->use();
-    shader->setMat4("model", this->model);
+    shader->setMat4("model", mesh->model);
     shader->setMat4("view", camera.view);
     shader->setMat4("projection", camera.projection);
     shader->setVec3("viewPos", camera.viewPos);
@@ -33,7 +32,7 @@ void SurfaceMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &l
         shader->setVec3("lightColor[" + std::to_string(i) + "]", light_infos[i].color);
         shader->setBool("lightsOn[" + std::to_string(i) + "]", light_infos[i].isOn);
     }
-    for (size_t i = light_infos.size(); i < SurfaceMesh::MAX_LIGHTS; ++i)
+    for (size_t i = light_infos.size(); i < PbrRenderer::MAX_LIGHTS; ++i)
         shader->setBool("lightsOn[" + std::to_string(i) + "]", false);
 
     shader->setVec3("albedoIn", material[0]);
@@ -50,5 +49,5 @@ void SurfaceMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &l
         shader->setInt("depthMap3D[" + std::to_string(i) + "]", i);
         shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", shadow_mapping_infos[i].far_plane);
     }
-    Mesh::Draw();
+    mesh->DrawVAO();
 }

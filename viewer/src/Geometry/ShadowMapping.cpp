@@ -53,7 +53,7 @@ void ShadowMapping::Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<RenderO
         if (mesh == nullptr)
             continue;
         depth_shader->setMat4("model", mesh->model);
-        mesh->Draw();
+        mesh->DrawVAO();
     }
     glBindVertexArray(0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

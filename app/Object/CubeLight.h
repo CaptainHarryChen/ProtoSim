@@ -2,19 +2,22 @@
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
-#include <Mesh/MeshBase.h>
+#include <Object/Object.h>
+#include <Mesh/Mesh.h>
 
 class Light;
 
-class CubeLight : public MeshBase
+class CubeLight : public Object
 {
 public:
     CubeLight(glm::vec3 position, glm::vec3 color);
     virtual ~CubeLight() = default;
 
-    std::shared_ptr<Light> getLight();
+    std::shared_ptr<Mesh> GetMesh();
+    std::shared_ptr<Light> GetLight();
 
 protected:
+    std::shared_ptr<Mesh> mesh;
     std::shared_ptr<Light> light;
 
 private:

@@ -1,16 +1,23 @@
 #include "CubeLight.h"
-#include <Geometry/ShadowMapping.h>
-#include <Mesh/SolidColorMesh.h>
+#include <Mesh/Mesh.h>
+#include <Mesh/SolidColorRenderer.h>
+#include <Render/Light.h>
 
 CubeLight::CubeLight(glm::vec3 position, glm::vec3 color)
 {
     light = std::make_shared<Light>(position, color, 0.2f, 1000.f);
-    mesh = std::make_shared<SolidColorMesh>(__CUBE_VERTICES, __CUBE_INDICES, color);
+    mesh = std::make_shared<Mesh>(__CUBE_VERTICES, __CUBE_INDICES);
     mesh->model = glm::translate(mesh->model, position);
     mesh->model = glm::scale(mesh->model, glm::vec3(0.2f));
+    mesh->AddRenderer(std::make_shared<SolidColorRenderer>(color));
 }
 
-std::shared_ptr<Light> CubeLight::getLight()
+std::shared_ptr<Mesh> CubeLight::GetMesh()
+{
+    return mesh;
+}
+
+std::shared_ptr<Light> CubeLight::GetLight()
 {
     return light;
 }
