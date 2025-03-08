@@ -4,8 +4,6 @@
 #include <imgui_impl_opengl3.h>
 #include <Mesh/Mesh.h>
 #include <Render/Light.h>
-#include <Geometry/Sphere.h>
-#include <Geometry/LineSegment.h>
 
 static std::shared_ptr<OrbitCameraRenderer> g_main_class_ptr = nullptr;
 static std::once_flag g_main_class_flag;
@@ -69,10 +67,6 @@ void OrbitCameraRenderer::RenderOneFrame()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    CameraInfo camera_info;
-    camera->computeMVP(camera_info.view, camera_info.projection);
-    camera_info.viewPos = camera->getPos();
-
     std::vector<LightInfo> light_infos;
     std::vector<ShadowMappingInfo> shadow_mapping_infos;
     for (auto &light : lights)
@@ -87,19 +81,12 @@ void OrbitCameraRenderer::RenderOneFrame()
     glClearColor(clearColor.x, clearColor.y, clearColor.z, 1.0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // GLint viewport[4];
-    // glGetIntegerv(GL_VIEWPORT, viewport);
-    // glm::vec4 __viewport = {1.0f * viewport[0], 1.0f * viewport[1], 1.0f * viewport[2], 1.0f * viewport[3]};
-
-    // for (auto &light : cubelights)
-    // {
-    //     if (!light->IsOn())
-    //         continue;
-    //     light->getMesh()->Draw(
-    //         model, view, projection,
-    //         light->getPos(), light->getColor(),
-    //         0.2f);
-    // }
+    CameraInfo camera_info;
+    camera->computeMVP(camera_info.view, camera_info.projection);
+    camera_info.viewPos = camera->getPos();
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    camera_info.viewport = {1.0f * viewport[0], 1.0f * viewport[1], 1.0f * viewport[2], 1.0f * viewport[3]};
 
     for (auto &object : render_objects)
     {

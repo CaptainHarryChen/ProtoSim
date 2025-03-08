@@ -1,4 +1,5 @@
 #include "SolidColorRenderer.h"
+#include <glad/glad.h>
 #include <Render/Shader.h>
 #include <Mesh/Mesh.h>
 

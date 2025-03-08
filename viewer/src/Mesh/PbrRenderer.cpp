@@ -1,4 +1,5 @@
 #include "PbrRenderer.h"
+#include <glad/glad.h>
 #include <stb_image.h>
 #include <Render/Shader.h>
 #include <Mesh/Mesh.h>

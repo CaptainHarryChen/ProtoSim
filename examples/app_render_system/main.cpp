@@ -7,6 +7,8 @@
 #include <Mesh/MeshLoader.h>
 #include <Mesh/Mesh.h>
 #include <Geometry/LineSegment.h>
+#include <Geometry/ParticleBatch.h>
+#include <Geometry/SphereRenderer.h>
 
 int main()
 {
@@ -31,6 +33,10 @@ int main()
     auto lines = std::make_shared<LineSegment>(std::vector<glm::vec3>({glm::vec3(-1., 0.0, -1.), glm::vec3(-1., 0.0, 1.), glm::vec3(1., 0.0, -1.), glm::vec3(1., 0.0, 1.), glm::vec3(-1., 2.0, -1.), glm::vec3(-1., 2.0, 1.), glm::vec3(1., 2.0, -1.), glm::vec3(1., 2.0, 1.)}), std::vector<std::pair<int, int>>({{0, 4}, {1, 5}, {2, 6}, {3, 7}, {0, 1}, {0, 2}, {1, 3}, {2, 3}, {4, 5}, {4, 6}, {5, 7}, {6, 7}}));
     lines->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0, 1.0, 1.0), true));
     render_system->AddRenderObject(lines);
+
+    auto particles = std::make_shared<ParticleBatch>(std::vector<Particle>({{glm::vec3(0.0, 4.0, 0.0), glm::vec3(1.0, 0.0, 0.0)}, {glm::vec3(0.0, 5.0, 0.0), glm::vec3(0.0, 1.0, 0.0)}, {glm::vec3(0.0, 6.0, 0.0), glm::vec3(0.0, 0.0, 1.0)}}));
+    particles->AddRenderer(std::make_shared<SphereRenderer>(glm::vec2(0.1), 0.2));
+    render_system->AddRenderObject(particles);
 
     while (true)
     {

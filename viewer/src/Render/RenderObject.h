@@ -10,6 +10,7 @@ struct CameraInfo
     glm::mat4 view;
     glm::mat4 projection;
     glm::vec3 viewPos;
+    glm::vec4 viewport;
 };
 
 class Renderer;

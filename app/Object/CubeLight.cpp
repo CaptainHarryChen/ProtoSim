@@ -1,4 +1,6 @@
 #include "CubeLight.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <Mesh/Mesh.h>
 #include <Mesh/SolidColorRenderer.h>
 #include <Render/Light.h>
