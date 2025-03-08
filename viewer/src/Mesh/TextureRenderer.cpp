@@ -7,12 +7,12 @@
 TextureRenderer::TextureRenderer(std::vector<std::string> textures)
 {
     assert(textures.size() == 5);
-    albedoID = loadTexture(textures[0].c_str());
-    normalID = loadTexture(textures[1].c_str());
-    metallicID = loadTexture(textures[2].c_str());
-    roughnessID = loadTexture(textures[3].c_str());
-    aoID = loadTexture(textures[4].c_str());
-    shader = std::make_shared<Shader>("pbr_texture", true);
+    m_albedo_id = LoadTexture(textures[0].c_str());
+    m_normal_id = LoadTexture(textures[1].c_str());
+    m_metallic_id = LoadTexture(textures[2].c_str());
+    m_roughness_id = LoadTexture(textures[3].c_str());
+    m_ao_id = LoadTexture(textures[4].c_str());
+    m_shader = std::make_shared<Shader>("pbr_texture", true);
 }
 
 void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
@@ -22,58 +22,58 @@ void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo
     if (enable_shadow)
         assert(shadow_mapping_infos.size() == light_infos.size());
 
-    shader->use();
-    shader->setMat4("model", object->model);
-    shader->setMat4("view", camera.view);
-    shader->setMat4("projection", camera.projection);
-    shader->setVec3("viewPos", camera.viewPos);
-    shader->setBool("enableShadow", enable_shadow);
+    m_shader->use();
+    m_shader->setMat4("model", object->m_model_mat);
+    m_shader->setMat4("view", camera.view);
+    m_shader->setMat4("projection", camera.projection);
+    m_shader->setVec3("viewPos", camera.view_pos);
+    m_shader->setBool("enableShadow", enable_shadow);
 
     for (size_t i = 0; i < light_infos.size(); ++i)
     {
-        shader->setVec3("lightPos[" + std::to_string(i) + "]", light_infos[i].pos);
-        shader->setVec3("lightColor[" + std::to_string(i) + "]", light_infos[i].color);
-        shader->setBool("lightsOn[" + std::to_string(i) + "]", light_infos[i].isOn);
+        m_shader->setVec3("lightPos[" + std::to_string(i) + "]", light_infos[i].pos);
+        m_shader->setVec3("lightColor[" + std::to_string(i) + "]", light_infos[i].color);
+        m_shader->setBool("lightsOn[" + std::to_string(i) + "]", light_infos[i].is_on);
     }
     // set the rest lights off
     for (size_t i = light_infos.size(); i < TextureRenderer::MAX_LIGHTS; ++i)
-        shader->setBool("lightsOn[" + std::to_string(i) + "]", false);
+        m_shader->setBool("lightsOn[" + std::to_string(i) + "]", false);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, albedoID);
+    glBindTexture(GL_TEXTURE_2D, m_albedo_id);
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, normalID);
+    glBindTexture(GL_TEXTURE_2D, m_normal_id);
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, metallicID);
+    glBindTexture(GL_TEXTURE_2D, m_metallic_id);
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, roughnessID);
+    glBindTexture(GL_TEXTURE_2D, m_roughness_id);
     glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, aoID);
+    glBindTexture(GL_TEXTURE_2D, m_ao_id);
     for (size_t i = 0; i < shadow_mapping_infos.size(); ++i)
     {
         glActiveTexture(GL_TEXTURE5 + (int)i);
         glBindTexture(GL_TEXTURE_CUBE_MAP, shadow_mapping_infos[i].depth_map);
     }
-    shader->setInt("albedoMap", 0);
-    shader->setInt("normalMap", 1);
-    shader->setInt("metallicMap", 2);
-    shader->setInt("roughnessMap", 3);
-    shader->setInt("aoMap", 4);
+    m_shader->setInt("albedoMap", 0);
+    m_shader->setInt("normalMap", 1);
+    m_shader->setInt("metallicMap", 2);
+    m_shader->setInt("roughnessMap", 3);
+    m_shader->setInt("aoMap", 4);
     for (size_t i = 0; i < shadow_mapping_infos.size(); ++i)
     {
-        shader->setInt("depthMap3D[" + std::to_string(i) + "]", (int)i + 5);
-        shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", shadow_mapping_infos[i].far_plane);
+        m_shader->setInt("depthMap3D[" + std::to_string(i) + "]", (int)i + 5);
+        m_shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", shadow_mapping_infos[i].far_plane);
     }
     // set the rest shadow maps to the first shadow map, preventing texture conflict with albedo
     for (size_t i = shadow_mapping_infos.size(); i < TextureRenderer::MAX_LIGHTS; ++i)
     {
-        shader->setInt("depthMap3D[" + std::to_string(i) + "]", 5);
-        shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", 0.0f);
+        m_shader->setInt("depthMap3D[" + std::to_string(i) + "]", 5);
+        m_shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", 0.0f);
     }
     object->DrawVAO();
 }
 
-unsigned int TextureRenderer::loadTexture(const char *path)
+unsigned int TextureRenderer::LoadTexture(const char *path)
 {
     unsigned int texture;
     glGenTextures(1, &texture);

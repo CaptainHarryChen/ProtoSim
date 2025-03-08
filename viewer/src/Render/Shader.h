@@ -5,11 +5,11 @@
 class Shader
 {
 public:
-    Shader(std::string type, bool enableGeometry = false);
+    Shader(std::string type, bool enable_geometry = false);
     virtual ~Shader() = default;
 
-    unsigned int shaderProgram;
-    std::string shaderName;
+    unsigned int m_shader_program;
+    std::string m_shader_name;
 
     void use();
     void setBool(const std::string &name, bool value) const;

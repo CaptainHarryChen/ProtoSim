@@ -17,14 +17,14 @@ class ShadowMapping
 public:
     ShadowMapping(float near_plane = 0.2f, float far_plane = 1000.f, unsigned int width = 1024u, unsigned int height = 1024u);
 
-    void Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<RenderObject>> &objects);
+    void Draw(glm::vec3 light_pos, std::vector<std::shared_ptr<RenderObject>> &objects);
     ShadowMappingInfo GetShadowMappingInfo();
 
 protected:
-    std::shared_ptr<Shader> depth_shader;
-    float near_plane, far_plane;
-    unsigned int shadow_width, shadow_height;
+    std::shared_ptr<Shader> m_depth_shader;
+    float m_near_plane, m_far_plane;
+    unsigned int m_shadow_width, m_shadow_height;
 
-    unsigned int FBO;
-    unsigned int depthMap;
+    unsigned int m_FBO;
+    unsigned int m_depth_map;
 };

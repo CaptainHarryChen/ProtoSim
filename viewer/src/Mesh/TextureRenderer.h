@@ -16,12 +16,12 @@ public:
     virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) override;
 
 protected:
-    unsigned int aoID;
-    unsigned int albedoID;
-    unsigned int normalID;
-    unsigned int metallicID;
-    unsigned int roughnessID;
+    unsigned int m_ao_id;
+    unsigned int m_albedo_id;
+    unsigned int m_normal_id;
+    unsigned int m_metallic_id;
+    unsigned int m_roughness_id;
 
 private:
-    unsigned int loadTexture(const char *path);
+    unsigned int LoadTexture(const char *path);
 };

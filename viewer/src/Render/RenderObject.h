@@ -9,7 +9,7 @@ struct CameraInfo
 {
     glm::mat4 view;
     glm::mat4 projection;
-    glm::vec3 viewPos;
+    glm::vec3 view_pos;
     glm::vec4 viewport;
 };
 
@@ -23,7 +23,7 @@ public:
 
     /// @brief the model transform of the object
     /// @details for mesh object, this is usually the identity matrix. Because the vertices are usually already in the world space.
-    glm::mat4 model = glm::mat4(1.0f);
+    glm::mat4 m_model_mat = glm::mat4(1.0f);
     bool m_enable = true;
 
     /// @brief Add a renderer to the object
@@ -38,5 +38,5 @@ public:
     /// @details This function should be implemented by the derived class.
     virtual void DrawVAO() const;
 
-    std::vector<std::shared_ptr<Renderer>> renderers;
+    std::vector<std::shared_ptr<Renderer>> m_renderers;
 };

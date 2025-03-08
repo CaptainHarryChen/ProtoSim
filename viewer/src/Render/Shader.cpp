@@ -5,12 +5,12 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <viewer_config.h>
 
-Shader::Shader(std::string type, bool enableGeometry)
+Shader::Shader(std::string type, bool enable_geometry)
 {
-    shaderName = type;
+    m_shader_name = type;
     std::string viewer_dir(VIEWER_DIR);
 
-    shaderProgram = glCreateProgram();
+    m_shader_program = glCreateProgram();
 
     std::ifstream vstream(viewer_dir + "/shader/" + type + ".vs.glsl");
     std::string vstring = std::string(std::istreambuf_iterator<char>(vstream), std::istreambuf_iterator<char>());
@@ -20,10 +20,10 @@ Shader::Shader(std::string type, bool enableGeometry)
     glShaderSource(vertexShader, 1, &vs, nullptr);
     glCompileShader(vertexShader);
     checkCompileErrors(vertexShader, "VERTEX");
-    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(m_shader_program, vertexShader);
 
     unsigned int geometryShader;
-    if (enableGeometry == true)
+    if (enable_geometry == true)
     {
         // std::cout << "Enable geometry shader" << std::endl;
         std::ifstream gstream(viewer_dir + "/shader/" + type + ".gs.glsl");
@@ -33,7 +33,7 @@ Shader::Shader(std::string type, bool enableGeometry)
         glShaderSource(geometryShader, 1, &gs, nullptr);
         glCompileShader(geometryShader);
         checkCompileErrors(geometryShader, "GEOMETRY");
-        glAttachShader(shaderProgram, geometryShader);
+        glAttachShader(m_shader_program, geometryShader);
     }
 
     std::ifstream fstream(viewer_dir + "/shader/" + type + ".fs.glsl");
@@ -44,50 +44,50 @@ Shader::Shader(std::string type, bool enableGeometry)
     glShaderSource(fragmentShader, 1, &fs, nullptr);
     glCompileShader(fragmentShader);
     checkCompileErrors(fragmentShader, "FRAGMENT");
-    glAttachShader(shaderProgram, fragmentShader);
+    glAttachShader(m_shader_program, fragmentShader);
 
-    glLinkProgram(shaderProgram);
-    checkCompileErrors(shaderProgram, "PROGRAM");
+    glLinkProgram(m_shader_program);
+    checkCompileErrors(m_shader_program, "PROGRAM");
 
     glDeleteShader(vertexShader);
-    if (enableGeometry == true)
+    if (enable_geometry == true)
         glDeleteShader(geometryShader);
     glDeleteShader(fragmentShader);
 }
 
 void Shader::use()
 {
-    glUseProgram(shaderProgram);
+    glUseProgram(m_shader_program);
 };
 
 void Shader::setBool(const std::string &name, bool value) const
 {
-    glUniform1i(glGetUniformLocation(shaderProgram, name.c_str()), (int)value);
+    glUniform1i(glGetUniformLocation(m_shader_program, name.c_str()), (int)value);
 }
 
 void Shader::setInt(const std::string &name, int value) const
 {
-    glUniform1i(glGetUniformLocation(shaderProgram, name.c_str()), value);
+    glUniform1i(glGetUniformLocation(m_shader_program, name.c_str()), value);
 }
 
 void Shader::setFloat(const std::string &name, float value) const
 {
-    glUniform1f(glGetUniformLocation(shaderProgram, name.c_str()), value);
+    glUniform1f(glGetUniformLocation(m_shader_program, name.c_str()), value);
 }
 
 void Shader::setMat4(const std::string &name, glm::mat4 value) const
 {
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, name.c_str()), 1, GL_FALSE, glm::value_ptr(value));
+    glUniformMatrix4fv(glGetUniformLocation(m_shader_program, name.c_str()), 1, GL_FALSE, glm::value_ptr(value));
 }
 
 void Shader::setVec3(const std::string &name, glm::vec3 value) const
 {
-    glUniform3f(glGetUniformLocation(shaderProgram, name.c_str()), value.x, value.y, value.z);
+    glUniform3f(glGetUniformLocation(m_shader_program, name.c_str()), value.x, value.y, value.z);
 }
 
 void Shader::setVec4(const std::string &name, glm::vec4 value) const
 {
-    glUniform4f(glGetUniformLocation(shaderProgram, name.c_str()), value.x, value.y, value.z, value.w);
+    glUniform4f(glGetUniformLocation(m_shader_program, name.c_str()), value.x, value.y, value.z, value.w);
 }
 
 void Shader::checkCompileErrors(unsigned int shader, std::string type)
@@ -100,7 +100,7 @@ void Shader::checkCompileErrors(unsigned int shader, std::string type)
         if (!success)
         {
             glGetShaderInfoLog(shader, 1024, nullptr, infoLog);
-            std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << shaderName << " " << type << "\n"
+            std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << m_shader_name << " " << type << "\n"
                       << infoLog << std::endl;
         }
     }
@@ -110,7 +110,7 @@ void Shader::checkCompileErrors(unsigned int shader, std::string type)
         if (!success)
         {
             glGetProgramInfoLog(shader, 1024, nullptr, infoLog);
-            std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << shaderName << " " << type << "\n"
+            std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << m_shader_name << " " << type << "\n"
                       << infoLog << std::endl;
         }
     }

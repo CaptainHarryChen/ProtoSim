@@ -19,6 +19,6 @@ public:
     virtual void AddRenderObject(std::shared_ptr<RenderObject> object);
 
 protected:
-    std::vector<std::shared_ptr<Light>> lights;
-    std::vector<std::shared_ptr<RenderObject>> render_objects;
+    std::vector<std::shared_ptr<Light>> m_lights;
+    std::vector<std::shared_ptr<RenderObject>> m_render_objects;
 };

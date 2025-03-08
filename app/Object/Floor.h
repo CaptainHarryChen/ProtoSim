@@ -12,7 +12,7 @@ public:
     std::shared_ptr<Mesh> GetMesh();
 
 protected:
-    std::shared_ptr<Mesh> mesh;
+    std::shared_ptr<Mesh> m_mesh;
 
 private:
     static std::vector<Vertex> __PLANE_VERTICES;

@@ -13,5 +13,5 @@ public:
 
 protected:
 	bool m_only_edge;
-	glm::vec3 color;
+	glm::vec3 m_color;
 };

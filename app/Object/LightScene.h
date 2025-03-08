@@ -26,8 +26,8 @@ public:
     LightScene();
     virtual ~LightScene() = default;
 
-    std::vector<std::shared_ptr<CubeLight>> lights;
-    std::shared_ptr<LightSceneControlGUI> control_gui;
+    std::vector<std::shared_ptr<CubeLight>> m_lights;
+    std::shared_ptr<LightSceneControlGUI> m_control_gui;
 
     virtual void Update() override;
 };

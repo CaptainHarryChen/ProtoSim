@@ -22,14 +22,14 @@ OrbitCameraRenderer::OrbitCameraRenderer(std::string name, int init_width, int i
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-    window = glfwCreateWindow(init_width, init_height, name.c_str(), nullptr, nullptr);
-    glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, OrbitControl::framebuffer_size_callback);
-    glfwSetScrollCallback(window, OrbitControl::scroll_callback);
-    glfwSetMouseButtonCallback(window, OrbitControl::mousebutton_callback);
-    glfwSetCursorPosCallback(window, OrbitControl::cursor_callback);
+    m_window = glfwCreateWindow(init_width, init_height, name.c_str(), nullptr, nullptr);
+    glfwMakeContextCurrent(m_window);
+    glfwSetFramebufferSizeCallback(m_window, OrbitControl::framebuffer_size_callback);
+    glfwSetScrollCallback(m_window, OrbitControl::scroll_callback);
+    glfwSetMouseButtonCallback(m_window, OrbitControl::mousebutton_callback);
+    glfwSetCursorPosCallback(m_window, OrbitControl::cursor_callback);
 
-    camera = std::make_shared<OrbitControl>(window);
+    m_camera = std::make_shared<OrbitControl>(m_window);
 
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glEnable(GL_DEPTH_TEST);
@@ -38,7 +38,7 @@ OrbitCameraRenderer::OrbitCameraRenderer(std::string name, int init_width, int i
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplGlfw_InitForOpenGL(m_window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 }
 
@@ -48,16 +48,16 @@ OrbitCameraRenderer::~OrbitCameraRenderer()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    glfwDestroyWindow(window);
+    glfwDestroyWindow(m_window);
     glfwTerminate();
 }
 
 bool OrbitCameraRenderer::ProcessControl()
 {
-    if (glfwWindowShouldClose(window))
+    if (glfwWindowShouldClose(m_window))
         return false;
     glfwPollEvents();
-    camera->processInput(window);
+    m_camera->processInput(m_window);
     return true;
 }
 
@@ -69,26 +69,26 @@ void OrbitCameraRenderer::RenderOneFrame()
 
     std::vector<LightInfo> light_infos;
     std::vector<ShadowMappingInfo> shadow_mapping_infos;
-    for (auto &light : lights)
+    for (auto &light : m_lights)
     {
         light_infos.push_back(light->GetLightInfo());
-        shadow_mapping_infos.push_back(light->CreateShadowMappingInfo(render_objects));
+        shadow_mapping_infos.push_back(light->CreateShadowMappingInfo(m_render_objects));
     }
 
     int width, height;
-    glfwGetWindowSize(window, &width, &height);
+    glfwGetWindowSize(m_window, &width, &height);
     glViewport(0, 0, width, height);
-    glClearColor(clearColor.x, clearColor.y, clearColor.z, 1.0);
+    glClearColor(m_clear_color.x, m_clear_color.y, m_clear_color.z, 1.0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     CameraInfo camera_info;
-    camera->computeMVP(camera_info.view, camera_info.projection);
-    camera_info.viewPos = camera->getPos();
+    m_camera->computeMVP(camera_info.view, camera_info.projection);
+    camera_info.view_pos = m_camera->getPos();
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
     camera_info.viewport = {1.0f * viewport[0], 1.0f * viewport[1], 1.0f * viewport[2], 1.0f * viewport[3]};
 
-    for (auto &object : render_objects)
+    for (auto &object : m_render_objects)
     {
         object->Draw(camera_info, light_infos, shadow_mapping_infos);
     }
@@ -96,5 +96,5 @@ void OrbitCameraRenderer::RenderOneFrame()
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    glfwSwapBuffers(window);
+    glfwSwapBuffers(m_window);
 }

@@ -15,14 +15,14 @@ public:
     OrbitCameraRenderer(std::string name = "Viewer", int init_width = 1600, int init_height = 900);
     virtual ~OrbitCameraRenderer();
 
-    glm::vec3 clearColor = {0.5, 0.5, 1.0};
+    glm::vec3 m_clear_color = {0.5, 0.5, 1.0};
 
     virtual bool ProcessControl() override;
     virtual void RenderOneFrame() override;
 
 protected:
-    GLFWwindow *window;
-    std::shared_ptr<OrbitControl> camera;
+    GLFWwindow *m_window;
+    std::shared_ptr<OrbitControl> m_camera;
 
     
 

@@ -17,5 +17,5 @@ public:
     virtual void Draw(const CameraInfo &camera_info, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) = 0;
 
 protected:
-    std::shared_ptr<Shader> shader;
+    std::shared_ptr<Shader> m_shader;
 };

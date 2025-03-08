@@ -20,8 +20,8 @@ public:
     void SetLightOn(bool isOn);
 
 protected:
-    std::shared_ptr<Mesh> mesh;
-    std::shared_ptr<Light> light;
+    std::shared_ptr<Mesh> m_mesh;
+    std::shared_ptr<Light> m_light;
 
 private:
     static std::vector<Vertex> __CUBE_VERTICES;

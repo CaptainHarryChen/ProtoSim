@@ -19,6 +19,6 @@ public:
 	virtual void DrawVAO() const override;
 
 protected:
-	unsigned int VAO;
-	unsigned int VBO;
+	unsigned int m_VAO;
+	unsigned int m_VBO;
 };

@@ -24,27 +24,27 @@ void LightSceneControlGUI::Draw(const CameraInfo &camera_info, const std::vector
 
 LightScene::LightScene()
 {
-    control_gui = std::make_shared<LightSceneControlGUI>();
-    for(size_t i = 0; i < control_gui->m_light_num; ++i)
+    m_control_gui = std::make_shared<LightSceneControlGUI>();
+    for(size_t i = 0; i < m_control_gui->m_light_num; ++i)
     {
-        lights.push_back(std::make_shared<CubeLight>(control_gui->m_light_pos[i], control_gui->m_light_color[i]));
+        m_lights.push_back(std::make_shared<CubeLight>(m_control_gui->m_light_pos[i], m_control_gui->m_light_color[i]));
     }
 
     std::shared_ptr<RenderSystem> render_system = OrbitCameraRenderer::GetInstance();
-    for(auto &light : lights)
+    for(auto &light : m_lights)
     {
         render_system->AddLight(light->GetLight());
         render_system->AddRenderObject(light->GetMesh());
     }
-    render_system->AddRenderObject(control_gui);
+    render_system->AddRenderObject(m_control_gui);
 }
 
 void LightScene::Update()
 {
-    for(size_t i = 0; i < control_gui->m_light_num; ++i)
+    for(size_t i = 0; i < m_control_gui->m_light_num; ++i)
     {
-        lights[i]->SetPosition(control_gui->m_light_pos[i]);
-        lights[i]->SetColor(control_gui->m_light_color[i]);
-        lights[i]->SetLightOn(control_gui->m_light_on[i]);
+        m_lights[i]->SetPosition(m_control_gui->m_light_pos[i]);
+        m_lights[i]->SetColor(m_control_gui->m_light_color[i]);
+        m_lights[i]->SetLightOn(m_control_gui->m_light_on[i]);
     }
 }

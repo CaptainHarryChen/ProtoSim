@@ -7,34 +7,34 @@
 
 CubeLight::CubeLight(glm::vec3 position, glm::vec3 color)
 {
-    light = std::make_shared<Light>(position, color, 0.2f, 1000.f);
-    mesh = std::make_shared<Mesh>(__CUBE_VERTICES, __CUBE_INDICES);
-    mesh->model = glm::translate(mesh->model, position);
-    mesh->model = glm::scale(mesh->model, glm::vec3(0.2f));
-    mesh->AddRenderer(std::make_shared<SolidColorRenderer>(color));
+    m_light = std::make_shared<Light>(position, color, 0.2f, 1000.f);
+    m_mesh = std::make_shared<Mesh>(__CUBE_VERTICES, __CUBE_INDICES);
+    m_mesh->m_model_mat = glm::translate(m_mesh->m_model_mat, position);
+    m_mesh->m_model_mat = glm::scale(m_mesh->m_model_mat, glm::vec3(0.2f));
+    m_mesh->AddRenderer(std::make_shared<SolidColorRenderer>(color));
 }
 
 std::shared_ptr<Mesh> CubeLight::GetMesh()
 {
-    return mesh;
+    return m_mesh;
 }
 
 std::shared_ptr<Light> CubeLight::GetLight()
 {
-    return light;
+    return m_light;
 }
 
 void CubeLight::SetPosition(const glm::vec3 &position)
 {
-    light->lightPos = position;
-    mesh->model = glm::translate(glm::mat4(1.0f), position);
-    mesh->model = glm::scale(mesh->model, glm::vec3(0.2f));
+    m_light->m_light_pos = position;
+    m_mesh->m_model_mat = glm::translate(glm::mat4(1.0f), position);
+    m_mesh->m_model_mat = glm::scale(m_mesh->m_model_mat, glm::vec3(0.2f));
 }
 
 void CubeLight::SetColor(const glm::vec3 &color)
 {
-    light->lightColor = color;
-    for (auto &renderer : mesh->renderers)
+    m_light->m_light_color = color;
+    for (auto &renderer : m_mesh->m_renderers)
     {
         auto solid_color_renderer = std::dynamic_pointer_cast<SolidColorRenderer>(renderer);
         if (solid_color_renderer)
@@ -44,8 +44,8 @@ void CubeLight::SetColor(const glm::vec3 &color)
 
 void CubeLight::SetLightOn(bool isOn)
 {
-    light->isOn = isOn;
-    mesh->m_enable = isOn;
+    m_light->m_is_on = isOn;
+    m_mesh->m_enable = isOn;
 }
 
 std::vector<Vertex> CubeLight::__CUBE_VERTICES = {
