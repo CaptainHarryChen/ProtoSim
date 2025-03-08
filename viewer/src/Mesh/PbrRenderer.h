@@ -12,7 +12,7 @@ public:
 	/// @param material an array of 2 vec3, representing the albedo and <metallic, roughness, ao>
 	PbrRenderer(const std::vector<glm::vec3> &material = {glm::vec3(1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
 
-	virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) override;
+	virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) const override;
 
 protected:
 	std::vector<glm::vec3> m_material; // pbr [<albedo>, <metallic, roughness, ao>]

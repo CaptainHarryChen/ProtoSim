@@ -26,7 +26,7 @@ ShadowMapping::ShadowMapping(float near_plane, float far_plane, unsigned int wid
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void ShadowMapping::Draw(glm::vec3 light_pos, std::vector<std::shared_ptr<RenderObject>> &objects)
+void ShadowMapping::Draw(glm::vec3 light_pos, std::vector<std::shared_ptr<RenderObject>> &objects) const
 {
     glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), (float)m_shadow_width / (float)m_shadow_height, m_near_plane, m_far_plane);
     std::vector<glm::mat4> shadowTransforms;
@@ -59,7 +59,7 @@ void ShadowMapping::Draw(glm::vec3 light_pos, std::vector<std::shared_ptr<Render
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-ShadowMappingInfo ShadowMapping::GetShadowMappingInfo()
+ShadowMappingInfo ShadowMapping::GetShadowMappingInfo() const
 {
     return ShadowMappingInfo{m_depth_map, m_far_plane};
 }

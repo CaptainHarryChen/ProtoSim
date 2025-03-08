@@ -10,7 +10,7 @@ PbrRenderer::PbrRenderer(const std::vector<glm::vec3> &material)
     m_shader = std::make_shared<Shader>("pbr", true);
 }
 
-void PbrRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
+void PbrRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) const
 {
     assert(light_infos.size() <= PbrRenderer::MAX_LIGHTS);
     bool enable_shadow = shadow_mapping_infos.size() > 0;

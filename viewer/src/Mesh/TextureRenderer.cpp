@@ -15,7 +15,7 @@ TextureRenderer::TextureRenderer(std::vector<std::string> textures)
     m_shader = std::make_shared<Shader>("pbr_texture", true);
 }
 
-void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
+void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) const
 {
     assert(light_infos.size() <= TextureRenderer::MAX_LIGHTS);
     bool enable_shadow = shadow_mapping_infos.size() > 0;
@@ -73,7 +73,7 @@ void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo
     object->DrawVAO();
 }
 
-unsigned int TextureRenderer::LoadTexture(const char *path)
+unsigned int TextureRenderer::LoadTexture(const char *path) const
 {
     unsigned int texture;
     glGenTextures(1, &texture);

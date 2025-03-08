@@ -12,7 +12,7 @@ public:
     SphereRenderer(const glm::vec2 &material, float radius);
 	virtual ~SphereRenderer() = default;
 
-	virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) override;
+	virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) const override;
 
 	void SetMaterial(const glm::vec2 &material);
 

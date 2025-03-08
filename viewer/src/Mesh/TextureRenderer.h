@@ -13,7 +13,7 @@ public:
     /// @param textures an array of 5 strings, representing the path to albedo, normal, metallic, roughness, ao textures
     TextureRenderer(std::vector<std::string> textures);
 
-    virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) override;
+    virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) const override;
 
 protected:
     unsigned int m_ao_id;
@@ -23,5 +23,5 @@ protected:
     unsigned int m_roughness_id;
 
 private:
-    unsigned int LoadTexture(const char *path);
+    unsigned int LoadTexture(const char *path) const;
 };

@@ -8,7 +8,7 @@ SphereRenderer::SphereRenderer(const glm::vec2 &material, float radius) : m_mate
     m_shader = std::make_shared<Shader>("sphere_raycast", true);
 }
 
-void SphereRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
+void SphereRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) const
 {
     assert(light_infos.size() <= SphereRenderer::MAX_LIGHTS);
 

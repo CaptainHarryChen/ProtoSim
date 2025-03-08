@@ -9,7 +9,7 @@ SolidColorRenderer::SolidColorRenderer(const glm::vec3 &color, bool only_edge)
     m_shader = std::make_shared<Shader>("solid_color", false);
 }
 
-void SolidColorRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
+void SolidColorRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object) const
 {
     if (m_only_edge)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);

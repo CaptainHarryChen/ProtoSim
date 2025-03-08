@@ -20,8 +20,8 @@ public:
     Light(glm::vec3 position, glm::vec3 color = {1.0f, 1.0f, 1.0f}, float shadow_near_plane = 0.2f, float shadow_far_plane = 1000.f);
     virtual ~Light() = default;
 
-    virtual LightInfo GetLightInfo();
-    virtual ShadowMappingInfo CreateShadowMappingInfo(std::vector<std::shared_ptr<RenderObject>> &objects);
+    virtual LightInfo GetLightInfo() const;
+    virtual ShadowMappingInfo CreateShadowMappingInfo(std::vector<std::shared_ptr<RenderObject>> &objects) const;
 
     glm::vec3 m_light_pos;
     glm::vec3 m_light_color;
