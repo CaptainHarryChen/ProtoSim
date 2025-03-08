@@ -17,16 +17,13 @@ TextureRenderer::TextureRenderer(std::vector<std::string> textures)
 
 void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos, const RenderObject *object)
 {
-    auto mesh = dynamic_cast<const Mesh *>(object);
-    assert(mesh != nullptr);
-
     assert(light_infos.size() <= TextureRenderer::MAX_LIGHTS);
     bool enable_shadow = shadow_mapping_infos.size() > 0;
     if (enable_shadow)
         assert(shadow_mapping_infos.size() == light_infos.size());
 
     shader->use();
-    shader->setMat4("model", mesh->model);
+    shader->setMat4("model", object->model);
     shader->setMat4("view", camera.view);
     shader->setMat4("projection", camera.projection);
     shader->setVec3("viewPos", camera.viewPos);
@@ -73,7 +70,7 @@ void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo
         shader->setInt("depthMap3D[" + std::to_string(i) + "]", 5);
         shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", 0.0f);
     }
-    mesh->DrawVAO();
+    object->DrawVAO();
 }
 
 unsigned int TextureRenderer::loadTexture(const char *path)

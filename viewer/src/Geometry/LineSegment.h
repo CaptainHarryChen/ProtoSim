@@ -1,32 +1,24 @@
 #pragma once
 #include <vector>
 #include <memory>
-#include <glm/glm.hpp>
-
-class Shader;
+#include <Render/RenderObject.h>
 
 struct LineSeg
 {
 	glm::vec3 a, b;
 };
 
-class LineSegment
+class LineSegment : public RenderObject
 {
 public:
 	LineSegment(std::vector<glm::vec3> vertices, std::vector<std::pair<int, int>> connectivity);
+	virtual ~LineSegment() = default;
 
-	void Draw(); // outer call for shadow-mapping
-	void Draw(glm::mat4 model,
-			  glm::mat4 view,
-			  glm::mat4 projection,
-			  glm::vec3 color,
-			  bool lightOn);
+	std::vector<LineSeg> m_line_segs;
 
-private:
-	std::vector<LineSeg> buffer;
+	virtual void DrawVAO() const override;
+
+protected:
 	unsigned int VAO;
 	unsigned int VBO;
-	std::shared_ptr<Shader> shader, shaderSphereRayCast, shaderSphere, shaderPoint;
-
-	void setupGeometry();
 };

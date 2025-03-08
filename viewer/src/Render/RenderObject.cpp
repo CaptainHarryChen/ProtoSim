@@ -13,3 +13,8 @@ void RenderObject::Draw(const CameraInfo &camera_info, const std::vector<LightIn
     for (auto &renderer : renderers)
         renderer->Draw(camera_info, light_infos, shadow_mapping_infos, this);
 }
+
+void RenderObject::DrawVAO() const
+{
+    // Do nothing
+}
