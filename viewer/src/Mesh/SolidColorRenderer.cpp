@@ -20,3 +20,8 @@ void SolidColorRenderer::Draw(const CameraInfo &camera, const std::vector<LightI
     shader->setVec3("color", color);
     mesh->DrawVAO();
 }
+
+void SolidColorRenderer::SetColor(const glm::vec3 &color)
+{
+    this->color = color;
+}

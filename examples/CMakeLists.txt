@@ -25,9 +25,6 @@ endmacro()
 
 subdirlist(subdirs ${CMAKE_CURRENT_SOURCE_DIR})
 
-# add_examples("app_scene")
-add_examples("viewer_render_system")
-
-# foreach(dir ${subdirs})
-#     add_examples(${dir})
-# endforeach()
+foreach(dir ${subdirs})
+    add_examples(${dir})
+endforeach()

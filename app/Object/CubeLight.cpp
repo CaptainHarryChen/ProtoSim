@@ -22,6 +22,30 @@ std::shared_ptr<Light> CubeLight::GetLight()
     return light;
 }
 
+void CubeLight::SetPosition(const glm::vec3 &position)
+{
+    light->lightPos = position;
+    mesh->model = glm::translate(glm::mat4(1.0f), position);
+    mesh->model = glm::scale(mesh->model, glm::vec3(0.2f));
+}
+
+void CubeLight::SetColor(const glm::vec3 &color)
+{
+    light->lightColor = color;
+    for (auto &renderer : mesh->renderers)
+    {
+        auto solid_color_renderer = std::dynamic_pointer_cast<SolidColorRenderer>(renderer);
+        if (solid_color_renderer)
+            solid_color_renderer->SetColor(color);
+    }
+}
+
+void CubeLight::SetLightOn(bool isOn)
+{
+    light->isOn = isOn;
+    mesh->m_enable = isOn;
+}
+
 std::vector<Vertex> CubeLight::__CUBE_VERTICES = {
     // positions           // normals              // texture coords
     {{-0.5f, 0.0f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},

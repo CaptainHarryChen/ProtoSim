@@ -20,7 +20,7 @@ void TextureRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo
     auto mesh = dynamic_cast<const Mesh *>(object);
     assert(mesh != nullptr);
 
-    assert(light_infos.size() < TextureRenderer::MAX_LIGHTS);
+    assert(light_infos.size() <= TextureRenderer::MAX_LIGHTS);
     bool enable_shadow = shadow_mapping_infos.size() > 0;
     if (enable_shadow)
         assert(shadow_mapping_infos.size() == light_infos.size());

@@ -23,10 +23,10 @@ public:
     virtual LightInfo GetLightInfo();
     virtual ShadowMappingInfo CreateShadowMappingInfo(std::vector<std::shared_ptr<RenderObject>> &objects);
 
-protected:
     glm::vec3 lightPos;
     glm::vec3 lightColor;
     bool isOn = true;
 
+protected:
     std::shared_ptr<ShadowMapping> shadowMapping;
 };

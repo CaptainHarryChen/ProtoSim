@@ -15,6 +15,9 @@ public:
 
     std::shared_ptr<Mesh> GetMesh();
     std::shared_ptr<Light> GetLight();
+    void SetPosition(const glm::vec3 &position);
+    void SetColor(const glm::vec3 &color);
+    void SetLightOn(bool isOn);
 
 protected:
     std::shared_ptr<Mesh> mesh;
