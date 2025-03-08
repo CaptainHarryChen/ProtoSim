@@ -22,7 +22,7 @@ uniform sampler2D aoMap;
 const float PI = 3.14159265359;
 
 uniform samplerCube depthMap3D[nLights];
-uniform float far_plane;
+uniform float far_plane_of_depth_map[nLights];
 uniform bool enableShadow;
 
 // array of offset direction for sampling
@@ -41,8 +41,8 @@ float ShadowCalculation(vec3 fragPos, const int i)
         {
             for (float z = -offset; z < offset; z += offset / (samples * 0.5))
             {
-                float closestDepth = texture(depthMap3D[i], fragToLight + vec3(x, y, z)).r;;
-                closestDepth *= far_plane;
+                float closestDepth = texture(depthMap3D[i], fragToLight + vec3(x, y, z)).r;
+                closestDepth *= far_plane_of_depth_map[i];
                 if (currentDepth - bias > closestDepth)
                     shadow += 1.0;
                 ++norm;

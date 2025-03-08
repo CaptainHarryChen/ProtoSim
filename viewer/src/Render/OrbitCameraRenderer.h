@@ -5,9 +5,7 @@
 #include <Render/OrbitControl.h>
 
 class CubeLight;
-class SurfaceMesh;
-class Sphere;
-class LineSegment;
+class RenderObject;
 
 // TODO: Split the control and rendering. Split the camera and the renderer.
 class OrbitCameraRenderer : public RenderSystem
@@ -23,15 +21,17 @@ public:
     virtual bool ProcessControl() override;
     virtual void RenderOneFrame() override;
 
+    // lights
+    std::vector<std::shared_ptr<CubeLight>> cubelights;
+
 protected:
     GLFWwindow *window;
     std::shared_ptr<OrbitControl> camera;
 
-    // lights
-    std::vector<std::shared_ptr<CubeLight>> cubelights;
+    
 
     // objects for every shaders
-    std::vector<std::shared_ptr<SurfaceMesh>> meshes;
-    std::vector<std::shared_ptr<Sphere>> spheres;
-    std::vector<std::shared_ptr<LineSegment>> lines;
+    // std::vector<std::shared_ptr<SurfaceMesh>> meshes;
+    // std::vector<std::shared_ptr<Sphere>> spheres;
+    // std::vector<std::shared_ptr<LineSegment>> lines;
 };

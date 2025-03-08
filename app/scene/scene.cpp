@@ -66,7 +66,7 @@ void scene::updateLighting()
         lightColors.push_back(lights[i].getColor());
         lightSpaceMatrices.push_back(lights[i].getlightSpaceMatrix());
         if (lightsOn[i] == false || !shadowMapping) continue;
-        lights[i].generateShadowMap(meshes);
+        // lights[i].generateShadowMap(meshes);
     }
 }
 

@@ -1,5 +1,6 @@
 #include "CubeLight.h"
 #include <Geometry/ShadowMapping.h>
+#include <Mesh/SurfaceMesh.h>
 
 CubeLight::CubeLight(glm::vec3 position, glm::vec3 color, bool isCubic)
 {
@@ -35,9 +36,9 @@ unsigned int CubeLight::getDepthMap()
     return shadowMapping->getDepthMap();
 }
 
-void CubeLight::generateShadowMap(std::vector<std::shared_ptr<SurfaceMesh>> &shadowMeshes)
+void CubeLight::generateShadowMap(std::vector<std::shared_ptr<RenderObject>> &objects)
 {
-    shadowMapping->Draw(lightPos, shadowMeshes);
+    shadowMapping->Draw(lightPos, objects);
 }
 
 glm::mat4 CubeLight::getlightSpaceMatrix()

@@ -75,60 +75,36 @@ void OrbitCameraRenderer::RenderOneFrame()
     glClearColor(clearColor.x, clearColor.y, clearColor.z, 1.0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glm::mat4 model, view, projection;
-    camera->computeMVP(model, view, projection);
+    CameraInfo camera_info;
+    camera->computeMVP(camera_info.model, camera_info.view, camera_info.projection);
+    camera_info.viewPos = camera->getPos();
 
-    // Set uniform variables about lights
-    std::vector<glm::vec3> lightPoses;
-    std::vector<glm::vec3> lightColors;
-    std::vector<unsigned int> depthMapIDs;
-    std::vector<bool> lightsOn;
-    float far_plane = 1000.0f;//cubelights[0]->getFarPlane();
+    std::vector<LightInfo> light_infos;
+    std::vector<ShadowMappingInfo> shadow_mapping_infos;
     for (auto &light : cubelights)
     {
+        light_infos.push_back(LightInfo{light->getPos(), light->getColor(), light->IsOn()});
         if (light->IsOn())
-            light->generateShadowMap(meshes);
-        depthMapIDs.push_back(light->getDepthMap());
-        lightPoses.push_back(light->getPos());
-        lightColors.push_back(light->getColor());
+            light->generateShadowMap(render_objects);
+        shadow_mapping_infos.push_back(ShadowMappingInfo{light->getDepthMap(), light->getFarPlane()});
     }
-    GLint viewport[4];
-    glGetIntegerv(GL_VIEWPORT, viewport);
-    glm::vec4 __viewport = {1.0f * viewport[0], 1.0f * viewport[1], 1.0f * viewport[2], 1.0f * viewport[3]};
+    // GLint viewport[4];
+    // glGetIntegerv(GL_VIEWPORT, viewport);
+    // glm::vec4 __viewport = {1.0f * viewport[0], 1.0f * viewport[1], 1.0f * viewport[2], 1.0f * viewport[3]};
 
-    for (auto &light : cubelights)
-    {
-        if (!light->IsOn())
-            continue;
-        light->getMesh()->Draw(
-            model, view, projection,
-            light->getPos(), light->getColor(),
-            0.2f);
-    }
+    // for (auto &light : cubelights)
+    // {
+    //     if (!light->IsOn())
+    //         continue;
+    //     light->getMesh()->Draw(
+    //         model, view, projection,
+    //         light->getPos(), light->getColor(),
+    //         0.2f);
+    // }
 
-    for (auto &mesh : meshes)
+    for (auto &object : render_objects)
     {
-        mesh->Draw(
-            depthMapIDs,
-            model, view, projection,
-            lightPoses, lightColors,
-            camera->getPos(),
-            lightsOn,
-            far_plane,
-            true);
-    }
-
-    for (auto &sphere : spheres)
-    {
-        sphere->Draw(
-            model, view, projection,
-            lightPoses, lightColors, lightsOn,
-            __viewport, camera->getPos());
-    }
-
-    for (auto &line : lines)
-    {
-        line->Draw(model, view, projection, glm::vec3(1.0f), lightsOn[0] || lightsOn[1] || lightsOn[2] || lightsOn[3]);
+        object->Draw(camera_info, light_infos, shadow_mapping_infos);
     }
 
     ImGui::Render();

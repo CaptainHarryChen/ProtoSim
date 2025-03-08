@@ -10,7 +10,7 @@ function(add_examples name)
     target_link_libraries(${name} PRIVATE
         Viewer
         Physics
-        App
+        # App
         ${ARGN}
     )
 
@@ -30,6 +30,9 @@ endmacro()
 
 subdirlist(subdirs ${CMAKE_CURRENT_SOURCE_DIR})
 
-foreach(dir ${subdirs})
-    add_examples(${dir})
-endforeach()
+# add_examples("app_scene")
+add_examples("viewer_render_system")
+
+# foreach(dir ${subdirs})
+#     add_examples(${dir})
+# endforeach()

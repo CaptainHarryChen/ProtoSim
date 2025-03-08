@@ -1,7 +1,9 @@
 #include "ShadowMapping.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glad/glad.h>
 #include <Render/Shader.h>
-#include <Mesh/SurfaceMesh.h>
+#include <Mesh/Mesh.h>
 
 ShadowMapping::ShadowMapping(bool cubic)
 {
@@ -51,7 +53,7 @@ ShadowMapping::ShadowMapping(bool cubic)
     }
 }
 
-void ShadowMapping::Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<SurfaceMesh>> &meshes)
+void ShadowMapping::Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<RenderObject>> &objects)
 {
     if (isCubic)
     {
@@ -75,10 +77,14 @@ void ShadowMapping::Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<Surface
         depth_shader->setMat4("model", glm::mat4(1.0f));
 
         glClear(GL_DEPTH_BUFFER_BIT);
-        for (int i = 0; i < meshes.size(); ++i)
+        for (auto &object : objects)
         {
-            meshes[i]->Draw();
+            auto mesh = std::dynamic_pointer_cast<Mesh>(object); // only support SurfaceMesh to generate shadow map for now
+            if (mesh == nullptr)
+                continue;
+            mesh->Draw();
         }
+        glBindVertexArray(0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     else
@@ -94,12 +100,14 @@ void ShadowMapping::Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<Surface
         glViewport(0, 0, shadow_width, shadow_height);
         glBindFramebuffer(GL_FRAMEBUFFER, FBO);
         glClear(GL_DEPTH_BUFFER_BIT);
-
-        for (int i = 0; i < meshes.size(); ++i)
+        for (auto &object : objects)
         {
-            meshes[i]->Draw();
+            auto mesh = std::dynamic_pointer_cast<Mesh>(object); // only support SurfaceMesh to generate shadow map for now
+            if (mesh == nullptr)
+                continue;
+            mesh->Draw();
         }
-
+        glBindVertexArray(0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 }

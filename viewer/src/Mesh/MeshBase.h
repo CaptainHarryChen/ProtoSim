@@ -1,13 +1,15 @@
 #pragma once
-#include <Mesh/SurfaceMesh.h>
+#include <Mesh/Mesh.h>
 
+/// @brief Base class for all mesh objects.
 class MeshBase
 {
 public:
 	MeshBase() = default;
 	virtual ~MeshBase() = default;
 
-	virtual std::shared_ptr<SurfaceMesh> getMesh();
+	virtual std::shared_ptr<Mesh> getMesh();
 
-	std::shared_ptr<SurfaceMesh> mesh;
+protected:
+	std::shared_ptr<Mesh> mesh;
 };

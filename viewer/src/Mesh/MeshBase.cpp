@@ -1,6 +1,6 @@
 #include "MeshBase.h"
 
-std::shared_ptr<SurfaceMesh> MeshBase::getMesh()
+std::shared_ptr<Mesh> MeshBase::getMesh()
 {
     return mesh;
 }

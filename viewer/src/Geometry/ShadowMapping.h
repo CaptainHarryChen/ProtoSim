@@ -4,14 +4,20 @@
 #include <glm/glm.hpp>
 
 class Shader;
-class SurfaceMesh;
+class RenderObject;
+
+struct ShadowMappingInfo
+{
+    unsigned int depth_map;
+    float far_plane; // texture value multiply far_plane to get the real distance
+};
 
 class ShadowMapping
 {
 public:
     ShadowMapping(bool cubic = true);
 
-    void Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<SurfaceMesh>> &meshes);
+    void Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<RenderObject>> &objects);
     unsigned int getDepthMap();
     glm::mat4 getlightSpaceMatrix();
 

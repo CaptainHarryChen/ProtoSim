@@ -5,7 +5,7 @@
 class Floor : public MeshBase
 {
 public:
-    Floor(float scale = 1.0, bool isCubic = true);
+    Floor(float scale = 1.0);
 
 private:
     static std::vector<Vertex> __PLANE_VERTICES;

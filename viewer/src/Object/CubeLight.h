@@ -2,6 +2,7 @@
 #include <Mesh/MeshBase.h>
 
 class ShadowMapping;
+class RenderObject;
 
 class CubeLight : public MeshBase // render light cube + render shadow map
 {
@@ -14,7 +15,7 @@ public:
     void setIsOn(bool on);
 
     unsigned int getDepthMap();
-    void generateShadowMap(std::vector<std::shared_ptr<SurfaceMesh>> &shadowMeshes);
+    void generateShadowMap(std::vector<std::shared_ptr<RenderObject>> &objects);
     glm::mat4 getlightSpaceMatrix();
     float getFarPlane();
 

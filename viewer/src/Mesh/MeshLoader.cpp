@@ -4,12 +4,13 @@
 #include <filesystem>
 #include <iostream>
 #include <sys/stat.h>
+#include <Mesh/SurfaceMesh.h>
+#include <Mesh/TextureMesh.h>
 
 MeshLoader::MeshLoader(std::string inputfile, float scale,
                        glm::vec3 translate,
                        glm::vec3 rotate, // pitch, yaw, roll
-                       std::vector<glm::vec3> material,
-                       bool isCubic)
+                       std::vector<glm::vec3> material)
 {
     path = inputfile;
     tinyobj::ObjReaderConfig reader_config;
@@ -71,13 +72,12 @@ MeshLoader::MeshLoader(std::string inputfile, float scale,
         }
     }
 
-    mesh = std::make_shared<SurfaceMesh>(vertices, indices, material, isCubic);
+    mesh = std::make_shared<SurfaceMesh>(vertices, indices, material);
 }
 
 MeshLoader::MeshLoader(std::string inputfile, float scale,
                        glm::vec3 translate,
                        glm::vec3 rotate, // pitch, yaw, roll
-                       bool isCubic,
                        std::string albedo,
                        std::string metallic,
                        std::string normal,
@@ -130,8 +130,7 @@ MeshLoader::MeshLoader(std::string inputfile, float scale,
         }
     }
     std::vector<std::string> textures = {albedo, normal, metallic, roughness, ao};
-    mesh = std::make_shared<SurfaceMesh>(vertices, indices, textures, isCubic);
-    mesh->BindTexture();
+    mesh = std::make_shared<TextureMesh>(vertices, indices, textures);
 }
 
 glm::vec3 MeshLoader::rotateVecQuat(glm::quat q, glm::vec3 v)
