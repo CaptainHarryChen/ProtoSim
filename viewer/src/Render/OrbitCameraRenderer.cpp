@@ -2,8 +2,8 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
-#include <Mesh/SurfaceMesh.h>
-#include <Object/CubeLight.h>
+#include <Mesh/Mesh.h>
+#include <Render/Light.h>
 #include <Geometry/Sphere.h>
 #include <Geometry/LineSegment.h>
 
@@ -70,17 +70,15 @@ void OrbitCameraRenderer::RenderOneFrame()
     ImGui::NewFrame();
 
     CameraInfo camera_info;
-    camera->computeMVP(camera_info.model, camera_info.view, camera_info.projection);
+    camera->computeMVP(camera_info.view, camera_info.projection);
     camera_info.viewPos = camera->getPos();
 
     std::vector<LightInfo> light_infos;
     std::vector<ShadowMappingInfo> shadow_mapping_infos;
-    for (auto &light : cubelights)
+    for (auto &light : lights)
     {
-        light_infos.push_back(LightInfo{light->getPos(), light->getColor(), light->IsOn()});
-        if (light->IsOn())
-            light->generateShadowMap(render_objects);
-        shadow_mapping_infos.push_back(ShadowMappingInfo{light->getDepthMap(), light->getFarPlane()});
+        light_infos.push_back(light->GetLightInfo());
+        shadow_mapping_infos.push_back(light->CreateShadowMappingInfo(render_objects));
     }
 
     int width, height;

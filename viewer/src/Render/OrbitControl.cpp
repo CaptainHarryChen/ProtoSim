@@ -210,11 +210,8 @@ void OrbitControl::processInput(GLFWwindow* window)
     //yoffset = 0.;
 }
 
-void OrbitControl::computeMVP(glm::mat4& model, glm::mat4& view, glm::mat4& projection)
+void OrbitControl::computeMVP(glm::mat4& view, glm::mat4& projection)
 {
-    model = glm::mat4(1.0f);
-    //model = glm::rotate(model, glm::radians(15.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-
     view = getView();
 
     projection = glm::perspective(glm::radians(zoom), static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.0f);

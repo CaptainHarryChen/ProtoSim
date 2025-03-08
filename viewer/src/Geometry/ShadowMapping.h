@@ -15,19 +15,16 @@ struct ShadowMappingInfo
 class ShadowMapping
 {
 public:
-    ShadowMapping(bool cubic = true);
+    ShadowMapping(float near_plane = 0.2f, float far_plane = 1000.f, unsigned int width = 1024u, unsigned int height = 1024u);
 
     void Draw(glm::vec3 lightPos, std::vector<std::shared_ptr<RenderObject>> &objects);
-    unsigned int getDepthMap();
-    glm::mat4 getlightSpaceMatrix();
-
-    float near_plane = 0.1f, far_plane = 1000.f;
+    ShadowMappingInfo GetShadowMappingInfo();
 
 protected:
     std::shared_ptr<Shader> depth_shader;
-    unsigned int shadow_width = 4096, shadow_height = 4096;
+    float near_plane, far_plane;
+    unsigned int shadow_width, shadow_height;
+
     unsigned int FBO;
     unsigned int depthMap;
-    glm::mat4 lightSpaceMatrix;
-    bool isCubic = false;
 };

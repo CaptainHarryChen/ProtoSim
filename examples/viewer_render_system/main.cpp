@@ -13,8 +13,9 @@ int main()
     renderer->AddRenderObject(floor->getMesh());
     auto bunny1 = std::make_shared<MeshLoader>(std::string(VIEWER_DIR) + "/data/objs/venus.obj", 0.01f, glm::vec3(-1.0, 0.0, 0.0), glm::vec3(glm::radians(-90.0f), 0., 0.), std::vector<glm::vec3>({glm::vec3(1.), glm::vec3(0.1f)}));
     renderer->AddRenderObject(bunny1->getMesh());
-    auto light = std::make_shared<CubeLight>(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(1.0, 0.0, 0.0));
-    std::dynamic_pointer_cast<OrbitCameraRenderer>(renderer)->cubelights.push_back(light);
+    auto light = std::make_shared<CubeLight>(glm::vec3(-3.0f, 3.0f, -3.0f), glm::vec3(0.5, 1.0, 0.5));
+    renderer->AddLight(light->getLight());
+    renderer->AddRenderObject(light->getMesh());
 
     while (true)
     {

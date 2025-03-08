@@ -21,7 +21,7 @@ void SurfaceMesh::Draw(const CameraInfo &camera, const std::vector<LightInfo> &l
         assert(shadow_mapping_infos.size() == light_infos.size());
 
     shader->use();
-    shader->setMat4("model", camera.model);
+    shader->setMat4("model", this->model);
     shader->setMat4("view", camera.view);
     shader->setMat4("projection", camera.projection);
     shader->setVec3("viewPos", camera.viewPos);

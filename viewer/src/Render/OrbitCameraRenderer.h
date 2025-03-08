@@ -4,7 +4,6 @@
 #include <Render/RenderSystem.h>
 #include <Render/OrbitControl.h>
 
-class CubeLight;
 class RenderObject;
 
 // TODO: Split the control and rendering. Split the camera and the renderer.
@@ -20,9 +19,6 @@ public:
 
     virtual bool ProcessControl() override;
     virtual void RenderOneFrame() override;
-
-    // lights
-    std::vector<std::shared_ptr<CubeLight>> cubelights;
 
 protected:
     GLFWwindow *window;

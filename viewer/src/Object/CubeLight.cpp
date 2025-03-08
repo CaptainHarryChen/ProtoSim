@@ -1,54 +1,18 @@
 #include "CubeLight.h"
 #include <Geometry/ShadowMapping.h>
-#include <Mesh/SurfaceMesh.h>
+#include <Mesh/SolidColorMesh.h>
 
-CubeLight::CubeLight(glm::vec3 position, glm::vec3 color, bool isCubic)
+CubeLight::CubeLight(glm::vec3 position, glm::vec3 color)
 {
-    // std::cout << isCubic << std::endl;
-    lightPos = position;
-    lightColor = color;
-    shadowMapping = std::make_shared<ShadowMapping>(isCubic);
-    mesh = std::make_shared<SurfaceMesh>(__CUBE_VERTICES, __CUBE_INDICES);
+    light = std::make_shared<Light>(position, color, 0.2f, 1000.f);
+    mesh = std::make_shared<SolidColorMesh>(__CUBE_VERTICES, __CUBE_INDICES, color);
+    mesh->model = glm::translate(mesh->model, position);
+    mesh->model = glm::scale(mesh->model, glm::vec3(0.2f));
 }
 
-bool CubeLight::IsOn()
+std::shared_ptr<Light> CubeLight::getLight()
 {
-    return isOn;
-}
-
-void CubeLight::setIsOn(bool on)
-{
-    isOn = on;
-}
-
-glm::vec3 CubeLight::getPos()
-{
-    return lightPos;
-}
-
-glm::vec3 CubeLight::getColor()
-{
-    return lightColor;
-}
-
-unsigned int CubeLight::getDepthMap()
-{
-    return shadowMapping->getDepthMap();
-}
-
-void CubeLight::generateShadowMap(std::vector<std::shared_ptr<RenderObject>> &objects)
-{
-    shadowMapping->Draw(lightPos, objects);
-}
-
-glm::mat4 CubeLight::getlightSpaceMatrix()
-{
-    return shadowMapping->getlightSpaceMatrix();
-}
-
-float CubeLight::getFarPlane()
-{
-    return shadowMapping->far_plane;
+    return light;
 }
 
 std::vector<Vertex> CubeLight::__CUBE_VERTICES = {

@@ -36,7 +36,7 @@ public:
     static int getHeight();
 
     void processInput(GLFWwindow* window);
-    void computeMVP(glm::mat4& model, glm::mat4& view, glm::mat4& projection);
+    void computeMVP(glm::mat4& view, glm::mat4& projection);
     glm::vec3 getPos();
     glm::vec3 getFront();
     glm::mat4 getView();
