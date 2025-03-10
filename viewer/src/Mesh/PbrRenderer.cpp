@@ -3,6 +3,7 @@
 #include <stb_image.h>
 #include <Render/Shader.h>
 #include <Mesh/Mesh.h>
+#include <Camera/Camera.h>
 
 PbrRenderer::PbrRenderer(const std::vector<glm::vec3> &material)
     : m_material(material)

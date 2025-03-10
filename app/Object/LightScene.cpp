@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <Object/CubeLight.h>
 #include <Render/RenderSystem.h>
+#include <GLFWApp.h>
 
 void LightSceneControlGUI::Draw(const CameraInfo &camera_info, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos)
 {
@@ -30,7 +31,7 @@ LightScene::LightScene()
         m_lights.push_back(std::make_shared<CubeLight>(m_control_gui->m_light_pos[i], m_control_gui->m_light_color[i]));
     }
 
-    std::shared_ptr<RenderSystem> render_system = RenderSystem::GetInstance();
+    std::shared_ptr<RenderSystem> render_system = GLFWApp::GetInstance()->GetRenderSystem();
     for(auto &light : m_lights)
     {
         render_system->AddLight(light->GetLight());
@@ -39,7 +40,7 @@ LightScene::LightScene()
     render_system->AddRenderObject(m_control_gui);
 }
 
-void LightScene::Update()
+void LightScene::Update(double delta_time)
 {
     for(size_t i = 0; i < m_control_gui->m_light_num; ++i)
     {

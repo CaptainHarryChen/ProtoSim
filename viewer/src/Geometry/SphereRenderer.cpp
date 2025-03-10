@@ -2,6 +2,7 @@
 #include <glad/glad.h>
 #include <Render/Shader.h>
 #include <Render/RenderObject.h>
+#include <Camera/Camera.h>
 
 SphereRenderer::SphereRenderer(const glm::vec2 &material, float radius) : m_material(material), m_radius(radius)
 {

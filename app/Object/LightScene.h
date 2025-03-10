@@ -29,5 +29,5 @@ public:
     std::vector<std::shared_ptr<CubeLight>> m_lights;
     std::shared_ptr<LightSceneControlGUI> m_control_gui;
 
-    virtual void Update() override;
+    virtual void Update(double delta_time) override;
 };

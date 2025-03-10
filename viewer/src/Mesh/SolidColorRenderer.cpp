@@ -2,6 +2,7 @@
 #include <glad/glad.h>
 #include <Render/Shader.h>
 #include <Mesh/Mesh.h>
+#include <Camera/Camera.h>
 
 SolidColorRenderer::SolidColorRenderer(const glm::vec3 &color, bool only_edge)
     : m_color(color), m_only_edge(only_edge)

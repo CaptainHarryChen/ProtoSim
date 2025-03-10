@@ -3,6 +3,7 @@
 #include <stb_image.h>
 #include <Render/Shader.h>
 #include <Mesh/Mesh.h>
+#include <Camera/Camera.h>
 
 TextureRenderer::TextureRenderer(std::vector<std::string> textures)
 {

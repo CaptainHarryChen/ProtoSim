@@ -5,14 +5,7 @@
 #include <Render/Light.h>
 #include <Geometry/ShadowMapping.h>
 
-struct CameraInfo
-{
-    glm::mat4 view;
-    glm::mat4 projection;
-    glm::vec3 view_pos;
-    glm::vec4 viewport;
-};
-
+struct CameraInfo;
 class Renderer;
 
 class RenderObject
