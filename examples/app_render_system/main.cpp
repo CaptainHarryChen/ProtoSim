@@ -1,6 +1,6 @@
 #include <string>
 #include <memory>
-#include <Render/OrbitCameraRenderer.h>
+#include <Render/RenderSystem.h>
 #include <Object/Floor.h>
 #include <Object/LightScene.h>
 #include <Mesh/SolidColorRenderer.h>
@@ -12,7 +12,7 @@
 
 int main()
 {
-    std::shared_ptr<RenderSystem> render_system = OrbitCameraRenderer::GetInstance();
+    std::shared_ptr<RenderSystem> render_system = RenderSystem::GetInstance();
 
     auto floor = std::make_shared<Floor>(100.0f);
     render_system->AddRenderObject(floor->GetMesh());

@@ -1,24 +1,32 @@
 #pragma once
-#include <vector>
 #include <memory>
+#include <vector>
+#include <Render/RenderSystem.h>
+#include <Render/OrbitControl.h>
 
 class Light;
 class RenderObject;
 
-// TODO: Split the control and rendering. Split the camera and the renderer.
 class RenderSystem
 {
 public:
-    RenderSystem() = default;
-    virtual ~RenderSystem() = default;
-    
+    static std::shared_ptr<RenderSystem> GetInstance();
+
+    RenderSystem(std::string name = "Viewer", int init_width = 1600, int init_height = 900);
+    virtual ~RenderSystem();
+
+    // settings
+    glm::vec3 m_clear_color = {0.5, 0.5, 1.0};
+
+    virtual void AddLight(std::shared_ptr<Light> light);
+    virtual void AddRenderObject(std::shared_ptr<RenderObject> render_object);
+
     virtual bool ProcessControl();
     virtual void RenderOneFrame();
 
-    virtual void AddLight(std::shared_ptr<Light> light);
-    virtual void AddRenderObject(std::shared_ptr<RenderObject> object);
-
 protected:
+    GLFWwindow *m_window;
+    std::shared_ptr<OrbitControl> m_camera;
     std::vector<std::shared_ptr<Light>> m_lights;
     std::vector<std::shared_ptr<RenderObject>> m_render_objects;
 };

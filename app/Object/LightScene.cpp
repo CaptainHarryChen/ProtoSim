@@ -2,7 +2,7 @@
 #include <string>
 #include <imgui.h>
 #include <Object/CubeLight.h>
-#include <Render/OrbitCameraRenderer.h>
+#include <Render/RenderSystem.h>
 
 void LightSceneControlGUI::Draw(const CameraInfo &camera_info, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos)
 {
@@ -30,7 +30,7 @@ LightScene::LightScene()
         m_lights.push_back(std::make_shared<CubeLight>(m_control_gui->m_light_pos[i], m_control_gui->m_light_color[i]));
     }
 
-    std::shared_ptr<RenderSystem> render_system = OrbitCameraRenderer::GetInstance();
+    std::shared_ptr<RenderSystem> render_system = RenderSystem::GetInstance();
     for(auto &light : m_lights)
     {
         render_system->AddLight(light->GetLight());
