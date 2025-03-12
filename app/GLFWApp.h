@@ -2,14 +2,13 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #include <Event/Event.h>
 
 class RenderSystem;
 class ImGuiSystem;
 class Camera;
 class Object;
+struct GLFWwindow;
 
 class GLFWApp
 {

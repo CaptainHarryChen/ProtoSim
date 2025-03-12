@@ -21,7 +21,12 @@ public:
 
     virtual void UpdateVertices(const std::vector<Vertex> &data);
     virtual void DrawVAO() const override;
+    
 protected:
+    template <typename Real>
+    friend class MeshConnector;
+
     unsigned int m_VAO;
-    unsigned int m_VBO, EBO;
+    unsigned int m_VBO;
+    unsigned int m_EBO;
 };

@@ -1,6 +1,8 @@
 #include "GLFWApp.h"
 #include <mutex>
 #include <cassert>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 #include <imgui/imgui.h>
 #include <Render/RenderSystem.h>
 #include <GUI/ImGuiSystem.h>
