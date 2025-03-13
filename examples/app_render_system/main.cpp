@@ -35,6 +35,9 @@ int main()
     auto dragon = MeshLoader::LoadMesh(std::string(VIEWER_DIR) + "/data/objs/dragon.obj", 6.0f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f), {glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.1, 0.1, 0.1)});
     render_system->AddRenderObject(dragon);
 
+    auto cube = MeshLoader::LoadMesh(std::string(VIEWER_DIR) + "/data/objs/cube.obj", 1.0f, glm::vec3(1.0f, 10.0f, 0.0f), glm::vec3(0.0f), {glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.1, 0.1, 0.1)});
+    render_system->AddRenderObject(cube);
+
     auto light_scene = std::make_shared<LightScene>();
     app->AddObject(light_scene);
 

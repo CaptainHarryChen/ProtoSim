@@ -8,7 +8,7 @@
 CubeLight::CubeLight(glm::vec3 position, glm::vec3 color)
 {
     m_light = std::make_shared<Light>(position, color, 0.2f, 1000.f);
-    m_mesh = std::make_shared<Mesh>(__CUBE_VERTICES, __CUBE_INDICES);
+    m_mesh = std::make_shared<Mesh>(__CUBE_VERTICES, __CUBE_INDICES, false);
     m_mesh->m_model_mat = glm::translate(m_mesh->m_model_mat, position);
     m_mesh->m_model_mat = glm::scale(m_mesh->m_model_mat, glm::vec3(0.2f));
     m_mesh->AddRenderer(std::make_shared<SolidColorRenderer>(color));

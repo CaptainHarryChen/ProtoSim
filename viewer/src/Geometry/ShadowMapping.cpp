@@ -50,7 +50,7 @@ void ShadowMapping::Draw(glm::vec3 light_pos, std::vector<std::shared_ptr<Render
     for (auto &object : objects)
     {
         auto mesh = std::dynamic_pointer_cast<Mesh>(object); // only support SurfaceMesh to generate shadow map for now
-        if (mesh == nullptr)
+        if (mesh == nullptr || !mesh->m_enable_shadow)
             continue;
         m_depth_shader->setMat4("model", mesh->m_model_mat);
         mesh->DrawVAO();

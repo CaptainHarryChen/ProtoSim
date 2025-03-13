@@ -13,9 +13,10 @@ struct Vertex
 class Mesh : public RenderObject
 {
 public:
-    Mesh(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices);
+    Mesh(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices, bool enable_shadow = true);
     virtual ~Mesh() = default;
 
+    bool m_enable_shadow = true;
     std::vector<Vertex> m_vertices;
     std::vector<unsigned int> m_indices;
 
