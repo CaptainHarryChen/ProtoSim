@@ -8,4 +8,6 @@ public:
     virtual ~Solver() = default;
 
     virtual void Step() = 0;
+    /// @brief Get the position array on the device, for Connector
+    virtual Real *GetDevicePositions() = 0;
 };

@@ -5,7 +5,7 @@
 #include <Object/LightScene.h>
 #include <Render/RenderSystem.h>
 #include <Solver/Solver.cuh>
-#include <Connector/Connector.cuh>
+#include <Connector/MeshConnector.cuh>
 
 template <typename Real>
 void SimulationScene<Real>::Update(double delta_time)
@@ -42,9 +42,45 @@ void SimulationScene<Real>::SetSolver(std::shared_ptr<Solver<Real>> solver)
 }
 
 template <typename Real>
-std::vector<std::shared_ptr<Connector>> &SimulationScene<Real>::GetConnectors()
+void SimulationScene<Real>::AddConnector(std::shared_ptr<Connector> connector)
 {
-    return m_connectors;
+    m_connectors.push_back(connector);
+}
+
+template <typename Real>
+void SimulationScene<Real>::SetupConnectors()
+{
+    for (auto &[mesh, offset] : m_mesh_offsets)
+    {
+        auto connector = std::make_shared<MeshConnector<Real>>(mesh, m_solver->GetDevicePositions() + offset);
+        m_connectors.push_back(connector);
+    }
+}
+
+template <typename Real>
+void SimulationScene<Real>::AddMesh(std::shared_ptr<Mesh> mesh)
+{
+    m_mesh_offsets.push_back(std::make_pair(mesh, m_positions.size()));
+    for (auto &vert : mesh->m_vertices)
+    {
+        m_positions.push_back(vert.position.x);
+        m_positions.push_back(vert.position.y);
+        m_positions.push_back(vert.position.z);
+    }
+    GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(mesh);
+}
+
+template <typename Real>
+void SimulationScene<Real>::AddParticleBatch(std::shared_ptr<ParticleBatch> particle_batch)
+{
+    // m_particle_batche_offsets.push_back(std::make_pair(particle_batch, m_positions.size()));
+    // for (auto &particle : particle_batch->m_particles)
+    // {
+    //     m_positions.push_back(particle.Position.x);
+    //     m_positions.push_back(particle.Position.y);
+    //     m_positions.push_back(particle.Position.z);
+    // }
+    // GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(particle_batch);
 }
 
 template class SimulationScene<float>;

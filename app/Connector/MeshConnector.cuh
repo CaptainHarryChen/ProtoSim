@@ -1,10 +1,9 @@
 #pragma once
 #include <memory>
-#include <glad/glad.h>
-#include <cuda_gl_interop.h>
 #include <Connector/Connector.cuh>
 
 class Mesh;
+struct cudaGraphicsResource;
 
 template <typename Real>
 class MeshConnector : public Connector
@@ -19,7 +18,7 @@ protected:
     std::shared_ptr<Mesh> m_mesh;
     Real *m_dev_position;
 
-    cudaGraphicsResource_t m_cuda_resource_buf;
+    cudaGraphicsResource *m_cuda_resource_buf;
 };
 
 extern template class MeshConnector<float>;

@@ -40,5 +40,11 @@ void EmptySolver<Real>::Step()
     EmptySolverKernel::step<Real><<<CUDA_GRID_SIZE(m_data.num_vertices), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
+template <typename Real>
+Real *EmptySolver<Real>::GetDevicePositions()
+{
+    return m_data.dev_position;
+}
+
 template class EmptySolver<float>;
 template class EmptySolver<double>;

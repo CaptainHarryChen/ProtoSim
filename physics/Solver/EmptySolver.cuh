@@ -20,6 +20,7 @@ public:
     virtual ~EmptySolver();
 
     virtual void Step() override;
+    virtual Real *GetDevicePositions() override;
 
     EmptySolverData<Real> m_data;
 

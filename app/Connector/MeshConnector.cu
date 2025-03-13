@@ -1,4 +1,6 @@
 #include "MeshConnector.cuh"
+#include <glad/glad.h>
+#include <cuda_gl_interop.h>
 #include <cuda_utils/error.cuh>
 #include <cuda_utils/block_size.cuh>
 #include <Mesh/Mesh.h>
