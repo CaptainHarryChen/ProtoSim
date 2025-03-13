@@ -22,6 +22,9 @@ public:
     virtual void DrawVAO() const override;
 
 protected:
+	template <typename Real>
+	friend class ParticleConnector;
+
 	unsigned int m_VAO;
 	unsigned int m_VBO;
 };

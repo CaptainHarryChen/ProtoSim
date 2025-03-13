@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <memory>
+#include <glm/glm.hpp>
 #include <Object/Object.h>
 
 template <typename Real>
@@ -25,6 +26,8 @@ public:
 
     void AddMesh(std::shared_ptr<Mesh> mesh);
     void AddParticleBatch(std::shared_ptr<ParticleBatch> particle_batch);
+    void AddCubeParticleBatch(glm::vec3 lower_bound, glm::vec3 upper_bound, float dis,
+                              float radius, glm::vec3 color, glm::vec2 material);
 
     std::vector<Real> m_positions;
 

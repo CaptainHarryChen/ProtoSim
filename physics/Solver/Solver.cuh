@@ -9,5 +9,7 @@ public:
 
     virtual void Step() = 0;
     /// @brief Get the position array on the device, for Connector
-    virtual Real *GetDevicePositions() = 0;
+    virtual inline Real *GetDevicePositions() { return nullptr; }
+    /// @brief Get the color array on the device, for Connector, especially for ParticleConnector
+    virtual inline Real *GetDeviceColors() { return nullptr; }
 };
