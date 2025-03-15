@@ -61,7 +61,7 @@ void SimulationScene<Real>::SetupConnectors()
         auto connector = std::make_shared<MeshConnector<Real>>(mesh, position_ptr);
         m_connectors.push_back(connector);
     }
-    for (auto &[particle_batch, offset] : m_particle_batche_offsets)
+    for (auto &[particle_batch, offset] : m_particle_batch_offsets)
     {
         auto position_ptr = m_solver->GetDevicePositions();
         if (position_ptr)
@@ -90,7 +90,7 @@ void SimulationScene<Real>::AddMesh(std::shared_ptr<Mesh> mesh)
 template <typename Real>
 void SimulationScene<Real>::AddParticleBatch(std::shared_ptr<ParticleBatch> particle_batch)
 {
-    m_particle_batche_offsets.push_back(std::make_pair(particle_batch, m_positions.size()));
+    m_particle_batch_offsets.push_back(std::make_pair(particle_batch, m_positions.size()));
     for (auto &particle : particle_batch->m_particles)
     {
         m_positions.push_back(particle.Position.x);
@@ -119,7 +119,7 @@ void SimulationScene<Real>::AddCubeParticleBatch(
                 num_particle++;
             }
     auto particle_batch = std::make_shared<ParticleBatch>(particles);
-    m_particle_batche_offsets.push_back(std::make_pair(particle_batch, offset));
+    m_particle_batch_offsets.push_back(std::make_pair(particle_batch, offset));
     particle_batch->AddRenderer(std::make_shared<SphereRenderer>(material, radius));
     GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(particle_batch);
 }
