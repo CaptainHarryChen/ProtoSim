@@ -6,6 +6,7 @@
 
 template <typename Real>
 class Solver;
+class Event;
 class Connector;
 class Mesh;
 class ParticleBatch;
@@ -18,6 +19,7 @@ public:
     virtual ~SimulationScene() = default;
 
     virtual void Update(double delta_time) override;
+    virtual void ProcessEvent(const Event &event) override;
 
     virtual void SetupScene();
     virtual void SetSolver(std::shared_ptr<Solver<Real>> solver);
@@ -37,6 +39,8 @@ protected:
 
     std::shared_ptr<Solver<Real>> m_solver;
     std::vector<std::shared_ptr<Connector>> m_connectors;
+
+    bool m_play = false;
 };
 
 extern template class SimulationScene<float>;

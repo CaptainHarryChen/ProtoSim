@@ -1,5 +1,6 @@
 #include "SimulationScene.h"
 #include <GLFWApp.h>
+#include <Event/Event.h>
 #include <Camera/OrbitCamera.h>
 #include <Object/Floor.h>
 #include <Object/LightScene.h>
@@ -13,11 +14,28 @@
 template <typename Real>
 void SimulationScene<Real>::Update(double delta_time)
 {
-    m_solver->Step();
-
-    for (auto &connector : m_connectors)
+    if (m_play)
     {
-        connector->TransferData();
+        m_solver->Step();
+        for (auto &connector : m_connectors)
+        {
+            connector->TransferData();
+        }
+    }
+}
+
+template <typename Real>
+void SimulationScene<Real>::ProcessEvent(const Event &event)
+{
+    if (event.type == EventType::Key)
+    {
+        if (event.key.action == GLFW_PRESS)
+        {
+            if (event.key.key == GLFW_KEY_SPACE)
+            {
+                m_play = !m_play;
+            }
+        }
     }
 }
 
