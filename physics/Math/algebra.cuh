@@ -1,27 +1,7 @@
 #pragma once
-#include <cmath>
-#include <cuda_utils/block_size.cuh>
 
 namespace cudaPhysics
 {
-    template <typename Real>
-    __global__ void fill_identity_matrix_kernel(Real *dst, unsigned int repeat_time, unsigned int matrix_size)
-    {
-        unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
-        if (index < repeat_time * matrix_size * matrix_size)
-        {
-            unsigned int id_in_mat = index % (matrix_size * matrix_size);
-            unsigned int row = id_in_mat / matrix_size;
-            unsigned int col = id_in_mat % matrix_size;
-            dst[index] = (row == col) ? 1 : 0;
-        }
-    }
-    template <typename Real>
-    void fill_identity_matrix(Real *dst, unsigned int repeat_time, unsigned int matrix_size)
-    {
-        fill_identity_matrix_kernel<Real><<<CUDA_GRID_SIZE(repeat_time * matrix_size * matrix_size), CUDA_BLOCK_SIZE>>>(dst, repeat_time, matrix_size);
-    }
-
     template <class T>
     __host__ __device__ __forceinline__ void vecCopy(T *X, const T *A, int n)
     {
@@ -549,29 +529,6 @@ namespace cudaPhysics
     }
 
     template <class T>
-    __host__ __device__ __forceinline__ void safeMatInv3(T *inv_X, T *X)
-    {
-        // check if the determinant is nonzero
-        T detX;
-        det3<T>(detX, X);
-        if (abs<T>(detX) > EPSILON)
-        {
-            matInv3<T>(inv_X, X);
-            return;
-        }
-        printf(">>>>> math_cuda.h [safeMatInv3] singular matrix inversion!");
-        // for (int i = 0; i < 9; ++i) printf("%f ", X[i]); printf("\n");
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-            {
-                if (i == j)
-                    inv_X[3 * i + j] = 1.0;
-                else
-                    inv_X[3 * i + j] = 0.0;
-            }
-    }
-
-    template <class T>
     __host__ __device__ __forceinline__ void setZero(T *v, unsigned int n)
     {
         for (int i = 0; i < n; ++i)
@@ -642,112 +599,6 @@ namespace cudaPhysics
         r[i] = -x[i];
     }
 
-    template <typename Real>
-    __host__ __device__ void get_rotation(Real *R, const Real *F)
-    {
-        Real C[9];
-        memset(C, 0, sizeof(Real) * 9);
-        for (int i = 0; i < 3; i++)
-            for (int j = 0; j < 3; j++)
-                for (int k = 0; k < 3; k++)
-                    C[3 * i + j] += F[3 * k + i] * F[3 * k + j];
-
-        Real C2[9];
-        memset(C2, 0, sizeof(Real) * 9);
-        for (int i = 0; i < 3; i++)
-            for (int j = 0; j < 3; j++)
-                for (int k = 0; k < 3; k++)
-                    C2[3 * i + j] += C[3 * i + k] * C[3 * j + k];
-
-        Real det = F[0] * F[4] * F[8] +
-                   F[1] * F[5] * F[6] +
-                   F[3] * F[7] * F[2] -
-                   F[2] * F[4] * F[6] -
-                   F[1] * F[3] * F[8] -
-                   F[0] * F[5] * F[7];
-
-        Real I_c = C[0] + C[4] + C[8];
-        Real I_c2 = I_c * I_c;
-        Real II_c = 0.5 * (I_c2 - C2[0] - C2[4] - C2[8]);
-        Real III_c = det * det;
-        Real k = I_c2 - 3 * II_c;
-
-        Real inv_U[9];
-        if (k < EPSILON)
-        {
-            Real inv_lambda = 1 / sqrt(I_c / 3);
-            memset(inv_U, 0, sizeof(Real) * 9);
-            inv_U[0] = inv_lambda;
-            inv_U[4] = inv_lambda;
-            inv_U[8] = inv_lambda;
-        }
-        else
-        {
-            Real l = I_c * (I_c * I_c - 4.5 * II_c) + 13.5 * III_c;
-            Real k_root = sqrt(k);
-            Real value = l / (k * k_root);
-            if (value < -1.0)
-                value = -1.0;
-            if (value > 1.0)
-                value = 1.0;
-            Real phi = acos(value);
-            Real lambda2 = (I_c + 2 * k_root * cos(phi / 3)) / 3.0;
-            Real lambda = sqrt(lambda2);
-
-            Real III_u = sqrt(III_c);
-            if (det < 0)
-                III_u = -III_u;
-            Real I_u = lambda + sqrt(-lambda2 + I_c + 2 * III_u / lambda);
-            Real II_u = (I_u * I_u - I_c) * 0.5;
-
-            Real U[9];
-            Real inv_rate, factor;
-
-            inv_rate = 1 / (I_u * II_u - III_u);
-            factor = I_u * III_u * inv_rate;
-
-            memset(U, 0, sizeof(Real) * 9);
-            U[0] = factor;
-            U[4] = factor;
-            U[8] = factor;
-
-            factor = (I_u * I_u - II_u) * inv_rate;
-            for (int i = 0; i < 3; i++)
-                for (int j = 0; j < 3; j++)
-                    U[3 * i + j] += factor * C[3 * i + j] - inv_rate * C2[3 * i + j];
-
-            inv_rate = 1 / III_u;
-            factor = II_u * inv_rate;
-            memset(inv_U, 0, sizeof(Real) * 9);
-            inv_U[0] = factor;
-            inv_U[4] = factor;
-            inv_U[8] = factor;
-
-            factor = -I_u * inv_rate;
-            for (int i = 0; i < 3; i++)
-                for (int j = 0; j < 3; j++)
-                    inv_U[3 * i + j] += factor * U[3 * i + j] + inv_rate * C[3 * i + j];
-        }
-
-        memset(R, 0, sizeof(Real) * 9);
-        for (int i = 0; i < 3; i++)
-            for (int j = 0; j < 3; j++)
-                for (int k = 0; k < 3; k++)
-                    R[3 * i + j] += F[3 * i + k] * inv_U[3 * k + j];
-    }
-
-    template <typename Real>
-    Real inner_product(unsigned int N, Real *a, Real *b)
-    {
-        return thrust::inner_product(thrust::device, a, a + N, b, 0.);
-    }
-
-    template <class T>
-    __host__ __device__ __forceinline__ void set_zero(T *x, unsigned int N)
-    {
-        memset(x, 0, sizeof(T) * N);
-    }
-
     template <class T>
     __host__ __device__ __forceinline__ T normSquared(const T *x, unsigned int N)
     {
@@ -762,22 +613,12 @@ namespace cudaPhysics
     template <typename Real>
     __host__ __device__ __forceinline__ Real radians(Real degrees)
     {
-        return degrees * PI / 180.;
+        return degrees * 3.14159265358979323846 / 180.;
     }
 
     template <typename Real>
     __host__ __device__ __forceinline__ Real degrees(Real radians)
     {
-        return radians / PI * 180.;
+        return radians / 3.14159265358979323846 * 180.;
     }
-
-    template <typename Real>
-    __global__ void vecMul_kernel(unsigned int n, Real coeff, Real *array)
-    {
-        unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
-        if (i >= n)
-            return;
-        array[i] *= coeff;
-    }
-
 }

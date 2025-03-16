@@ -1,6 +1,8 @@
 #include "MPMSolver.cuh"
 #include <cuda_utils/error.cuh>
-#include <cuda_utils/math.cuh>
+#include <cuda_utils/array.cuh>
+#include <Math/algebra.cuh>
+#include <Math/elastic_model.cuh>
 
 namespace MPMSolverKernel
 {
@@ -13,12 +15,12 @@ namespace MPMSolverKernel
         if (data->dev_particle_type[i] == MPM_ELASTIC)
         {
             Real F[9], temp[9];
-            matMul3(temp, data->m_time_step, &data->dev_particle_C[i * 9]);
+            cudaPhysics::matMul3(temp, data->m_time_step, &data->dev_particle_C[i * 9]);
             temp[0] += 1.;
             temp[4] += 1.;
             temp[8] += 1.;
-            matMul3(F, temp, &data->dev_particle_F[i * 9]);
-            vecCopy(&data->dev_particle_F[i * 9], F, 9);
+            cudaPhysics::matMul3(F, temp, &data->dev_particle_F[i * 9]);
+            cudaPhysics::vecCopy(&data->dev_particle_F[i * 9], F, 9);
         }
         else if (data->dev_particle_type[i] == MPM_FLUID)
         {
@@ -35,16 +37,16 @@ namespace MPMSolverKernel
         if (i >= data->m_num_particle)
             return;
         Real *affine_momentum = &data->dev_particle_affine_momentum[i * 9];
-        vecMul(affine_momentum, data->dev_particle_mass[i], &data->dev_particle_C[i * 9], 9);
+        cudaPhysics::vecMul(affine_momentum, data->dev_particle_mass[i], &data->dev_particle_C[i * 9], 9);
         if (data->dev_particle_type[i] == MPM_ELASTIC)
         {
             Real stress[9];
             Real P[9], F_tran[9];
-            calc_neohookean_P(P, &data->dev_particle_F[i * 9], data->m_lame_mu, data->m_lame_lambda);
-            matTrans3(F_tran, &data->dev_particle_F[i * 9]);
-            matMul3(stress, P, F_tran);
-            vecMul(stress, -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing, stress, 9);
-            vecAdd(affine_momentum, stress, affine_momentum, 9);
+            cudaPhysics::calc_neohookean_P(P, &data->dev_particle_F[i * 9], data->m_lame_mu, data->m_lame_lambda);
+            cudaPhysics::matTrans3(F_tran, &data->dev_particle_F[i * 9]);
+            cudaPhysics::matMul3(stress, P, F_tran);
+            cudaPhysics::vecMul(stress, -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing, stress, 9);
+            cudaPhysics::vecAdd(affine_momentum, stress, affine_momentum, 9);
         }
         else if (data->dev_particle_type[i] == MPM_FLUID)
         {
@@ -81,7 +83,7 @@ namespace MPMSolverKernel
     }
 
     template <typename Real>
-    __device__ void grid_position(Real *grid_position, unsigned int id, MPMSolverData<Real> *data)
+    __device__ void get_grid_position(Real *grid_position, unsigned int id, MPMSolverData<Real> *data)
     {
         unsigned int z = id % data->dev_grid_size[2];
         unsigned int y = (id / data->dev_grid_size[2]) % data->dev_grid_size[1];
@@ -129,16 +131,16 @@ namespace MPMSolverKernel
                 {
                     unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
-                    grid_position(grid_position, grid_id, data);
+                    get_grid_position(grid_position, grid_id, data);
                     Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
                     Real momentum[3];
                     Real delta_position[3];
-                    vecSubs3(delta_position, grid_position, particle_position);
-                    matVec3(momentum, affine_momentum, delta_position);
+                    cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
+                    cudaPhysics::matVec3(momentum, affine_momentum, delta_position);
                     Real temp_momentum[3];
-                    vecMul3(temp_momentum, data->dev_particle_mass[i], particle_velocity);
-                    vecAdd3(momentum, temp_momentum, momentum);
-                    vecMul3(momentum, weight, momentum);
+                    cudaPhysics::vecMul3(temp_momentum, data->dev_particle_mass[i], particle_velocity);
+                    cudaPhysics::vecAdd3(momentum, temp_momentum, momentum);
+                    cudaPhysics::vecMul3(momentum, weight, momentum);
                     atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 0], momentum[0]);
                     atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 1], momentum[1]);
                     atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 2], momentum[2]);
@@ -154,7 +156,7 @@ namespace MPMSolverKernel
         if (i >= data->m_num_grid)
             return;
         if (data->dev_grid_mass[i] > 0)
-            vecMul3(&data->dev_grid_velocity[i * 3], (Real)(1. / data->dev_grid_mass[i]), &data->dev_grid_momentum[i * 3]);
+        cudaPhysics::vecMul3(&data->dev_grid_velocity[i * 3], (Real)(1. / data->dev_grid_mass[i]), &data->dev_grid_momentum[i * 3]);
         else
         {
             data->dev_grid_velocity[i * 3 + 0] = 0;
@@ -170,8 +172,8 @@ namespace MPMSolverKernel
         if (i >= data->m_num_grid)
             return;
         Real delta_velocity[3];
-        vecMul3(delta_velocity, data->m_time_step, data->dev_gravity);
-        vecAdd3(&data->dev_grid_velocity[i * 3], &data->dev_grid_velocity[i * 3], delta_velocity);
+        cudaPhysics::vecMul3(delta_velocity, data->m_time_step, data->dev_gravity);
+        cudaPhysics::vecAdd3(&data->dev_grid_velocity[i * 3], &data->dev_grid_velocity[i * 3], delta_velocity);
     }
 
     template <typename Real>
@@ -181,8 +183,8 @@ namespace MPMSolverKernel
         if (i >= data->m_num_particle)
             return;
         Real delta_velocity[3];
-        vecMul3(delta_velocity, data->m_time_step, data->dev_gravity);
-        vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], delta_velocity);
+        cudaPhysics::vecMul3(delta_velocity, data->m_time_step, data->dev_gravity);
+        cudaPhysics::vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], delta_velocity);
     }
 
     template <typename Real>
@@ -227,19 +229,19 @@ namespace MPMSolverKernel
                 {
                     unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
-                    grid_position(grid_position, grid_id, data);
+                    get_grid_position(grid_position, grid_id, data);
                     Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
 
                     Real velocity[3];
-                    vecMul3(velocity, weight, &data->dev_grid_velocity[grid_id * 3]);
-                    vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], velocity);
+                    cudaPhysics::vecMul3(velocity, weight, &data->dev_grid_velocity[grid_id * 3]);
+                    cudaPhysics::vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], velocity);
 
                     Real delta_position[3];
-                    vecSubs3(delta_position, grid_position, particle_position);
+                    cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
                     Real temp_C[9];
-                    vecvecT(temp_C, &data->dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
-                    matMul3(temp_C, weight * 4 / data->m_grid_spacing / data->m_grid_spacing, temp_C);
-                    vecAdd(&data->dev_particle_C[i * 9], temp_C, &data->dev_particle_C[i * 9], 9);
+                    cudaPhysics::vecvecT(temp_C, &data->dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
+                    cudaPhysics::matMul3(temp_C, weight * 4 / data->m_grid_spacing / data->m_grid_spacing, temp_C);
+                    cudaPhysics::vecAdd(&data->dev_particle_C[i * 9], temp_C, &data->dev_particle_C[i * 9], 9);
                 }
     }
 
@@ -253,8 +255,8 @@ namespace MPMSolverKernel
             return;
         Real *position = &data->dev_particle_position[i * 3];
         Real delta_position[3];
-        vecMul3(delta_position, data->m_time_step, &data->dev_particle_velocity[i * 3]);
-        vecAdd3(position, position, delta_position);
+        cudaPhysics::vecMul3(delta_position, data->m_time_step, &data->dev_particle_velocity[i * 3]);
+        cudaPhysics::vecAdd3(position, position, delta_position);
     }
 
     template <typename Real>
@@ -283,13 +285,13 @@ MPMSolver<Real>::MPMSolver(
     std::vector<Real> bbox, Real grid_spacing, unsigned int boundary_thickness)
 {
     assert(particle_position.size() % 3 == 0);
-    m_data.m_num_particle = particle_position.size() / 3;
+    m_data.m_num_particle = (unsigned int)particle_position.size() / 3;
     printf("num_particle = %u\n", m_data.m_num_particle);
 
     cudaMalloc(&m_data.dev_particle_position, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemcpy(m_data.dev_particle_position, particle_position.data(), sizeof(Real) * m_data.m_num_particle * 3, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_particle_velocity, sizeof(Real) * m_data.m_num_particle * 3);
-    cudaMemset(m_data.dev_particle_velocity, 0., sizeof(Real) * m_data.m_num_particle * 3);
+    cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMalloc(&m_data.dev_particle_mass, sizeof(Real) * particle_mass.size());
     cudaMemcpy(m_data.dev_particle_mass, particle_mass.data(), sizeof(Real) * m_data.m_num_particle, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_particle_volume, sizeof(Real) * particle_volume.size());
@@ -297,11 +299,11 @@ MPMSolver<Real>::MPMSolver(
     cudaMalloc(&m_data.dev_particle_type, sizeof(unsigned int) * particle_type.size());
     cudaMemcpy(m_data.dev_particle_type, particle_type.data(), sizeof(unsigned int) * m_data.m_num_particle, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_particle_C, sizeof(Real) * m_data.m_num_particle * 9);
-    cudaMemset(m_data.dev_particle_C, 0., sizeof(Real) * m_data.m_num_particle * 9);
+    cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
     cudaMalloc(&m_data.dev_particle_affine_momentum, sizeof(Real) * m_data.m_num_particle * 9);
-    cudaMemset(m_data.dev_particle_affine_momentum, 0., sizeof(Real) * m_data.m_num_particle * 9);
+    cudaMemset(m_data.dev_particle_affine_momentum, 0, sizeof(Real) * m_data.m_num_particle * 9);
     cudaMalloc(&m_data.dev_particle_F, sizeof(Real) * m_data.m_num_particle * 9);
-    cuda_utils::fill_identity_matrix(m_data.dev_particle_F, m_data.m_num_particle, 3);
+    cudaPhysics::fill_identity_matrix(m_data.dev_particle_F, m_data.m_num_particle, 3);
     cudaMalloc(&m_data.dev_particle_to_grid_id, sizeof(unsigned int) * m_data.m_num_particle);
 
     // need expand the bbox to ensure the particles can get 3x3x3 grids
@@ -333,11 +335,11 @@ MPMSolver<Real>::MPMSolver(
     cudaMalloc(&m_data.dev_grid_size, sizeof(unsigned int) * 3);
     cudaMemcpy(m_data.dev_grid_size, grid_size.data(), sizeof(unsigned int) * 3, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_grid_momentum, sizeof(Real) * m_data.m_num_grid * 3);
-    cudaMemset(m_data.dev_grid_momentum, 0., sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_mass, sizeof(Real) * m_data.m_num_grid);
-    cudaMemset(m_data.dev_grid_mass, 0., sizeof(Real) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
-    cudaMemset(m_data.dev_grid_velocity, 0., sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_lame_mu = LAME_MU;
@@ -377,8 +379,8 @@ template <typename Real>
 void MPMSolver<Real>::Step()
 {
     // P2G
-    cudaMemset(m_data.dev_grid_momentum, 0., sizeof(Real) * m_data.m_num_grid * 3);
-    cudaMemset(m_data.dev_grid_mass, 0., sizeof(Real) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     MPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     MPMSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     MPMSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -387,12 +389,20 @@ void MPMSolver<Real>::Step()
     MPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     MPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     MPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    cudaMemset(m_data.dev_particle_velocity, 0., sizeof(Real) * m_data.m_num_particle * 3);
-    cudaMemset(m_data.dev_particle_C, 0., sizeof(Real) * m_data.m_num_particle * 9);
+    cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
+    cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
     MPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     MPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     MPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
+template <typename Real>
+Real *MPMSolver<Real>::GetDevicePositions()
+{
+    return m_data.dev_particle_position;
+}
+
 template class MPMSolver<float>;
 template class MPMSolver<double>;
+template struct MPMSolverData<float>;
+template struct MPMSolverData<double>;

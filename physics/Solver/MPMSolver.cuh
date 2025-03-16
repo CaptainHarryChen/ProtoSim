@@ -56,3 +56,8 @@ public:
 protected:
     MPMSolverData<Real> *m_dev_data;
 };
+
+extern template struct MPMSolverData<float>;
+extern template struct MPMSolverData<double>;
+extern template class MPMSolver<float>;
+extern template class MPMSolver<double>;
