@@ -64,9 +64,9 @@ namespace MPMSolverKernel
         if (i >= data->m_num_particle)
             return;
         // find the nearest grid, so plus 0.5 and floor
-        int x = floor((data->dev_particle_position[i * 3 + 0] - data->dev_inner_bbox[0]) / data->m_grid_spacing + 0.5);
-        int y = floor((data->dev_particle_position[i * 3 + 1] - data->dev_inner_bbox[1]) / data->m_grid_spacing + 0.5);
-        int z = floor((data->dev_particle_position[i * 3 + 2] - data->dev_inner_bbox[2]) / data->m_grid_spacing + 0.5);
+        int x = floor((data->dev_particle_position[i * 3 + 0] - data->dev_outer_bbox[0]) / data->m_grid_spacing + 0.5);
+        int y = floor((data->dev_particle_position[i * 3 + 1] - data->dev_outer_bbox[1]) / data->m_grid_spacing + 0.5);
+        int z = floor((data->dev_particle_position[i * 3 + 2] - data->dev_outer_bbox[2]) / data->m_grid_spacing + 0.5);
         // get the left bottom grid id
         x--;
         y--;
@@ -88,9 +88,9 @@ namespace MPMSolverKernel
         unsigned int z = id % data->dev_grid_size[2];
         unsigned int y = (id / data->dev_grid_size[2]) % data->dev_grid_size[1];
         unsigned int x = id / data->dev_grid_size[2] / data->dev_grid_size[1];
-        grid_position[0] = data->dev_inner_bbox[0] + x * data->m_grid_spacing;
-        grid_position[1] = data->dev_inner_bbox[1] + y * data->m_grid_spacing;
-        grid_position[2] = data->dev_inner_bbox[2] + z * data->m_grid_spacing;
+        grid_position[0] = data->dev_outer_bbox[0] + x * data->m_grid_spacing;
+        grid_position[1] = data->dev_outer_bbox[1] + y * data->m_grid_spacing;
+        grid_position[2] = data->dev_outer_bbox[2] + z * data->m_grid_spacing;
     }
 
     template <typename Real>
