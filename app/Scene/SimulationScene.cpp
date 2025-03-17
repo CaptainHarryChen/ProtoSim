@@ -1,4 +1,6 @@
 #include "SimulationScene.h"
+#include <chrono>
+#include <imgui.h>
 #include <GLFWApp.h>
 #include <Event/Event.h>
 #include <Camera/OrbitCamera.h>
@@ -11,12 +13,53 @@
 #include <Connector/MeshConnector.cuh>
 #include <Connector/ParticleConnector.cuh>
 
+void FPSMonitor::Draw(const CameraInfo &camera_info, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos)
+{
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
+    ImGui::SetNextWindowBgAlpha(0.4f);
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoInputs |
+        ImGuiWindowFlags_AlwaysAutoResize |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNav;
+
+    if (ImGui::Begin("Overlay", nullptr, flags))
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        ImGui::Text("Physics simulation average %.3f ms/frame (%.1f FPS)", m_avg_time / 1000.0, m_fps);
+    }
+    ImGui::End();
+}
+
+void FPSMonitor::UpdateFPS(double elapsed_time)
+{
+    double sum_time = m_avg_time * m_time_history.size();
+    m_time_history.push_back(elapsed_time);
+    sum_time += elapsed_time;
+    if (m_time_history.size() > m_history_size)
+    {
+        sum_time -= m_time_history.front();
+        m_time_history.erase(m_time_history.begin());
+    }
+    m_avg_time = sum_time / m_time_history.size();
+    m_fps = 1000000.0 / m_avg_time;
+}
+
 template <typename Real>
 void SimulationScene<Real>::Update(double delta_time)
 {
     if (m_play)
     {
+        auto start = std::chrono::high_resolution_clock::now();
+
         m_solver->Step();
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = duration_cast<std::chrono::microseconds>(end - start);
+        m_fps_monitor->UpdateFPS((double)duration.count());
+
         for (auto &connector : m_connectors)
         {
             connector->TransferData();
@@ -54,6 +97,9 @@ void SimulationScene<Real>::SetupScene()
 
     auto light_scene = std::make_shared<LightScene>();
     app->AddObject(light_scene);
+
+    m_fps_monitor = std::make_shared<FPSMonitor>();
+    render_system->AddRenderObject(m_fps_monitor);
 }
 
 template <typename Real>

@@ -3,13 +3,30 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <Object/Object.h>
+#include <Render/RenderObject.h>
 
+struct Event;
 template <typename Real>
 class Solver;
-class Event;
 class Connector;
 class Mesh;
 class ParticleBatch;
+
+class FPSMonitor : public RenderObject
+{
+public:
+    FPSMonitor() = default;
+    virtual ~FPSMonitor() = default;
+
+    virtual void Draw(const CameraInfo &camera_info, const std::vector<LightInfo> &light_infos, const std::vector<ShadowMappingInfo> &shadow_mapping_infos) override;
+    void UpdateFPS(double elapsed_time);
+
+protected:
+    const size_t m_history_size = 10;
+    std::vector<double> m_time_history;
+    double m_avg_time = -1.0;
+    double m_fps = 0.0;
+};
 
 template <typename Real>
 class SimulationScene : public Object
@@ -39,6 +56,8 @@ protected:
 
     std::shared_ptr<Solver<Real>> m_solver;
     std::vector<std::shared_ptr<Connector>> m_connectors;
+
+    std::shared_ptr<FPSMonitor> m_fps_monitor;
 
     bool m_play = false;
 };
