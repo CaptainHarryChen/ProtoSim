@@ -39,6 +39,7 @@ public:
     virtual void ProcessEvent(const Event &event) override;
 
     virtual void SetupScene();
+    virtual void SetStepPerFrame(unsigned int step_per_frame);
     virtual void SetSolver(std::shared_ptr<Solver<Real>> solver);
     virtual void AddConnector(std::shared_ptr<Connector> connector);
     virtual void SetupConnectors();
@@ -60,6 +61,7 @@ protected:
     std::shared_ptr<FPSMonitor> m_fps_monitor;
 
     bool m_play = false;
+    unsigned int m_step_per_frame = 1;
 };
 
 extern template class SimulationScene<float>;

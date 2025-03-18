@@ -25,9 +25,9 @@ void FPSMonitor::Draw(const CameraInfo &camera_info, const std::vector<LightInfo
         ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoNav;
 
-    if (ImGui::Begin("Overlay", nullptr, flags))
+    if (ImGui::Begin("Simulation FPS", nullptr, flags))
     {
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO &io = ImGui::GetIO();
         ImGui::Text("Physics simulation average %.3f ms/frame (%.1f FPS)", m_avg_time / 1000.0, m_fps);
     }
     ImGui::End();
@@ -54,11 +54,13 @@ void SimulationScene<Real>::Update(double delta_time)
     {
         auto start = std::chrono::high_resolution_clock::now();
 
-        m_solver->Step();
+        for (unsigned int i = 0; i < m_step_per_frame; ++i)
+            m_solver->Step();
+        m_solver->SynchronizeStep();
 
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = duration_cast<std::chrono::microseconds>(end - start);
-        m_fps_monitor->UpdateFPS((double)duration.count());
+        m_fps_monitor->UpdateFPS((double)duration.count() / m_step_per_frame);
 
         for (auto &connector : m_connectors)
         {
@@ -100,6 +102,12 @@ void SimulationScene<Real>::SetupScene()
 
     m_fps_monitor = std::make_shared<FPSMonitor>();
     render_system->AddRenderObject(m_fps_monitor);
+}
+
+template <typename Real>
+void SimulationScene<Real>::SetStepPerFrame(unsigned int step_per_frame)
+{
+    m_step_per_frame = step_per_frame;
 }
 
 template <typename Real>
