@@ -13,7 +13,7 @@ struct Particle
 class ParticleBatch : public RenderObject
 {
 public:
-	ParticleBatch(std::vector<Particle> particles);
+	ParticleBatch(const std::vector<Particle> &particles);
 	virtual ~ParticleBatch() = default;
 
 	std::vector<Particle> m_particles;
