@@ -6,7 +6,8 @@ function(add_examples name)
     endforeach()
 
     message(STATUS "Creating viewer examples: ${name}")
-    add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}/main.cpp)
+    file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/${name}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/${name}/*.cu)
+    add_executable(${name} ${sources})
     target_link_libraries(${name} PRIVATE App ${ARGN})
 
     set_target_properties(${name} PROPERTIES FOLDER Examples)

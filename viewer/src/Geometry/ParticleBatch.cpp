@@ -1,7 +1,7 @@
 #include "ParticleBatch.h"
 #include <glad/glad.h>
 
-ParticleBatch::ParticleBatch(std::vector<Particle> particles) : m_particles(particles)
+ParticleBatch::ParticleBatch(const std::vector<Particle> &particles) : m_particles(particles)
 {
     glGenVertexArrays(1, &m_VAO);
     glBindVertexArray(m_VAO);
