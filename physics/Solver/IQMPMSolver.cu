@@ -169,6 +169,8 @@ namespace IQMPMSolverKernel
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
             return;
+        if (data->dev_object_type[data->dev_particle_object_id[i]] == MPM_FLUID)
+            return;
         Real *particle_position = &data->dev_particle_position[i * 3];
         unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
         unsigned int x, y, z;
