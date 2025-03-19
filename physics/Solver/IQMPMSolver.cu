@@ -164,6 +164,43 @@ namespace IQMPMSolverKernel
     }
 
     template <typename Real>
+    __global__ void P2G_normal_estimate(IQMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_particle)
+            return;
+        Real *particle_position = &data->dev_particle_position[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
+        unsigned int x, y, z;
+        get_grid_xyz(x, y, z, leftbottom_grid_id, data);
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = get_grid_id(data->dev_particle_object_id[i], x + dx, y + dy, z + dz, data);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
+                    Real delta_position[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
+                    Real temp_normal[3];
+                    cudaPhysics::vecMul3(temp_normal, weight * data->dev_particle_mass[i], delta_position);
+                    atomicAdd(&data->dev_grid_normal[grid_id * 3 + 0], temp_normal[0]);
+                    atomicAdd(&data->dev_grid_normal[grid_id * 3 + 1], temp_normal[1]);
+                    atomicAdd(&data->dev_grid_normal[grid_id * 3 + 2], temp_normal[2]);
+                }
+    }
+
+    template <typename Real>
+    __global__ void grid_normal_normalize(IQMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_grid)
+            return;
+        cudaPhysics::norm3InPlace(&data->dev_grid_normal[i * 3]);
+    }
+
+    template <typename Real>
     __global__ void calc_grids_velocity(IQMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -359,6 +396,8 @@ IQMPMSolver<Real>::IQMPMSolver(
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMalloc(&m_data.dev_grid_normal, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_normal, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_lame_mu = LAME_MU;
@@ -406,6 +445,11 @@ void IQMPMSolver<Real>::Step()
     IQMPMSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+    cudaMemset(m_data.dev_grid_normal, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    IQMPMSolverKernel::P2G_normal_estimate<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    IQMPMSolverKernel::grid_normal_normalize<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
     IQMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);

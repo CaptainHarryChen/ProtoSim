@@ -37,6 +37,7 @@ struct IQMPMSolverData
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
     Real *dev_grid_velocity;
+    Real *dev_grid_normal;
 
     Real m_time_step;
     Real m_lame_mu;
