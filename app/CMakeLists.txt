@@ -1,4 +1,4 @@
-configure_file(proj_config.h.in proj_config.h)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/proj_config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/proj_config.h)
 
 file(GLOB_RECURSE SRC ./*.cpp ./*.cu)
 add_library(App STATIC ${SRC})
