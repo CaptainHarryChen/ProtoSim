@@ -302,15 +302,15 @@ namespace cudaPhysics
     }
 
     template <class T>
-    __host__ __device__ __forceinline__ void det2(T &det_X, const T *X)
+    __host__ __device__ __forceinline__ T det2(const T *X)
     {
-        det_X = X[0] * X[3] - X[1] * X[2];
+        return X[0] * X[3] - X[1] * X[2];
     }
 
     template <class T>
-    __host__ __device__ __forceinline__ void det3(T &det_X, const T *X)
+    __host__ __device__ __forceinline__ T det3(const T *X)
     {
-        det_X = X[0] * X[4] * X[8] - X[0] * X[5] * X[7] - X[1] * X[3] * X[8] + X[1] * X[5] * X[6] + X[2] * X[3] * X[7] - X[2] * X[4] * X[6];
+        return X[0] * X[4] * X[8] - X[0] * X[5] * X[7] - X[1] * X[3] * X[8] + X[1] * X[5] * X[6] + X[2] * X[3] * X[7] - X[2] * X[4] * X[6];
     }
 
     template <class T>

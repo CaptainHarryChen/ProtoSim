@@ -14,12 +14,13 @@ class TetrahedronScene : public SimulationScene<Real>
 {
 public:
     // std::vector<Real> m_positions;
-    std::vector<unsigned int> m_surface_triangles;
     std::vector<unsigned int> m_tetrahedras;
+    std::vector<unsigned int> m_object_tetrahedras_offsets;
+    std::vector<Real> m_tetrahedras_densities;
 
-    void LoadTetrahedron(std::string inputfile,
+    void LoadTetrahedron(std::string inputfile, Real density,
                          float scale, glm::vec3 translate, glm::vec3 rotate,
-                         std::vector<glm::vec3> material)
+                         std::vector<glm::vec3> render_material)
     {
         std::vector<float> positions;
         std::vector<unsigned int> surface_triangles;
@@ -34,16 +35,17 @@ public:
             vertices[i].tex_coords = glm::vec2(0.0f, 0.0f);
         }
         auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
-        mesh->AddRenderer(std::make_shared<PbrRenderer>(material));
+        mesh->AddRenderer(std::make_shared<PbrRenderer>(render_material));
         SimulationScene<Real>::AddMesh(mesh);
 
         unsigned int offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
-        m_surface_triangles.resize(m_surface_triangles.size() + surface_triangles.size());
-        for (size_t i = 0; i < surface_triangles.size(); ++i)
-            m_surface_triangles[i + offset * 3] = surface_triangles[i] + offset;
+        m_object_tetrahedras_offsets.push_back(offset * 4);
         m_tetrahedras.resize(m_tetrahedras.size() + tetrahedras.size());
         for (size_t i = 0; i < tetrahedras.size(); ++i)
             m_tetrahedras[i + offset * 4] = tetrahedras[i] + offset;
+        m_tetrahedras_densities.resize(m_tetrahedras.size() / 4);
+        for (size_t i = 0; i < m_tetrahedras_densities.size(); ++i)
+            m_tetrahedras_densities[i] = density;
     }
 };
 
@@ -57,11 +59,12 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny.tet",
+    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny.tet", 1000.0f,
                            10.0f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                            {glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
 
-    auto solver = std::make_shared<ProjectiveDynamicsSolver<Real>>();
+    auto solver = std::make_shared<ProjectiveDynamicsSolver<Real>>(scene->m_positions, scene->m_tetrahedras, scene->m_tetrahedras_densities,
+                                                                   scene->m_object_tetrahedras_offsets);
     scene->SetSolver(solver);
     scene->SetupConnectors();
 

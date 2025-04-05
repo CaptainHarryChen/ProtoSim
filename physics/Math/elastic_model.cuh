@@ -9,8 +9,7 @@ namespace cudaPhysics
         Real invF[9], invFT[9];
         matInv3(invF, F);
         matTrans3(invFT, invF);
-        Real J;
-        det3(J, F);
+        Real J = det3(F);
 
         Real temp1[9], temp2[9];
         vecSubs(temp1, F, invFT, 9);

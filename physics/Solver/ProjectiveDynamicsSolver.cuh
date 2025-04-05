@@ -14,35 +14,43 @@ const float TIME_STEP = 1.0f / 100.0f;
 template <typename Real>
 struct ProjectiveDynamicsSolverData
 {
-    unsigned int *dev_vert_to_tet;
-    unsigned int *dev_vert_to_tet_offsets;
-    Real *dev_diag_Hessian;
+    unsigned int m_num_vert;
+    unsigned int m_num_tet;
 
     Real *dev_position;
+    Real *dev_position_prev;
     Real *dev_position_next;
     Real *dev_position_backup;
+    Real *dev_position_delta;
+    Real *dev_position_delta_denominator;
+    Real *dev_mass;
+    Real *dev_mass_inv;
+    Real *dev_inertia;
     Real *dev_init_A;
     Real *dev_init_B;
-
-    Real *dev_tet_force;
     Real *dev_vert_force;
     Real *dev_vert_Hessian;
+    Real *dev_diag_Hessian;
+
+    unsigned int *dev_vert_to_tet;
+    unsigned int *dev_vert_to_tet_offset;
+
+    unsigned int *dev_tetrahedron;
+    Real *dev_tet_density;
+    unsigned int *dev_tet_volume;
+    Real *dev_tet_force;
+    Real *dev_invDm;
 
     Real *dev_energy;
 
-    unsigned int *dev_constrained;
-    Real *dev_position_delta;
-    Real *dev_inertia;
-
     unsigned int *dev_ground_collision_count;
     unsigned int *dev_ground_collision_ids;
-    unsigned int m_ground_collision_count;
 
     Real m_time_step;
     Real m_lame_mu;
     Real m_lame_lambda;
-    Real m_stiffness = 18000000 * 0.5;
-    Real m_collision_stiffness = 1000000;
+    Real m_stiffness;
+    Real m_collision_stiffness;
     Real *dev_gravity;
 };
 
@@ -50,7 +58,8 @@ template <typename Real>
 class ProjectiveDynamicsSolver : public Solver<Real>
 {
 public:
-    ProjectiveDynamicsSolver();
+    ProjectiveDynamicsSolver(const std::vector<Real> &position, const std::vector<unsigned int> &tetrahedron, const std::vector<Real> &tetrahedron_density,
+                             const std::vector<unsigned int> &object_tetrahedron_offset);
     virtual ~ProjectiveDynamicsSolver();
 
     virtual void Step() override;

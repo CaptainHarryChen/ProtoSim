@@ -20,4 +20,19 @@ namespace cudaPhysics
     {
         fill_identity_matrix_kernel<Real><<<CUDA_GRID_SIZE(repeat_time * matrix_size * matrix_size), CUDA_BLOCK_SIZE>>>(dst, repeat_time, matrix_size);
     }
+
+    template <typename Real>
+    __global__ void array_real_inv_kernel(Real *dst, Real *src, unsigned int size)
+    {
+        unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
+        if (index < size)
+        {
+            dst[index] = 1.0f / src[index];
+        }
+    }
+    template <typename Real>
+    void array_real_inv(Real *dst, Real *src, unsigned int size)
+    {
+        array_real_inv_kernel<Real><<<CUDA_GRID_SIZE(size), CUDA_BLOCK_SIZE>>>(dst, src, size);
+    }
 }
