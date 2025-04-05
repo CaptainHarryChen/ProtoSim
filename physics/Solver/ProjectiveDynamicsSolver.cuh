@@ -11,6 +11,9 @@ const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YO
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 100.0f;
 
+#define ALPHA_MIN 1e-6
+#define BETA_LS 0.5
+
 template <typename Real>
 struct ProjectiveDynamicsSolverData
 {
@@ -23,6 +26,7 @@ struct ProjectiveDynamicsSolverData
     Real *dev_position_backup;
     Real *dev_position_delta;
     Real *dev_position_delta_denominator;
+    Real *dev_velocity;
     Real *dev_mass;
     Real *dev_mass_inv;
     Real *dev_inertia;
@@ -47,6 +51,7 @@ struct ProjectiveDynamicsSolverData
     unsigned int *dev_ground_collision_ids;
 
     Real m_time_step;
+    Real m_time_step_inv;
     Real m_lame_mu;
     Real m_lame_lambda;
     Real m_stiffness;
@@ -69,6 +74,9 @@ public:
 
 protected:
     ProjectiveDynamicsSolverData<Real> *m_dev_data;
+
+    Real line_searches();
+    Real compute_energy(Real alpha = 0);
 };
 
 extern template struct ProjectiveDynamicsSolverData<float>;
