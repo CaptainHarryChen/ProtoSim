@@ -25,7 +25,6 @@ struct ProjectiveDynamicsSolverData
     Real *dev_position_next;
     Real *dev_position_backup;
     Real *dev_position_delta;
-    Real *dev_position_delta_denominator;
     Real *dev_velocity;
     Real *dev_mass;
     Real *dev_mass_inv;
@@ -41,7 +40,7 @@ struct ProjectiveDynamicsSolverData
 
     unsigned int *dev_tetrahedron;
     Real *dev_tet_density;
-    unsigned int *dev_tet_volume;
+    Real *dev_tet_volume;
     Real *dev_tet_force;
     Real *dev_invDm;
 

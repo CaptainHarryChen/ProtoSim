@@ -59,9 +59,9 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny.tet", 1000.0f,
-                           10.0f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                           {glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
+    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/armadillo10K", 1000.0f,
+                           0.02f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+                           {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
 
     auto solver = std::make_shared<ProjectiveDynamicsSolver<Real>>(scene->m_positions, scene->m_tetrahedras, scene->m_tetrahedras_densities,
                                                                    scene->m_object_tetrahedras_offsets);
