@@ -279,7 +279,7 @@ namespace ProjectiveDynamicsSolverKernel
             }
             cudaPhysics::accumulate(b, (Real)1.0, &data->dev_tet_force[12 * data->dev_vert_to_tet[i] + 3 * offset], 3);
         }
-        cudaPhysics::vecMul3(&data->dev_position_delta[3 * v], (Real)1.0 / (data->dev_init_A[v] + data->dev_diag_Hessian[v]), b);
+        cudaPhysics::vecMul3(&data->dev_position_delta[3 * v], (Real)1.0 / (data->dev_init_A[v] + data->dev_diag_Hessian[v] + data->dev_vert_Hessian[v]), b);
     }
 
     template <typename Real>
@@ -331,10 +331,10 @@ namespace ProjectiveDynamicsSolverKernel
         Real F[9], R[9];
         cudaPhysics::matMul3(F, Ds, idm);
         cudaPhysics::get_rotation_matrix_from_deformation_gradient(R, F);
-
+        
         Real g[12];
         projective_dynamics_gradient_cuda<Real>(&data->dev_position[ind[0]], &data->dev_position[ind[1]], &data->dev_position[ind[2]], &data->dev_position[ind[3]], idm, R, g);
-        cudaPhysics::vecMul(&data->dev_tet_force[t * 12], data->dev_tet_volume[t] * data->m_stiffness, g, 12);
+        cudaPhysics::vecMul(&data->dev_tet_force[t * 12], -data->dev_tet_volume[t] * data->m_stiffness, g, 12);
     }
 
     template <typename Real>
@@ -520,12 +520,6 @@ void ProjectiveDynamicsSolver<Real>::Step()
     ProjectiveDynamicsSolverKernel::initial_guess<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemcpy(m_data.dev_inertia, m_data.dev_position, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
     ProjectiveDynamicsSolverKernel::compute_init_AB<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    // cudaPhysics::print_device_array1d<Real>(m_data.dev_mass, 10, "dev_mass");
-    // cudaPhysics::print_device_array1d<Real>(m_data.dev_init_A, 10, "dev_init_A");
-    // cudaPhysics::print_device_array2d<Real>(m_data.dev_init_B, 10, 3, "dev_init_B");
-    cudaPhysics::print_device_array2d<Real>(m_data.dev_position, 1, 3, "position");
-    cudaPhysics::print_device_array2d<Real>(m_data.dev_velocity, 1, 3, "velocity");
-    cudaPhysics::print_device_array2d<Real>(m_data.dev_position_prev, 1, 3, "position_prev");
 
     Real omega = 1;
     Real rho = 0.9992f;
@@ -533,26 +527,21 @@ void ProjectiveDynamicsSolver<Real>::Step()
     for (unsigned int iter = 0; iter < max_iter; ++iter)
     {
         ProjectiveDynamicsSolverKernel::projective_dynamics_constraint<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaPhysics::print_device_array2d<Real>(m_data.dev_tet_force, 3, 12, "tet_force");
         cudaMemset(m_data.dev_ground_collision_count, 0, sizeof(unsigned int));
         ProjectiveDynamicsSolverKernel::ground_collision_detection<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         unsigned int ground_collision_count;
         cudaMemcpy(&ground_collision_count, m_data.dev_ground_collision_count, sizeof(unsigned int), cudaMemcpyDeviceToHost);
         cudaMemset(m_data.dev_vert_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
         cudaMemset(m_data.dev_vert_Hessian, 0, sizeof(Real) * m_data.m_num_vert);
-        // ProjectiveDynamicsSolverKernel::compute_ground_collision_force<Real><<<CUDA_GRID_SIZE(ground_collision_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaCheck(cudaDeviceSynchronize());
+        ProjectiveDynamicsSolverKernel::compute_ground_collision_force<Real><<<CUDA_GRID_SIZE(ground_collision_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ProjectiveDynamicsSolverKernel::compute_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        // cudaPhysics::print_device_array2d<Real>(m_data.dev_position, 1, 3, "position");
-        // cudaPhysics::print_device_array2d<Real>(m_data.dev_position_delta, 1, 3, "position_delta");
         Real alpha = 1.;
         if (iter % 8 == 0)
         {
             alpha = line_searches();
         }
-        cudaCheck(cudaDeviceSynchronize());
         ProjectiveDynamicsSolverKernel::update_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, alpha);
-        // cudaPhysics::print_device_array2d<Real>(m_data.dev_position_next, 1, 3, "position_next");
+
         if (iter <= 10)
             omega = 1;
         else if (iter == 11)
@@ -561,14 +550,11 @@ void ProjectiveDynamicsSolver<Real>::Step()
             omega = 4 / (4 - rho * rho * omega);
 
         ProjectiveDynamicsSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
-        // cudaPhysics::print_device_array2d<Real>(m_data.dev_position_next, 1, 3, "position_next");
         std::swap(m_data.dev_position, m_data.dev_position_prev);
         std::swap(m_data.dev_position, m_data.dev_position_next);
         ProjectiveDynamicsSolverKernel::swap_position<Real><<<1, 1>>>(m_dev_data);
     }
     ProjectiveDynamicsSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    cudaPhysics::print_device_array2d<Real>(m_data.dev_position, 1, 3, "position_final");
-    cudaPhysics::print_device_array2d<Real>(m_data.dev_velocity, 1, 3, "velocity_final");
 }
 
 template <typename Real>
