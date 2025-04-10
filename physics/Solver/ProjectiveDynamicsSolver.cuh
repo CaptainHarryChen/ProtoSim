@@ -6,10 +6,13 @@
 #define MPM_ELASTIC 1
 #define MPM_FLUID 2
 
-const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
-const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
+const float YOUNG_K = 1000000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 100.0f;
+const unsigned int MAX_ITERATIONS = 150;
+const unsigned int CHEBYSHEV_DELAY_ITER = 10;
+const float CHEBYSHEV_RHO = 0.9f;
+const float UNDER_RELAXATION = 0.7f;
 
 #define ALPHA_MIN 1e-6
 #define BETA_LS 0.5
@@ -51,10 +54,8 @@ struct ProjectiveDynamicsSolverData
 
     Real m_time_step;
     Real m_time_step_inv;
-    Real m_lame_mu;
-    Real m_lame_lambda;
     Real m_stiffness;
-    Real m_collision_stiffness;
+    Real m_under_relaxation;
     Real *dev_gravity;
 };
 
@@ -76,6 +77,7 @@ protected:
 
     Real line_searches();
     Real compute_energy(Real alpha = 0);
+    void UpdateChebysevOmega(Real &omega, unsigned iter);
 };
 
 extern template struct ProjectiveDynamicsSolverData<float>;
