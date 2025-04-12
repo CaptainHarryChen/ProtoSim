@@ -39,50 +39,19 @@ namespace ProjectiveDynamicsSolverKernel
             return;
         unsigned int *v = &data->dev_tetrahedron[4 * t];
         Real *invDm = &data->dev_invDm[9 * t];
+        Real invDmT[9];
+        cudaPhysics::matTrans3(invDmT, invDm);
+        Real delta_f[9]; // delta_f = -2 * V0 * stiffness * invDm * invDm^T * (delta Ds^T)
+        cudaPhysics::matMul3(delta_f, invDm, invDmT);
+        cudaPhysics::vecMul(delta_f, -2 * data->dev_tet_volume[t] * data->m_stiffness, delta_f, 9);
         Real H[4];
-
-        // generated code
-        Real invDm0 = invDm[0], invDm1 = invDm[1], invDm2 = invDm[2], invDm3 = invDm[3],
-             invDm4 = invDm[4], invDm5 = invDm[5], invDm6 = invDm[6], invDm7 = invDm[7], invDm8 = invDm[8];
-        Real t2 = invDm0 * invDm0;
-        Real t3 = invDm1 * invDm1;
-        Real t4 = invDm2 * invDm2;
-        Real t5 = invDm3 * invDm3;
-        Real t6 = invDm4 * invDm4;
-        Real t7 = invDm5 * invDm5;
-        Real t8 = invDm6 * invDm6;
-        Real t9 = invDm7 * invDm7;
-        Real t10 = invDm8 * invDm8;
-        Real t11 = invDm0 + invDm3 + invDm6;
-        Real t12 = invDm1 + invDm4 + invDm7;
-        Real t13 = invDm2 + invDm5 + invDm8;
-        Real t14 = t2 * 2.0;
-        Real t15 = t3 * 2.0;
-        Real t16 = t4 * 2.0;
-        Real t17 = t5 * 2.0;
-        Real t18 = t6 * 2.0;
-        Real t19 = t7 * 2.0;
-        Real t20 = t8 * 2.0;
-        Real t21 = t9 * 2.0;
-        Real t22 = t10 * 2.0;
-        Real t23 = t11 * t11;
-        Real t24 = t12 * t12;
-        Real t25 = t13 * t13;
-        Real t26 = t23 * 2.0;
-        Real t27 = t24 * 2.0;
-        Real t28 = t25 * 2.0;
-        Real t29 = t14 + t15 + t16;
-        Real t30 = t17 + t18 + t19;
-        Real t31 = t20 + t21 + t22;
-        Real t32 = t26 + t27 + t28;
-        H[0] = t32;
-        H[1] = t29;
-        H[2] = t30;
-        H[3] = t31;
-
-        Real rate = data->dev_tet_volume[t] * data->m_stiffness;
+        H[1] = delta_f[0]; //(delta Ds^T)[0][0:3] = 1
+        H[2] = delta_f[4]; //(delta Ds^T)[1][0:3] = 1
+        H[3] = delta_f[8]; //(delta Ds^T)[2][0:3] = 1
+        // (delta Ds^T)[:,:] = -1 and this need a sum
+        H[0] = delta_f[0] + delta_f[1] + delta_f[2] + delta_f[3] + delta_f[4] + delta_f[5] + delta_f[6] + delta_f[7] + delta_f[8];
         for (unsigned int i = 0; i < 4; ++i)
-            atomicAdd(&data->dev_diag_Hessian[v[i]], rate * H[i]);
+            atomicAdd(&data->dev_diag_Hessian[v[i]], -H[i]);
     }
 
     template <typename Real>
