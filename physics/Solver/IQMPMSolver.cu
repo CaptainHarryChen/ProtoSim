@@ -41,10 +41,9 @@ namespace IQMPMSolverKernel
         if (data->dev_object_type[data->dev_particle_object_id[i]] == MPM_ELASTIC)
         {
             Real stress[9];
-            Real P[9], F_tran[9];
+            Real P[9];
             cudaPhysics::calc_neohookean_P(P, &data->dev_particle_F[i * 9], data->m_lame_mu, data->m_lame_lambda);
-            cudaPhysics::matTrans3(F_tran, &data->dev_particle_F[i * 9]);
-            cudaPhysics::matMul3(stress, P, F_tran);
+            cudaPhysics::matmatTMul3(stress, P, &data->dev_particle_F[i * 9]);
             cudaPhysics::vecMul(stress, -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing, stress, 9);
             cudaPhysics::vecAdd(affine_momentum, stress, affine_momentum, 9);
         }

@@ -39,10 +39,8 @@ namespace ProjectiveDynamicsSolverKernel
             return;
         unsigned int *v = &data->dev_tetrahedron[4 * t];
         Real *invDm = &data->dev_invDm[9 * t];
-        Real invDmT[9];
-        cudaPhysics::matTrans3(invDmT, invDm);
         Real delta_f[9]; // delta_f = -2 * V0 * stiffness * invDm * invDm^T * (delta Ds^T)
-        cudaPhysics::matMul3(delta_f, invDm, invDmT);
+        cudaPhysics::matmatTMul3(delta_f, invDm, invDm);
         cudaPhysics::vecMul(delta_f, -2 * data->dev_tet_volume[t] * data->m_lame_mu, delta_f, 9);
         // stiffness matrix K are 12x12, which has 12 diagonal elements. But every 3 elements are the same. So we only need 4 elements.
         Real K_diag[4];
@@ -61,8 +59,8 @@ namespace ProjectiveDynamicsSolverKernel
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
             return;
-        cudaPhysics::accumulate(&data->dev_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
-        cudaPhysics::accumulate(&data->dev_position[3 * v], data->m_time_step, &data->dev_velocity[3 * v], 3);
+        cudaPhysics::axpby(&data->dev_velocity[3 * v], (Real)1.0, &data->dev_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
+        cudaPhysics::axpby(&data->dev_position[3 * v], (Real)1.0, &data->dev_position[3 * v], data->m_time_step, &data->dev_velocity[3 * v], 3);
     }
 
     template <typename Real>
@@ -90,16 +88,15 @@ namespace ProjectiveDynamicsSolverKernel
         Ds[8] = data->dev_position[ind[3] + 2] - data->dev_position[ind[0] + 2];
         Real F[9], R[9];
         cudaPhysics::matMul3(F, Ds, idm);
-        cudaPhysics::get_rotation_matrix_from_deformation_gradient(R, F);
+        cudaPhysics::polar_decomposition_R(R, F);
 
         Real f[9]; // f = -2 * V0 * stiffness * invDm * (F - R)^T
-        Real FSubR[9], FSubRT[9];
+        Real FSubR[9];
         cudaPhysics::vecSubs(FSubR, F, R, 9);
-        cudaPhysics::matTrans3(FSubRT, FSubR);
-        cudaPhysics::matMul3(f, idm, FSubRT);
+        cudaPhysics::matmatTMul3(f, idm, FSubR);
         cudaPhysics::vecMul(f, -2 * data->dev_tet_volume[t] * data->m_lame_mu, f, 9);
         cudaPhysics::vecCopy(&data->dev_tet_force[12 * t + 3], f, 9);
-        cudaPhysics::axpbypcz(&data->dev_tet_force[12 * t], 3, (Real)-1.0, &f[0], (Real)-1.0, &f[3], (Real)-1.0, &f[6]);
+        cudaPhysics::axpbypcz(&data->dev_tet_force[12 * t], (Real)-1.0, &f[0], (Real)-1.0, &f[3], (Real)-1.0, &f[6], 3);
     }
 
     template <typename Real>
@@ -164,9 +161,9 @@ namespace ProjectiveDynamicsSolverKernel
             return;
         Real delta_position[3];
         cudaPhysics::vecSubs3(delta_position, &data->dev_position_next[3 * v], &data->dev_position[3 * v]);
-        cudaPhysics::axpby(&data->dev_position_next[3 * v], 3, data->m_under_relaxation, delta_position, (Real)1.0, &data->dev_position[3 * v]);
+        cudaPhysics::axpby(&data->dev_position_next[3 * v], data->m_under_relaxation, delta_position, (Real)1.0, &data->dev_position[3 * v], 3);
         cudaPhysics::vecSubs3(delta_position, &data->dev_position_next[3 * v], &data->dev_position_prev[3 * v]);
-        cudaPhysics::axpby(&data->dev_position_next[3 * v], 3, omega, delta_position, (Real)1.0, &data->dev_position_prev[3 * v]);
+        cudaPhysics::axpby(&data->dev_position_next[3 * v], omega, delta_position, (Real)1.0, &data->dev_position_prev[3 * v], 3);
     }
 
     template <typename Real>
