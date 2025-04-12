@@ -32,60 +32,6 @@ namespace ProjectiveDynamicsSolverKernel
     }
 
     template <typename Real>
-    __global__ void jacobi_precondition(ProjectiveDynamicsSolverData<Real> *data)
-    {
-        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
-        if (t >= data->m_num_tet)
-            return;
-        unsigned int *v = &data->dev_tetrahedron[4 * t];
-        Real *invDm = &data->dev_invDm[9 * t];
-        Real H[4];
-
-        // generated code
-        Real invDm0 = invDm[0], invDm1 = invDm[1], invDm2 = invDm[2], invDm3 = invDm[3],
-             invDm4 = invDm[4], invDm5 = invDm[5], invDm6 = invDm[6], invDm7 = invDm[7], invDm8 = invDm[8];
-        Real t2 = invDm0 * invDm0;
-        Real t3 = invDm1 * invDm1;
-        Real t4 = invDm2 * invDm2;
-        Real t5 = invDm3 * invDm3;
-        Real t6 = invDm4 * invDm4;
-        Real t7 = invDm5 * invDm5;
-        Real t8 = invDm6 * invDm6;
-        Real t9 = invDm7 * invDm7;
-        Real t10 = invDm8 * invDm8;
-        Real t11 = invDm0 + invDm3 + invDm6;
-        Real t12 = invDm1 + invDm4 + invDm7;
-        Real t13 = invDm2 + invDm5 + invDm8;
-        Real t14 = t2 * 2.0;
-        Real t15 = t3 * 2.0;
-        Real t16 = t4 * 2.0;
-        Real t17 = t5 * 2.0;
-        Real t18 = t6 * 2.0;
-        Real t19 = t7 * 2.0;
-        Real t20 = t8 * 2.0;
-        Real t21 = t9 * 2.0;
-        Real t22 = t10 * 2.0;
-        Real t23 = t11 * t11;
-        Real t24 = t12 * t12;
-        Real t25 = t13 * t13;
-        Real t26 = t23 * 2.0;
-        Real t27 = t24 * 2.0;
-        Real t28 = t25 * 2.0;
-        Real t29 = t14 + t15 + t16;
-        Real t30 = t17 + t18 + t19;
-        Real t31 = t20 + t21 + t22;
-        Real t32 = t26 + t27 + t28;
-        H[0] = t32;
-        H[1] = t29;
-        H[2] = t30;
-        H[3] = t31;
-
-        Real rate = data->dev_tet_volume[t] * data->m_stiffness;
-        for (unsigned int i = 0; i < 4; ++i)
-            atomicAdd(&data->dev_diag_Hessian[v[i]], rate * H[i]);
-    }
-
-    template <typename Real>
     __global__ void initial_guess(ProjectiveDynamicsSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
@@ -128,8 +74,8 @@ namespace ProjectiveDynamicsSolverKernel
         unsigned int v = data->dev_ground_collision_ids[c];
         if (data->dev_position[3 * v + 1] < 0.0f)
         {
-            data->dev_vert_force[3 * v + 1] += -data->m_stiffness * data->dev_position[3 * v + 1];
-            data->dev_vert_Hessian[v] += data->m_stiffness;
+            data->dev_vert_force[3 * v + 1] += -data->m_collision_stiffness * data->dev_position[3 * v + 1];
+            data->dev_vert_Hessian[v] += data->m_collision_stiffness;
         }
     }
 
@@ -154,7 +100,10 @@ namespace ProjectiveDynamicsSolverKernel
             }
             cudaPhysics::accumulate(b, (Real)1.0, &data->dev_tet_force[12 * data->dev_vert_to_tet[i] + 3 * offset], 3);
         }
-        cudaPhysics::vecMul3(&data->dev_position_delta[3 * v], (Real)1.0 / (data->dev_init_A[v] + data->dev_diag_Hessian[v] + data->dev_vert_Hessian[v]), b);
+        Real diag_invB[3];
+        for (unsigned int i = 0; i < 3; ++i)
+            diag_invB[i] = (Real)1.0 / (data->dev_diag_stiffness_matrix[3 * v + i] + data->dev_vert_Hessian[v] + data->dev_init_A[v]);
+        cudaPhysics::vecMul3(&data->dev_position_delta[3 * v], diag_invB, b);
     }
 
     template <typename Real>
@@ -203,18 +152,32 @@ namespace ProjectiveDynamicsSolverKernel
         Ds[2] = data->dev_position[ind[3] + 0] - data->dev_position[ind[0] + 0];
         Ds[5] = data->dev_position[ind[3] + 1] - data->dev_position[ind[0] + 1];
         Ds[8] = data->dev_position[ind[3] + 2] - data->dev_position[ind[0] + 2];
-        Real F[9], R[9];
+        Real F[9], P[9], PT[9];
         cudaPhysics::matMul3(F, Ds, idm);
-        cudaPhysics::get_rotation_matrix_from_deformation_gradient(R, F);
-
-        Real f[9]; // f = -2 * V0 * stiffness * invDm * (F - R)^T
-        Real FSubR[9], FSubRT[9];
-        cudaPhysics::vecSubs(FSubR, F, R, 9);
-        cudaPhysics::matTrans3(FSubRT, FSubR);
-        cudaPhysics::matMul3(f, idm, FSubRT);
-        cudaPhysics::vecMul(f, -2 * data->dev_tet_volume[t] * data->m_stiffness, f, 9);
+        cudaPhysics::calc_neohookean_P(P, F, data->m_lame_mu, data->m_lame_lambda);
+        cudaPhysics::matTrans3(PT, P);
+        Real f[9];
+        cudaPhysics::matMul3(f, idm, PT);
+        cudaPhysics::vecMul(f, -data->dev_tet_volume[t], f, 9);
         cudaPhysics::vecCopy(&data->dev_tet_force[12 * t + 3], f, 9);
         cudaPhysics::axpbypcz(&data->dev_tet_force[12 * t], 3, (Real)-1.0, &f[0], (Real)-1.0, &f[3], (Real)-1.0, &f[6]);
+    }
+
+    template <typename Real>
+    __global__ void calc_diag_stiffness_matrix(ProjectiveDynamicsSolverData<Real> *data)
+    {
+        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
+        if (t >= data->m_num_tet)
+            return;
+        Real diag[12];
+        Real x[12];
+        for (unsigned int i = 0; i < 4; ++i)
+            for (unsigned int j = 0; j < 3; ++j)
+                x[i * 3 + j] = data->dev_position[data->dev_tetrahedron[t * 4 + i] * 3 + j];
+        cudaPhysics::calc_neohookean_stiffness_diag(diag, x, &data->dev_invDm[t * 9], data->m_lame_mu, data->m_lame_lambda);
+        for (unsigned int i = 0; i < 4; ++i)
+            for (unsigned int j = 0; j < 3; ++j)
+                atomicAdd(&data->dev_diag_stiffness_matrix[data->dev_tetrahedron[t * 4 + i] * 3 + j], diag[i * 3 + j]);
     }
 
     template <typename Real>
@@ -262,8 +225,8 @@ ProjectiveDynamicsSolver<Real>::ProjectiveDynamicsSolver(const std::vector<Real>
     cudaMalloc((void **)&m_data.dev_init_B, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_vert_force, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_vert_Hessian, sizeof(Real) * m_data.m_num_vert);
-    cudaMalloc((void **)&m_data.dev_diag_Hessian, sizeof(Real) * m_data.m_num_vert);
-    cudaMemset(m_data.dev_diag_Hessian, 0, sizeof(Real) * m_data.m_num_vert);
+    cudaMalloc((void **)&m_data.dev_diag_stiffness_matrix, sizeof(Real) * m_data.m_num_vert * 3);
+    cudaMemset(m_data.dev_diag_stiffness_matrix, 0, sizeof(Real) * m_data.m_num_vert * 3);
 
     std::vector<unsigned int> vert_to_tet;
     std::vector<unsigned int> vert_to_tet_offset;
@@ -297,8 +260,10 @@ ProjectiveDynamicsSolver<Real>::ProjectiveDynamicsSolver(const std::vector<Real>
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
-    m_data.m_stiffness = LAME_MU;
+    m_data.m_lame_mu = LAME_MU;
+    m_data.m_lame_lambda = LAME_LAMBDA;
     m_data.m_under_relaxation = UNDER_RELAXATION;
+    m_data.m_collision_stiffness = COLLISION_STIFFNESS;
     cudaMalloc(&m_data.dev_gravity, sizeof(Real) * 3);
     std::vector<Real> gravity = {0.0f, -GRAVITY, 0.0f};
     cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
@@ -308,7 +273,6 @@ ProjectiveDynamicsSolver<Real>::ProjectiveDynamicsSolver(const std::vector<Real>
 
     ProjectiveDynamicsSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaPhysics::array_real_inv<Real>(m_data.dev_mass_inv, m_data.dev_mass, m_data.m_num_vert);
-    ProjectiveDynamicsSolverKernel::jacobi_precondition<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
@@ -327,7 +291,7 @@ ProjectiveDynamicsSolver<Real>::~ProjectiveDynamicsSolver()
     cudaFree(m_data.dev_init_B);
     cudaFree(m_data.dev_vert_force);
     cudaFree(m_data.dev_vert_Hessian);
-    cudaFree(m_data.dev_diag_Hessian);
+    cudaFree(m_data.dev_diag_stiffness_matrix);
 
     cudaFree(m_data.dev_vert_to_tet);
     cudaFree(m_data.dev_vert_to_tet_offset);
@@ -358,6 +322,10 @@ void ProjectiveDynamicsSolver<Real>::Step()
     for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
     {
         ProjectiveDynamicsSolverKernel::projective_dynamics_constraint<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        cudaMemset(m_data.dev_diag_stiffness_matrix, 0, sizeof(Real) * m_data.m_num_vert);
+        cudaCheck(cudaDeviceSynchronize());
+        ProjectiveDynamicsSolverKernel::calc_diag_stiffness_matrix<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        cudaCheck(cudaDeviceSynchronize());
         cudaMemset(m_data.dev_ground_collision_count, 0, sizeof(unsigned int));
         ProjectiveDynamicsSolverKernel::ground_collision_detection<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         unsigned int ground_collision_count;

@@ -8,6 +8,7 @@
 
 const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
+const float COLLISION_STIFFNESS = 1000000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 100.0f;
 const unsigned int MAX_ITERATIONS = 150;
@@ -34,7 +35,7 @@ struct ProjectiveDynamicsSolverData
     Real *dev_init_B;
     Real *dev_vert_force;
     Real *dev_vert_Hessian;
-    Real *dev_diag_Hessian;
+    Real *dev_diag_stiffness_matrix;
 
     unsigned int *dev_vert_to_tet;
     unsigned int *dev_vert_to_tet_offset;
@@ -50,7 +51,9 @@ struct ProjectiveDynamicsSolverData
 
     Real m_time_step;
     Real m_time_step_inv;
-    Real m_stiffness;
+    Real m_lame_mu;
+    Real m_lame_lambda;
+    Real m_collision_stiffness;
     Real m_under_relaxation;
     Real *dev_gravity;
 };
