@@ -4,7 +4,7 @@
 #include <cuda_utils/error.cuh>
 #include <cuda_utils/block_size.cuh>
 #include <Geometry/LineSegment.h>
-#include <Solver/IQMPMSolver.cuh>
+#include "IQMPMSolver.cuh"
 
 namespace IQMPMDebugConnectorKernel
 {

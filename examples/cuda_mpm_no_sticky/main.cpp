@@ -6,10 +6,10 @@
 #include <Scene/SimulationScene.h>
 #include <Geometry/ParticleBatch.h>
 #include <Mesh/MeshLoader.h>
-#include <Solver/IQMPMSolver.cuh>
 #include <Geometry/LineSegment.h>
 #include <Render/RenderSystem.h>
 #include <Mesh/SolidColorRenderer.h>
+#include "IQMPMSolver.cuh"
 #include "IQMPMDebugConnector.cuh"
 
 template <typename Real>
