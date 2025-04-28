@@ -184,7 +184,6 @@ namespace IQMPMSolverKernel
                     Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    // cudaPhysics::vecSubs3(delta_position, particle_position, grid_position);
                     Real temp_normal[3];
                     cudaPhysics::vecMul3(temp_normal, weight * data->dev_particle_mass[i], delta_position);
                     atomicAdd(&data->dev_grid_normal[grid_id * 3 + 0], temp_normal[0]);
@@ -260,6 +259,9 @@ namespace IQMPMSolverKernel
             cudaPhysics::norm3InPlace(normal);
             Real vel_i = cudaPhysics::dot3(&data->dev_grid_velocity[grid_id_i * 3], normal);
             Real vel_j = cudaPhysics::dot3(&data->dev_grid_velocity[grid_id_j * 3], normal);
+            if (vel_j  - vel_i <= 0)
+                continue;
+            // completely inelastic collision
             Real vel_res = (data->dev_grid_mass[grid_id_i] * vel_i + data->dev_grid_mass[grid_id_j] * vel_j) / (data->dev_grid_mass[grid_id_i] + data->dev_grid_mass[grid_id_j]);
             Real delta_vel_i[3], delta_vel_j[3];
             cudaPhysics::vecMul3(delta_vel_i, vel_res - vel_i, normal);
@@ -483,9 +485,8 @@ void IQMPMSolver<Real>::Step()
 
     IQMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    cudaCheck(cudaDeviceSynchronize());
-    IQMPMSolverKernel::grids_couple<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    cudaCheck(cudaDeviceSynchronize());
+    for(unsigned int it = 0; it < 100; ++it)
+        IQMPMSolverKernel::grids_couple<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
