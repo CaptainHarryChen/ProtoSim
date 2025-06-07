@@ -242,32 +242,34 @@ namespace IQMPMSolverKernel
     template <typename Real>
     __global__ void grids_couple(IQMPMSolverData<Real> *data)
     {
-        unsigned int grid_id_i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (grid_id_i >= data->m_num_grid)
+        unsigned int grid_id = blockIdx.x * blockDim.x + threadIdx.x;
+        if (grid_id >= data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2])
             return;
-        if (data->dev_grid_mass[grid_id_i] <= 0)
-            return;
-        unsigned int i = grid_id_i / (data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2]);
-        unsigned int grid_id = grid_id_i % (data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2]);
-        for (unsigned int j = i + 1; j < data->m_num_object; j++)
+        for (unsigned int i = 0; i < data->m_num_object; i++)
         {
-            unsigned int grid_id_j = grid_id + j * data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2];
-            if (data->dev_grid_mass[grid_id_j] <= 0)
+            unsigned int grid_id_i = grid_id + i * data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2];
+            if (data->dev_grid_mass[grid_id_i] <= 0)
                 continue;
-            Real normal[3];
-            cudaPhysics::vecSubs3(normal, &data->dev_grid_normal[grid_id_j * 3], &data->dev_grid_normal[grid_id_i * 3]);
-            cudaPhysics::norm3InPlace(normal);
-            Real vel_i = cudaPhysics::dot3(&data->dev_grid_velocity[grid_id_i * 3], normal);
-            Real vel_j = cudaPhysics::dot3(&data->dev_grid_velocity[grid_id_j * 3], normal);
-            if (vel_j  - vel_i <= 0)
-                continue;
-            // completely inelastic collision
-            Real vel_res = (data->dev_grid_mass[grid_id_i] * vel_i + data->dev_grid_mass[grid_id_j] * vel_j) / (data->dev_grid_mass[grid_id_i] + data->dev_grid_mass[grid_id_j]);
-            Real delta_vel_i[3], delta_vel_j[3];
-            cudaPhysics::vecMul3(delta_vel_i, vel_res - vel_i, normal);
-            cudaPhysics::vecMul3(delta_vel_j, vel_res - vel_j, normal);
-            cudaPhysics::vecAdd3(&data->dev_grid_velocity[grid_id_i * 3], &data->dev_grid_velocity[grid_id_i * 3], delta_vel_i);
-            cudaPhysics::vecAdd3(&data->dev_grid_velocity[grid_id_j * 3], &data->dev_grid_velocity[grid_id_j * 3], delta_vel_j);
+            for (unsigned int j = i + 1; j < data->m_num_object; j++)
+            {
+                unsigned int grid_id_j = grid_id + j * data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2];
+                if (data->dev_grid_mass[grid_id_j] <= 0)
+                    continue;
+                Real normal[3];
+                cudaPhysics::vecSubs3(normal, &data->dev_grid_normal[grid_id_j * 3], &data->dev_grid_normal[grid_id_i * 3]);
+                cudaPhysics::norm3InPlace(normal);
+                Real vel_i = cudaPhysics::dot3(&data->dev_grid_velocity[grid_id_i * 3], normal);
+                Real vel_j = cudaPhysics::dot3(&data->dev_grid_velocity[grid_id_j * 3], normal);
+                if (vel_j  - vel_i <= 0)
+                    continue;
+                // completely inelastic collision
+                Real vel_res = (data->dev_grid_mass[grid_id_i] * vel_i + data->dev_grid_mass[grid_id_j] * vel_j) / (data->dev_grid_mass[grid_id_i] + data->dev_grid_mass[grid_id_j]);
+                Real delta_vel_i[3], delta_vel_j[3];
+                cudaPhysics::vecMul3(delta_vel_i, vel_res - vel_i, normal);
+                cudaPhysics::vecMul3(delta_vel_j, vel_res - vel_j, normal);
+                cudaPhysics::vecAdd3(&data->dev_grid_velocity[grid_id_i * 3], &data->dev_grid_velocity[grid_id_i * 3], delta_vel_i);
+                cudaPhysics::vecAdd3(&data->dev_grid_velocity[grid_id_j * 3], &data->dev_grid_velocity[grid_id_j * 3], delta_vel_j);
+            }
         }
     }
 
@@ -485,8 +487,8 @@ void IQMPMSolver<Real>::Step()
 
     IQMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    for(unsigned int it = 0; it < 100; ++it)
-        IQMPMSolverKernel::grids_couple<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    for(unsigned int it = 0; it < 10; ++it)
+        IQMPMSolverKernel::grids_couple<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid / m_data.m_num_object), CUDA_BLOCK_SIZE>>>(m_dev_data);
     IQMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
