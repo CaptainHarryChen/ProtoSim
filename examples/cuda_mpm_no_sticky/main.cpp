@@ -41,19 +41,23 @@ public:
     }
 };
 
-int main()
+using Real = float;
+
+void example0(std::shared_ptr<IQMPMScene<Real>> scene)
 {
-    using Real = float;
+    scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 12.0f, -5.0f), glm::vec3(6.0f, 18.0f, 5.0f), 0.08f,
+                                   MPM_FLUID, 720000.0f,
+                                   0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 6.0f, -1.0f), glm::vec3(5.0f, 8.0f, 1.0f), 0.08f,
+                                   MPM_ELASTIC, 20000.0f,
+                                   0.03f, glm::vec3(0.5f, 1.0f, 0.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-1.0f, 3.0f, -6.0f), glm::vec3(1.0f, 5.0f, 5.0f), 0.08f,
+                                   MPM_ELASTIC, 20000.0f,
+                                   0.03f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
+}
 
-    auto app = GLFWApp::GetInstance("IQ-MPM Solver Example", 1600, 900);
-
-    auto scene = std::make_shared<IQMPMScene<Real>>();
-    scene->SetupScene();
-    app->AddObject(scene);
-
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 12.0f, -5.0f), glm::vec3(6.0f, 18.0f, 5.0f), 0.08f,
-    //                                MPM_FLUID, 720000.0f,
-    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+void example1(std::shared_ptr<IQMPMScene<Real>> scene)
+{
     scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 12.0f, -2.0f), glm::vec3(6.0f, 15.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 144000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
@@ -63,11 +67,63 @@ int main()
     scene->AddMPMCubeParticleBatch(glm::vec3(-1.0f, 3.0f, -6.0f), glm::vec3(1.0f, 5.0f, 5.0f), 0.08f,
                                    MPM_ELASTIC, 20000.0f,
                                    0.03f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
+}
+
+void example2(std::shared_ptr<IQMPMScene<Real>> scene)
+{
+    std::vector<glm::vec3> colors = {
+        glm::vec3(0.5f, 1.0f, 0.0f),
+        glm::vec3(1.0f, 0.5f, 0.0f),
+        glm::vec3(0.2f, 0.2f, 1.0f),
+        glm::vec3(1.0f, 0.2f, 0.2f),
+        glm::vec3(0.2f, 1.0f, 0.2f),
+    };
+    for(int i = 0; i < 3; i++)
+        for(int j = 0; j < 3; j++)
+            for(int k = 0; k < 3; k++)
+            {
+                glm::vec3 lower_bound(-6.0f + i * 3.0f, 5.0f + j * 3.0f, -2.0f + k * 3.0f);
+                glm::vec3 upper_bound(lower_bound.x + 2.0f, lower_bound.y + 2.0f, lower_bound.z + 2.0f);
+                scene->AddMPMCubeParticleBatch(lower_bound, upper_bound, 0.08f,
+                                               MPM_ELASTIC, 8000.0f,
+                                               0.03f, colors[(i * 9 + j * 3 + k) % colors.size()], glm::vec2(0.8f, 0.8f));
+            }
+}
+
+void example3(std::shared_ptr<IQMPMScene<Real>> scene)
+{
+    scene->AddMPMCubeParticleBatch(glm::vec3(-4.5f, 1.0f, -4.5f), glm::vec3(4.5f, 4.0f, 4.5f), 0.08f,
+                                   MPM_FLUID, 432000.0f,
+                                   0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.0f, -1.0f), glm::vec3(2.0f, 8.0f, 1.0f), 0.08f,
+                                   MPM_ELASTIC, 12000.0f,
+                                   0.03f, glm::vec3(0.5f, 1.0f, 0.0f), glm::vec2(0.8f, 0.8f));
+}
+
+void example4(std::shared_ptr<IQMPMScene<Real>> scene)
+{
+    scene->AddMPMCubeParticleBatch(glm::vec3(-4.5f, 1.0f, -4.5f), glm::vec3(4.5f, 4.0f, 4.5f), 0.08f,
+                                   MPM_FLUID, 432000.0f,
+                                   0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.0f, -1.0f), glm::vec3(2.0f, 8.0f, 1.0f), 0.08f,
+                                   MPM_ELASTIC, 40000.0f,
+                                   0.03f, glm::vec3(0.5f, 1.0f, 0.0f), glm::vec2(0.8f, 0.8f));
+}
+
+int main()
+{
+    auto app = GLFWApp::GetInstance("IQ-MPM Solver Example", 1600, 900);
+
+    auto scene = std::make_shared<IQMPMScene<Real>>();
+    scene->SetupScene();
+    app->AddObject(scene);
+
+    example1(scene);
 
     float dist = 0.2f;
-    std::vector<float> bbox = {-10.0f, 0.0f, -12.0f, 10.0f, 20.0f, 8.0f};
+    std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
     unsigned int boundary_thickness = 1;
-    app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    // app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
 
     std::vector<Real> bbox_real;
     for (const auto &b : bbox)
@@ -76,13 +132,13 @@ int main()
                                                       scene->m_positions, scene->m_particle_masses, scene->m_particle_volumes,
                                                       bbox_real, (Real)dist, boundary_thickness);
     scene->SetSolver(solver);
-    scene->SetStepPerFrame(5);
+    scene->SetStepPerFrame(2);
     scene->SetupConnectors();
 
-    unsigned int num_one_grid = solver->m_data.m_num_grid / solver->m_data.m_num_object;
-    auto field_vec_line = std::make_shared<LineSegment>(std::vector<LineSeg>(num_one_grid));
-    field_vec_line->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
-    app->GetRenderSystem()->AddRenderObject(field_vec_line);
+    // unsigned int num_one_grid = solver->m_data.m_num_grid / solver->m_data.m_num_object;
+    // auto field_vec_line = std::make_shared<LineSegment>(std::vector<LineSeg>(num_one_grid));
+    // field_vec_line->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
+    // app->GetRenderSystem()->AddRenderObject(field_vec_line);
     // scene->AddConnector(std::make_shared<IQMPMDebugConnector<Real>>(field_vec_line, &solver->m_data, 1, dist * 0.5f));
 
     app->Run();

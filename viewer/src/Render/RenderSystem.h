@@ -15,7 +15,7 @@ public:
     virtual ~RenderSystem();
 
     // settings
-    glm::vec3 m_clear_color = {0.5, 0.5, 1.0};
+    glm::vec3 m_clear_color = {1.0, 1.0, 1.0};
     int m_viewport_width = 1600;
     int m_viewport_height = 900;
 
