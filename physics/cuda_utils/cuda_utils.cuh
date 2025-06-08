@@ -1,3 +1,4 @@
+#include "atomic.cuh"
 #include "array.cuh"
 #include "block_size.cuh"
 #include "error.cuh"

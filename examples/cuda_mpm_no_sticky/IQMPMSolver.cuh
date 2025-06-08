@@ -43,6 +43,8 @@ struct IQMPMSolverData
     Real m_lame_mu;
     Real m_lame_lambda;
     Real *dev_gravity;
+
+    Real *dev_max_particle_velocity;
 };
 
 template <typename Real>

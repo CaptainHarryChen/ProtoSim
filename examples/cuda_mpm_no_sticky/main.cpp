@@ -64,23 +64,26 @@ int main()
                                    MPM_ELASTIC, 20000.0f,
                                    0.03f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
 
-    float dist = 0.2f;
+    float dist = 0.1f;
     std::vector<float> bbox = {-10.0f, 0.0f, -12.0f, 10.0f, 20.0f, 8.0f};
     unsigned int boundary_thickness = 1;
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
 
+    std::vector<Real> bbox_real;
+    for (const auto &b : bbox)
+        bbox_real.push_back(static_cast<Real>(b));
     auto solver = std::make_shared<IQMPMSolver<Real>>(scene->m_object_types, scene->m_particle_object_id,
                                                       scene->m_positions, scene->m_particle_masses, scene->m_particle_volumes,
-                                                      bbox, dist, boundary_thickness);
+                                                      bbox_real, (Real)dist, boundary_thickness);
     scene->SetSolver(solver);
-    scene->SetStepPerFrame(5);
+    // scene->SetStepPerFrame(5);
     scene->SetupConnectors();
 
     unsigned int num_one_grid = solver->m_data.m_num_grid / solver->m_data.m_num_object;
     auto field_vec_line = std::make_shared<LineSegment>(std::vector<LineSeg>(num_one_grid));
     field_vec_line->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
     app->GetRenderSystem()->AddRenderObject(field_vec_line);
-    scene->AddConnector(std::make_shared<IQMPMDebugConnector<Real>>(field_vec_line, &solver->m_data, 1, dist * 0.5f));
+    // scene->AddConnector(std::make_shared<IQMPMDebugConnector<Real>>(field_vec_line, &solver->m_data, 1, dist * 0.5f));
 
     app->Run();
 

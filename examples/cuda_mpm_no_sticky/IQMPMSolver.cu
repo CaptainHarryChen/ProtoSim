@@ -1,6 +1,5 @@
 #include "IQMPMSolver.cuh"
-#include <cuda_utils/error.cuh>
-#include <cuda_utils/array.cuh>
+#include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
 #include <Math/elastic_model.cuh>
 
@@ -361,6 +360,18 @@ namespace IQMPMSolverKernel
             }
         }
     }
+
+    template <typename Real>
+    __global__ void get_max_particle_velocity(IQMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_particle)
+            return;
+        Real velocity[3];
+        cudaPhysics::vecCopy(velocity, &data->dev_particle_velocity[i * 3], 3);
+        Real v = cudaPhysics::len3(velocity);
+        cudaPhysics::AtomicMax(data->dev_max_particle_velocity, v);
+    }
 }
 
 template <typename Real>
@@ -441,6 +452,8 @@ IQMPMSolver<Real>::IQMPMSolver(
     std::vector<Real> gravity = {0., -GRAVITY, 0.};
     cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
 
+    cudaMalloc(&m_data.dev_max_particle_velocity, sizeof(Real));
+
     cudaMalloc(&m_dev_data, sizeof(IQMPMSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(IQMPMSolverData<Real>), cudaMemcpyHostToDevice);
 }
@@ -465,6 +478,7 @@ IQMPMSolver<Real>::~IQMPMSolver()
     cudaFree(m_data.dev_grid_mass);
     cudaFree(m_data.dev_grid_velocity);
     cudaFree(m_data.dev_gravity);
+    cudaFree(m_data.dev_max_particle_velocity);
 
     cudaFree(m_dev_data);
 }
@@ -493,8 +507,17 @@ void IQMPMSolver<Real>::Step()
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
     IQMPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    
+    // cudaMemset(m_data.dev_max_particle_velocity, 0, sizeof(Real));
+    // IQMPMSolverKernel::get_max_particle_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // Real max_velocity;
+    // cudaMemcpy(&max_velocity, m_data.dev_max_particle_velocity, sizeof(Real), cudaMemcpyDeviceToHost);
+    // printf("max particle velocity = %.10f\n", max_velocity);
+    // printf("max particle movement = %.10f\n", max_velocity * m_data.m_time_step);
+    // assert(max_velocity * m_data.m_time_step <= m_data.m_grid_spacing);
+
     IQMPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    IQMPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // IQMPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
