@@ -9,10 +9,10 @@
 const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
 const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 1000.0f;
+const float TIME_STEP = 1.0f / 400.0f;
 
 template <typename Real>
-struct IQMPMSolverData
+struct CoupledMPMSolverData
 {
     unsigned int m_num_object;
     unsigned int *dev_object_type; // 0: static, 1: elastic, 2: fluid
@@ -43,27 +43,29 @@ struct IQMPMSolverData
     Real m_lame_mu;
     Real m_lame_lambda;
     Real *dev_gravity;
+
+    Real *dev_max_particle_velocity;
 };
 
 template <typename Real>
-class IQMPMSolver : public Solver<Real>
+class CoupledMPMSolver : public Solver<Real>
 {
 public:
-    IQMPMSolver(const std::vector<unsigned int> &object_type, const std::vector<unsigned int> &particle_object_id,
+    CoupledMPMSolver(const std::vector<unsigned int> &object_type, const std::vector<unsigned int> &particle_object_id,
                 const std::vector<Real> &particle_position, const std::vector<Real> &particle_mass, const std::vector<Real> &particle_volume,
                 std::vector<Real> bbox, Real grid_spacing, unsigned int boundary_thickness);
-    virtual ~IQMPMSolver();
+    virtual ~CoupledMPMSolver();
 
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
 
-    IQMPMSolverData<Real> m_data;
+    CoupledMPMSolverData<Real> m_data;
 
 protected:
-    IQMPMSolverData<Real> *m_dev_data;
+    CoupledMPMSolverData<Real> *m_dev_data;
 };
 
-extern template struct IQMPMSolverData<float>;
-extern template struct IQMPMSolverData<double>;
-extern template class IQMPMSolver<float>;
-extern template class IQMPMSolver<double>;
+extern template struct CoupledMPMSolverData<float>;
+extern template struct CoupledMPMSolverData<double>;
+extern template class CoupledMPMSolver<float>;
+extern template class CoupledMPMSolver<double>;
