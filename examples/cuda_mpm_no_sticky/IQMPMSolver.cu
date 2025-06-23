@@ -48,7 +48,7 @@ namespace IQMPMSolverKernel
         }
         else if (data->dev_object_type[data->dev_particle_object_id[i]] == MPM_FLUID)
         {
-            Real stress = -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing * data->m_lame_lambda * (data->dev_particle_F[i * 9] - 1);
+            Real stress = -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing * 1000000.0 * (data->dev_particle_F[i * 9] - 1);
             affine_momentum[0] += stress;
             affine_momentum[4] += stress;
             affine_momentum[8] += stress;
@@ -481,6 +481,12 @@ IQMPMSolver<Real>::~IQMPMSolver()
     cudaFree(m_data.dev_max_particle_velocity);
 
     cudaFree(m_dev_data);
+}
+
+template <typename Real>
+void IQMPMSolver<Real>::SetupInitVelocity(const std::vector<Real> &particle_velocity)
+{
+    cudaMemcpy(m_data.dev_particle_velocity, particle_velocity.data(), sizeof(Real) * particle_velocity.size(), cudaMemcpyHostToDevice);
 }
 
 template <typename Real>

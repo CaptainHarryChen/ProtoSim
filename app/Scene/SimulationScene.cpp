@@ -94,8 +94,8 @@ void SimulationScene<Real>::SetupScene()
     app->SetCamera(camera);
     app->AddObject(camera);
 
-    auto floor = std::make_shared<Floor>(2.0f);
-    render_system->AddRenderObject(floor->GetMesh());
+    // auto floor = std::make_shared<Floor>(20.0f);
+    // render_system->AddRenderObject(floor->GetMesh());
 
     auto light_scene = std::make_shared<LightScene>();
     app->AddObject(light_scene);
