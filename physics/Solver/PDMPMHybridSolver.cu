@@ -296,6 +296,7 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
 {
     m_data.m_num_vert = (unsigned int)node_position.size() / 3;
     m_data.m_num_tet = (unsigned int)tetrahedron.size() / 4;
+    m_data.m_num_tri = (unsigned int)surface_triangle.size() / 3;
 
     cudaMalloc((void **)&m_data.dev_position_backup, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_position_guess, sizeof(Real) * m_data.m_num_vert * 3);
@@ -313,6 +314,9 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMalloc((void **)&m_data.dev_constraint_Hessian_diag, sizeof(Real) * m_data.m_num_vert);
     cudaMalloc((void **)&m_data.dev_stiffness_matrix_diag, sizeof(Real) * m_data.m_num_vert);
     cudaMemset(m_data.dev_stiffness_matrix_diag, 0, sizeof(Real) * m_data.m_num_vert);
+
+    cudaMalloc((void **)&m_data.dev_triangle, sizeof(unsigned int) * surface_triangle.size());
+    cudaMemcpy(m_data.dev_triangle, surface_triangle.data(), sizeof(unsigned int) * surface_triangle.size(), cudaMemcpyHostToDevice);
 
     cudaMalloc((void **)&m_data.dev_tetrahedron, sizeof(unsigned int) * tetrahedron.size());
     cudaMemcpy(m_data.dev_tetrahedron, tetrahedron.data(), sizeof(unsigned int) * tetrahedron.size(), cudaMemcpyHostToDevice);
