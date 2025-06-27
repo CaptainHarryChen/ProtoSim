@@ -189,8 +189,7 @@ namespace ProjectiveDynamicsSolverKernel
 }
 
 template <typename Real>
-ProjectiveDynamicsSolver<Real>::ProjectiveDynamicsSolver(const std::vector<Real> &position, const std::vector<unsigned int> &tetrahedron, const std::vector<Real> &tetrahedron_density,
-                                                         const std::vector<unsigned int> &object_tetrahedron_offset)
+ProjectiveDynamicsSolver<Real>::ProjectiveDynamicsSolver(const std::vector<Real> &position, const std::vector<unsigned int> &tetrahedron, const std::vector<Real> &tetrahedron_density)
 {
     m_data.m_num_vert = (unsigned int)position.size() / 3;
     m_data.m_num_tet = (unsigned int)tetrahedron.size() / 4;

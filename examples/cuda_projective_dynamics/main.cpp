@@ -15,7 +15,6 @@ class TetrahedronScene : public SimulationScene<Real>
 public:
     // std::vector<Real> m_positions;
     std::vector<unsigned int> m_tetrahedras;
-    std::vector<unsigned int> m_object_tetrahedras_offsets;
     std::vector<Real> m_tetrahedras_densities;
 
     void LoadTetrahedron(std::string inputfile, Real density,
@@ -39,7 +38,6 @@ public:
         SimulationScene<Real>::AddMesh(mesh);
 
         unsigned int offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
-        m_object_tetrahedras_offsets.push_back(offset * 4);
         m_tetrahedras.resize(m_tetrahedras.size() + tetrahedras.size());
         for (size_t i = 0; i < tetrahedras.size(); ++i)
             m_tetrahedras[i + offset * 4] = tetrahedras[i] + offset;
@@ -66,8 +64,7 @@ int main()
     //                        0.02f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
     //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
 
-    auto solver = std::make_shared<ProjectiveDynamicsSolver<Real>>(scene->m_positions, scene->m_tetrahedras, scene->m_tetrahedras_densities,
-                                                                   scene->m_object_tetrahedras_offsets);
+    auto solver = std::make_shared<ProjectiveDynamicsSolver<Real>>(scene->m_positions, scene->m_tetrahedras, scene->m_tetrahedras_densities);
     scene->SetSolver(solver);
     scene->SetupConnectors();
 

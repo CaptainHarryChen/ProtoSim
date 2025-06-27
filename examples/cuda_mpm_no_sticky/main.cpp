@@ -22,7 +22,7 @@ public:
     std::vector<Real> m_particle_volumes;
 
     virtual void AddMPMCubeParticleBatch(glm::vec3 lower_bound, glm::vec3 upper_bound, float dis,
-                                         unsigned int particle_type, Real total_mass,
+                                         unsigned int particle_type, Real density,
                                          float radius, glm::vec3 color, glm::vec2 material)
     {
         m_object_types.push_back(particle_type);
@@ -31,7 +31,7 @@ public:
         size_t num_particle = this->m_particle_batch_offsets.back().first->m_particles.size();
         Real total_volume = (upper_bound.x - lower_bound.x) * (upper_bound.y - lower_bound.y) * (upper_bound.z - lower_bound.z);
         Real particle_volume = dis * dis * dis;
-        Real particle_mass = total_mass * particle_volume / total_volume;
+        Real particle_mass = density * particle_volume;
         for (size_t i = 0; i < num_particle; ++i)
         {
             m_particle_object_id.push_back(object_id);
@@ -52,16 +52,16 @@ int main()
     app->AddObject(scene);
 
     // scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 12.0f, -5.0f), glm::vec3(6.0f, 18.0f, 5.0f), 0.08f,
-    //                                MPM_FLUID, 720000.0f,
+    //                                MPM_FLUID, 1000.0f,
     //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 12.0f, -2.0f), glm::vec3(6.0f, 15.0f, 2.0f), 0.08f,
-                                   MPM_FLUID, 144000.0f,
+                                   MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 6.0f, -1.0f), glm::vec3(5.0f, 8.0f, 1.0f), 0.08f,
-                                   MPM_ELASTIC, 20000.0f,
+                                   MPM_ELASTIC, 500.0f,
                                    0.03f, glm::vec3(0.5f, 1.0f, 0.0f), glm::vec2(0.8f, 0.8f));
     scene->AddMPMCubeParticleBatch(glm::vec3(-1.0f, 3.0f, -6.0f), glm::vec3(1.0f, 5.0f, 5.0f), 0.08f,
-                                   MPM_ELASTIC, 20000.0f,
+                                   MPM_ELASTIC, 500.0f,
                                    0.03f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
 
     float dist = 0.2f;
