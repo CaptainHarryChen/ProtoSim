@@ -67,7 +67,7 @@ struct PDMPMHybridSolverData
     unsigned int m_num_sample;
     Real *dev_sample_position;
     Real *dev_sample_barycentric;
-    Real *dev_sample_tri_idx;
+    unsigned int *dev_sample_tri_idx;
 
     Real m_time_step;
     Real m_time_step_inv;
@@ -88,6 +88,9 @@ public:
         const std::vector<unsigned int> &tetrahedron,
         const std::vector<Real> &tetrahedron_density,
 
+        const std::vector<Real> &sample_barycentric_weights,
+        const std::vector<unsigned int> &sample_triangle_idx,
+
         const std::vector<Real> &particle_position,
         const std::vector<unsigned int> &particle_type,
         const std::vector<Real> &particle_mass,
@@ -100,6 +103,7 @@ public:
 
     virtual void Step() override;
     Real *GetDeviceNodePositions();
+    Real *GetDeviceSamplePositions();
     Real *GetDeviceParticlePositions();
 
     PDMPMHybridSolverData<Real> m_data;

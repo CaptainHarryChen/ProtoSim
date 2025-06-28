@@ -4,7 +4,7 @@
 #include <Math/algebra.cuh>
 #include <Math/elastic_model.cuh>
 
-namespace PDMPMHybridKernel
+namespace PDMPMHybridSolverKernel
 {
     template <typename Real>
     __global__ void update_F(PDMPMHybridSolverData<Real> *data)
@@ -276,6 +276,208 @@ namespace PDMPMHybridKernel
             }
         }
     }
+
+    template <typename Real>
+    __global__ void tetrahedron_initialize(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
+        if (t >= data->m_num_tet)
+            return;
+        unsigned int ind[4];
+        for (unsigned int i = 0; i < 4; ++i)
+            ind[i] = data->dev_tetrahedron[t * 4 + i] * 3;
+        Real Dm[9];
+        Dm[0] = data->dev_position[ind[1] + 0] - data->dev_position[ind[0] + 0];
+        Dm[3] = data->dev_position[ind[1] + 1] - data->dev_position[ind[0] + 1];
+        Dm[6] = data->dev_position[ind[1] + 2] - data->dev_position[ind[0] + 2];
+        Dm[1] = data->dev_position[ind[2] + 0] - data->dev_position[ind[0] + 0];
+        Dm[4] = data->dev_position[ind[2] + 1] - data->dev_position[ind[0] + 1];
+        Dm[7] = data->dev_position[ind[2] + 2] - data->dev_position[ind[0] + 2];
+        Dm[2] = data->dev_position[ind[3] + 0] - data->dev_position[ind[0] + 0];
+        Dm[5] = data->dev_position[ind[3] + 1] - data->dev_position[ind[0] + 1];
+        Dm[8] = data->dev_position[ind[3] + 2] - data->dev_position[ind[0] + 2];
+        Real vol = cudaPhysics::det3(Dm);
+        data->dev_tet_volume[t] = abs(vol) / 6.0f;
+        cudaPhysics::matInv3(&data->dev_invDm[t * 9], Dm);
+        for (unsigned int i = 0; i < 4; ++i)
+            atomicAdd(&data->dev_mass[data->dev_tetrahedron[t * 4 + i]], 0.25 * data->dev_tet_volume[t] * data->dev_tet_density[t]);
+    }
+
+    template <typename Real>
+    __global__ void tet_stiffness_matrix_diag(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
+        if (t >= data->m_num_tet)
+            return;
+        unsigned int *v = &data->dev_tetrahedron[4 * t];
+        Real *invDm = &data->dev_invDm[9 * t];
+        Real delta_f[9]; // delta_f = -2 * V0 * stiffness * invDm * invDm^T * (delta Ds^T)
+        cudaPhysics::matmatTMul3(delta_f, invDm, invDm);
+        cudaPhysics::vecMul(delta_f, -2 * data->dev_tet_volume[t] * data->m_lame_mu, delta_f, 9);
+        // stiffness matrix K are 12x12, which has 12 diagonal elements. But every 3 elements are the same. So we only need 4 elements.
+        Real K_diag[4];
+        K_diag[1] = delta_f[0]; //(delta Ds^T)[0][0:3] = 1
+        K_diag[2] = delta_f[4]; //(delta Ds^T)[1][0:3] = 1
+        K_diag[3] = delta_f[8]; //(delta Ds^T)[2][0:3] = 1
+        // (delta Ds^T)[:,:] = -1 and f[0] = - f[1] - f[2] - f[3] which means delta_f[0] need a sum
+        K_diag[0] = delta_f[0] + delta_f[1] + delta_f[2] + delta_f[3] + delta_f[4] + delta_f[5] + delta_f[6] + delta_f[7] + delta_f[8];
+        for (unsigned int i = 0; i < 4; ++i)
+            atomicAdd(&data->dev_stiffness_matrix_diag[v[i]], K_diag[i]);
+    }
+
+    template <typename Real>
+    __global__ void initial_guess(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        cudaPhysics::axpby(&data->dev_velocity[3 * v], (Real)1.0, &data->dev_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
+        cudaPhysics::axpby(&data->dev_position[3 * v], (Real)1.0, &data->dev_position[3 * v], data->m_time_step, &data->dev_velocity[3 * v], 3);
+    }
+
+    template <typename Real>
+    __global__ void calc_tetrahedron_force(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
+        if (t >= data->m_num_tet)
+            return;
+        int ind[4];
+        for (unsigned int i = 0; i < 4; ++i)
+        {
+            ind[i] = data->dev_tetrahedron[t * 4 + i] * 3;
+        }
+
+        Real Ds[9];
+        Real *idm = &data->dev_invDm[t * 9];
+        Ds[0] = data->dev_position[ind[1] + 0] - data->dev_position[ind[0] + 0];
+        Ds[3] = data->dev_position[ind[1] + 1] - data->dev_position[ind[0] + 1];
+        Ds[6] = data->dev_position[ind[1] + 2] - data->dev_position[ind[0] + 2];
+        Ds[1] = data->dev_position[ind[2] + 0] - data->dev_position[ind[0] + 0];
+        Ds[4] = data->dev_position[ind[2] + 1] - data->dev_position[ind[0] + 1];
+        Ds[7] = data->dev_position[ind[2] + 2] - data->dev_position[ind[0] + 2];
+        Ds[2] = data->dev_position[ind[3] + 0] - data->dev_position[ind[0] + 0];
+        Ds[5] = data->dev_position[ind[3] + 1] - data->dev_position[ind[0] + 1];
+        Ds[8] = data->dev_position[ind[3] + 2] - data->dev_position[ind[0] + 2];
+        Real F[9], R[9];
+        cudaPhysics::matMul3(F, Ds, idm);
+        cudaPhysics::polar_decomposition_R(R, F);
+
+        Real f[9]; // f = -2 * V0 * stiffness * invDm * (F - R)^T
+        Real FSubR[9];
+        cudaPhysics::vecSubs(FSubR, F, R, 9);
+        cudaPhysics::matmatTMul3(f, idm, FSubR);
+        cudaPhysics::vecMul(f, -2 * data->dev_tet_volume[t] * data->m_lame_mu, f, 9);
+        cudaPhysics::vecCopy(&data->dev_tet_force[12 * t + 3], f, 9);
+        cudaPhysics::axpbypcz(&data->dev_tet_force[12 * t], (Real)-1.0, &f[0], (Real)-1.0, &f[3], (Real)-1.0, &f[6], 3);
+    }
+
+    template <typename Real>
+    __global__ void accumulate_vert_force(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
+        if (t >= data->m_num_tet)
+            return;
+        for (unsigned int i = 0; i < 4; ++i)
+        {
+            unsigned int v = data->dev_tetrahedron[t * 4 + i];
+            Real *f = &data->dev_tet_force[12 * t + 3 * i];
+            for (unsigned int j = 0; j < 3; ++j)
+            {
+                atomicAdd(&data->dev_vert_force[3 * v + j], f[j]);
+            }
+        }
+    }
+
+    template <typename Real>
+    __global__ void calc_ground_collision_force(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        if (data->dev_position[3 * v + 1] < 0.0f)
+        {
+            data->dev_vert_force[3 * v + 1] += -data->m_ground_collision_stiffness * data->dev_position[3 * v + 1];
+            data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+        }
+    }
+
+    template <typename Real>
+    __global__ void jacobi_iteration(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        Real grad[3];
+        Real delta_x[3];
+        cudaPhysics::vecSubs3(delta_x, &data->dev_position_guess[3 * v], &data->dev_position[3 * v]);
+        cudaPhysics::vecMul3(grad, data->dev_mass[v] * data->m_time_step_inv * data->m_time_step_inv, delta_x);
+        cudaPhysics::vecAdd3(grad, grad, &data->dev_vert_force[3 * v]);
+        Real B = data->dev_mass[v] * data->m_time_step_inv * data->m_time_step_inv - data->dev_stiffness_matrix_diag[v] + data->dev_constraint_Hessian_diag[v];
+        cudaPhysics::vecMul3(&data->dev_position_delta[3 * v], (Real)1.0 / B, grad);
+    }
+
+    template <typename Real>
+    __global__ void update_position(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        cudaPhysics::vecAdd3(&data->dev_position_next[3 * v], &data->dev_position[3 * v], &data->dev_position_delta[3 * v]);
+    }
+
+    template <typename Real>
+    __global__ void Chebyshev(PDMPMHybridSolverData<Real> *data, Real omega)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        Real delta_position[3];
+        cudaPhysics::vecSubs3(delta_position, &data->dev_position_next[3 * v], &data->dev_position[3 * v]);
+        cudaPhysics::axpby(&data->dev_position_next[3 * v], data->m_under_relaxation, delta_position, (Real)1.0, &data->dev_position[3 * v], 3);
+        cudaPhysics::vecSubs3(delta_position, &data->dev_position_next[3 * v], &data->dev_position_prev[3 * v]);
+        cudaPhysics::axpby(&data->dev_position_next[3 * v], omega, delta_position, (Real)1.0, &data->dev_position_prev[3 * v], 3);
+    }
+
+    template <typename Real>
+    __global__ void swap_position(PDMPMHybridSolverData<Real> *data)
+    {
+        Real *temp = data->dev_position;
+        data->dev_position = data->dev_position_prev;
+        data->dev_position_prev = temp;
+        temp = data->dev_position;
+        data->dev_position = data->dev_position_next;
+        data->dev_position_next = temp;
+    }
+
+    template <typename Real>
+    __global__ void update_velocity(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        cudaPhysics::vecSubs3(&data->dev_velocity[3 * v], &data->dev_position[3 * v], &data->dev_position_backup[3 * v]);
+        cudaPhysics::vecMul3(&data->dev_velocity[3 * v], data->m_time_step_inv, &data->dev_velocity[3 * v]);
+    }
+
+    template <typename Real>
+    __global__ void calc_sample_position(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        unsigned int tri_idx = (unsigned int)data->dev_sample_tri_idx[i];
+        Real barycentric[3];
+        barycentric[0] = data->dev_sample_barycentric[i * 3 + 0];
+        barycentric[1] = data->dev_sample_barycentric[i * 3 + 1];
+        barycentric[2] = data->dev_sample_barycentric[i * 3 + 2];
+        unsigned int v0 = data->dev_triangle[tri_idx * 3 + 0] * 3;
+        unsigned int v1 = data->dev_triangle[tri_idx * 3 + 1] * 3;
+        unsigned int v2 = data->dev_triangle[tri_idx * 3 + 2] * 3;
+        Real *sample_position = &data->dev_sample_position[i * 3];
+        sample_position[0] = barycentric[0] * data->dev_position[v0 + 0] + barycentric[1] * data->dev_position[v1 + 0] + barycentric[2] * data->dev_position[v2 + 0];
+        sample_position[1] = barycentric[0] * data->dev_position[v0 + 1] + barycentric[1] * data->dev_position[v1 + 1] + barycentric[2] * data->dev_position[v2 + 1];
+        sample_position[2] = barycentric[0] * data->dev_position[v0 + 2] + barycentric[1] * data->dev_position[v1 + 2] + barycentric[2] * data->dev_position[v2 + 2];
+    }
 }
 
 template <typename Real>
@@ -284,6 +486,9 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     const std::vector<unsigned int> &surface_triangle,
     const std::vector<unsigned int> &tetrahedron,
     const std::vector<Real> &tetrahedron_density,
+
+    const std::vector<Real> &sample_barycentric_weights,
+    const std::vector<unsigned int> &sample_triangle_idx,
 
     const std::vector<Real> &particle_position,
     const std::vector<unsigned int> &particle_type,
@@ -297,6 +502,9 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     m_data.m_num_vert = (unsigned int)node_position.size() / 3;
     m_data.m_num_tet = (unsigned int)tetrahedron.size() / 4;
     m_data.m_num_tri = (unsigned int)surface_triangle.size() / 3;
+    m_data.m_num_sample = (unsigned int)sample_barycentric_weights.size() / 3;
+    assert(m_data.m_num_sample == sample_triangle_idx.size());
+    printf("num_vert = %u, num_tet = %u, num_tri = %u, num_sample = %u\n", m_data.m_num_vert, m_data.m_num_tet, m_data.m_num_tri, m_data.m_num_sample);
 
     cudaMalloc((void **)&m_data.dev_position_backup, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_position_guess, sizeof(Real) * m_data.m_num_vert * 3);
@@ -315,9 +523,6 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMalloc((void **)&m_data.dev_stiffness_matrix_diag, sizeof(Real) * m_data.m_num_vert);
     cudaMemset(m_data.dev_stiffness_matrix_diag, 0, sizeof(Real) * m_data.m_num_vert);
 
-    cudaMalloc((void **)&m_data.dev_triangle, sizeof(unsigned int) * surface_triangle.size());
-    cudaMemcpy(m_data.dev_triangle, surface_triangle.data(), sizeof(unsigned int) * surface_triangle.size(), cudaMemcpyHostToDevice);
-
     cudaMalloc((void **)&m_data.dev_tetrahedron, sizeof(unsigned int) * tetrahedron.size());
     cudaMemcpy(m_data.dev_tetrahedron, tetrahedron.data(), sizeof(unsigned int) * tetrahedron.size(), cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_tet_density, sizeof(Real) * m_data.m_num_tet);
@@ -327,6 +532,15 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMalloc((void **)&m_data.dev_tet_force, sizeof(Real) * m_data.m_num_tet * 12);
     cudaMemset(m_data.dev_tet_force, 0, sizeof(Real) * m_data.m_num_tet * 12);
     cudaMalloc((void **)&m_data.dev_invDm, sizeof(Real) * m_data.m_num_tet * 9);
+
+    cudaMalloc((void **)&m_data.dev_triangle, sizeof(unsigned int) * surface_triangle.size());
+    cudaMemcpy(m_data.dev_triangle, surface_triangle.data(), sizeof(unsigned int) * surface_triangle.size(), cudaMemcpyHostToDevice);
+
+    cudaMalloc((void **)&m_data.dev_sample_position, sizeof(Real) * m_data.m_num_sample * 3);
+    cudaMalloc((void **)&m_data.dev_sample_barycentric, sizeof(Real) * sample_barycentric_weights.size());
+    cudaMemcpy(m_data.dev_sample_barycentric, sample_barycentric_weights.data(), sizeof(Real) * sample_barycentric_weights.size(), cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&m_data.dev_sample_tri_idx, sizeof(unsigned int) * sample_triangle_idx.size());
+    cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * sample_triangle_idx.size(), cudaMemcpyHostToDevice);
 
     assert(particle_position.size() % 3 == 0);
     m_data.m_num_particle = (unsigned int)particle_position.size() / 3;
@@ -398,9 +612,9 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMalloc(&m_dev_data, sizeof(PDMPMHybridSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(PDMPMHybridSolverData<Real>), cudaMemcpyHostToDevice);
 
-    // ProjectiveDynamicsSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    // ProjectiveDynamicsSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-
+    PDMPMHybridSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
@@ -423,6 +637,11 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
     cudaFree(m_data.dev_tet_volume);
     cudaFree(m_data.dev_tet_force);
     cudaFree(m_data.dev_invDm);
+
+    cudaFree(m_data.dev_triangle);
+    cudaFree(m_data.dev_sample_position);
+    cudaFree(m_data.dev_sample_barycentric);
+    cudaFree(m_data.dev_sample_tri_idx);
 
     cudaFree(m_data.dev_particle_position);
     cudaFree(m_data.dev_particle_velocity);
@@ -450,25 +669,31 @@ void PDMPMHybridSolver<Real>::Step()
     // P2G
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
-    PDMPMHybridKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
-    PDMPMHybridKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PDMPMHybridSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
 Real *PDMPMHybridSolver<Real>::GetDeviceNodePositions()
 {
     return m_data.dev_position;
+}
+
+template <typename Real>
+Real *PDMPMHybridSolver<Real>::GetDeviceSamplePositions()
+{
+    return m_data.dev_sample_position;
 }
 
 template <typename Real>

@@ -1,6 +1,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <Eigen/Core>
+#include <igl/random_points_on_mesh.h>
 #include <GLFWApp.h>
 #include <Scene/SimulationScene.h>
 #include <Loader/TetrahedronLoader.h>
@@ -26,6 +28,7 @@ public:
 
     std::vector<Real> m_sample_barycentric_weights;
     std::vector<unsigned int> m_sample_tri_idx;
+    std::shared_ptr<ParticleBatch> m_sample_particle_batch;
 
     std::vector<Real> m_particle_positions;
     std::vector<unsigned int> m_particle_types;
@@ -97,6 +100,58 @@ public:
         }
     }
 
+    void SampleSurfaceParticles(int num_samples, float radius, glm::vec3 color, glm::vec2 material)
+    {
+        Eigen::MatrixXd V(this->m_positions.size() / 3, 3);
+        for (size_t i = 0; i < this->m_positions.size() / 3; ++i)
+        {
+            V(i, 0) = this->m_positions[i * 3 + 0];
+            V(i, 1) = this->m_positions[i * 3 + 1];
+            V(i, 2) = this->m_positions[i * 3 + 2];
+        }
+        Eigen::MatrixXi F(m_surface_triangles.size() / 3, 3);
+        for (size_t i = 0; i < m_surface_triangles.size() / 3; ++i)
+        {
+            F(i, 0) = m_surface_triangles[i * 3 + 0];
+            F(i, 1) = m_surface_triangles[i * 3 + 1];
+            F(i, 2) = m_surface_triangles[i * 3 + 2];
+        }
+
+        Eigen::MatrixXd samples;
+        Eigen::MatrixXd bary_coords;
+        Eigen::VectorXi face_indices;
+        igl::random_points_on_mesh(
+            num_samples,
+            V, F,
+            bary_coords,
+            face_indices,
+            samples //
+        );
+
+        m_sample_barycentric_weights.resize(bary_coords.size());
+        for (int i = 0; i < bary_coords.rows(); ++i)
+        {
+            m_sample_barycentric_weights[i * 3 + 0] = bary_coords(i, 0);
+            m_sample_barycentric_weights[i * 3 + 1] = bary_coords(i, 1);
+            m_sample_barycentric_weights[i * 3 + 2] = bary_coords(i, 2);
+        }
+        m_sample_tri_idx.resize(face_indices.size());
+        for (int i = 0; i < face_indices.size(); ++i)
+        {
+            m_sample_tri_idx[i] = face_indices(i);
+        }
+
+        std::vector<Particle> particles(samples.rows());
+        for (int i = 0; i < samples.rows(); ++i)
+        {
+            particles[i].Position = glm::vec3(samples(i, 0), samples(i, 1), samples(i, 2));
+            particles[i].Color = color;
+        }
+        m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
+        m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(material, radius));
+        GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
+    }
+
     virtual void SetupConnectors() override
     {
         auto solver = std::dynamic_pointer_cast<PDMPMHybridSolver<Real>>(this->m_solver);
@@ -107,6 +162,11 @@ public:
             if (position_ptr)
                 position_ptr = position_ptr + offset;
             auto connector = std::make_shared<MeshConnector<Real>>(mesh, position_ptr);
+            this->m_connectors.push_back(connector);
+        }
+        {
+            auto position_ptr = solver->GetDeviceSamplePositions();
+            auto connector = std::make_shared<ParticleConnector<Real>>(m_sample_particle_batch, position_ptr, nullptr);
             this->m_connectors.push_back(connector);
         }
         for (auto &[particle_batch, offset] : this->m_particle_batch_offsets)
@@ -136,6 +196,7 @@ int main()
     scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 12.0f, -2.0f), glm::vec3(3.0f, 15.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    scene->SampleSurfaceParticles(5000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     float dist = 0.2f;
     std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
@@ -147,6 +208,9 @@ int main()
         scene->m_surface_triangles,
         scene->m_tetrahedras,
         scene->m_tetrahedras_densities,
+
+        scene->m_sample_barycentric_weights,
+        scene->m_sample_tri_idx,
 
         scene->m_particle_positions,
         scene->m_particle_types,
