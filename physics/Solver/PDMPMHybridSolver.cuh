@@ -110,6 +110,9 @@ public:
 
 protected:
     PDMPMHybridSolverData<Real> *m_dev_data;
+
+    void UpdateChebyshevOmega(Real &omega, unsigned iter);
+    void SwapPositionBuffers();
 };
 
 extern template struct PDMPMHybridSolverData<float>;

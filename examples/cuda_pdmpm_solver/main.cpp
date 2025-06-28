@@ -220,7 +220,7 @@ int main()
         bbox, dist, boundary_thickness);
     scene->SetSolver(solver);
     scene->SetupConnectors();
-    scene->SetStepPerFrame(5);
+    scene->SetStepPerFrame(2);
 
     app->Run();
 
