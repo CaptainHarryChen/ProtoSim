@@ -15,6 +15,24 @@ const unsigned int MAX_ITERATIONS = 150;
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
 const float UNDER_RELAXATION = 0.7f;
+const unsigned int NUM_TRIANGLE_RECORD = 8;
+
+template <unsigned int MAX_RECORD, typename Real>
+struct MinRecord
+{
+    const unsigned int k_invalid = 0xFFFFFFFFu;
+
+    unsigned int *dev_idx;
+    Real *dev_value;
+
+    MinRecord() = default;
+    void Create(unsigned int num_element);
+    ~MinRecord();
+
+    void Add(unsigned int ele, unsigned int idx, Real value);
+    void Get(unsigned int ele, unsigned int *&idx, Real *&value);
+    void GetMin(unsigned int ele, unsigned int &idx, Real &value) const;
+};
 
 template <typename Real>
 struct PDMPMHybridSolverData
@@ -68,6 +86,8 @@ struct PDMPMHybridSolverData
     Real *dev_sample_position;
     Real *dev_sample_barycentric;
     unsigned int *dev_sample_tri_idx;
+
+    MinRecord<NUM_TRIANGLE_RECORD, Real> m_closest_tri;
 
     Real m_time_step;
     Real m_time_step_inv;

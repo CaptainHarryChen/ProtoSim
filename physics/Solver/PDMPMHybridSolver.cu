@@ -3,6 +3,70 @@
 #include <cuda_utils/array.cuh>
 #include <Math/algebra.cuh>
 #include <Math/elastic_model.cuh>
+#include <thrust/fill.h>
+#include <thrust/execution_policy.h>
+
+template <unsigned int MAX_RECORD, typename Real>
+void MinRecord<MAX_RECORD, Real>::Create(unsigned int num_element)
+{
+    cudaMalloc((void **)&dev_idx, num_element * MAX_RECORD * sizeof(unsigned int));
+    cudaMemset(dev_idx, 0xFF, num_element * MAX_RECORD * sizeof(unsigned int));
+    cudaMalloc((void **)&dev_value, num_element * MAX_RECORD * sizeof(Real));
+    thrust::fill(thrust::device, dev_value, dev_value + num_element * MAX_RECORD, std::numeric_limits<Real>::max());
+}
+
+template <unsigned int MAX_RECORD, typename Real>
+MinRecord<MAX_RECORD, Real>::~MinRecord()
+{
+    if (dev_idx)
+        cudaFree(dev_idx);
+    if (dev_value)
+        cudaFree(dev_value);
+}
+
+template <unsigned int MAX_RECORD, typename Real>
+void MinRecord<MAX_RECORD, Real>::Add(unsigned int ele, unsigned int idx, Real value)
+{
+    unsigned int *idx_ptr = dev_idx + ele * MAX_RECORD;
+    Real *value_ptr = dev_value + ele * MAX_RECORD;
+    int max_i = -1;
+    for (int i = 0; i < MAX_RECORD; ++i)
+    {
+        if (max_i == -1 || value_ptr[i] > value_ptr[max_i])
+        {
+            max_i = i;
+        }
+    }
+    if (value < value_ptr[max_i])
+    {
+        idx_ptr[max_i] = idx;
+        value_ptr[max_i] = value;
+    }
+}
+
+template <unsigned int MAX_RECORD, typename Real>
+void MinRecord<MAX_RECORD, Real>::Get(unsigned int ele, unsigned int *&idx, Real *&value)
+{
+    idx = dev_idx + ele * MAX_RECORD;
+    value = dev_value + ele * MAX_RECORD;
+}
+
+template <unsigned int MAX_RECORD, typename Real>
+void MinRecord<MAX_RECORD, Real>::GetMin(unsigned int ele, unsigned int &idx, Real &value) const
+{
+    idx = k_invalid;
+    value = std::numeric_limits<Real>::max();
+    unsigned int *idx_ptr = dev_idx + ele * MAX_RECORD;
+    Real *value_ptr = dev_value + ele * MAX_RECORD;
+    for (unsigned int i = 0; i < MAX_RECORD; ++i)
+    {
+        if (value_ptr[i] < value)
+        {
+            value = value_ptr[i];
+            idx = idx_ptr[i];
+        }
+    }
+}
 
 namespace PDMPMHybridSolverKernel
 {
@@ -598,6 +662,8 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
+
+    m_data.m_closest_tri.Create(m_data.m_num_grid);
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
