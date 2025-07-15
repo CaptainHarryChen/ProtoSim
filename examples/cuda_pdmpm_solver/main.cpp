@@ -191,7 +191,7 @@ int main()
     app->AddObject(scene);
 
     scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1000.0f,
-                           10.0f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+                           15.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                            {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
     scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 12.0f, -2.0f), glm::vec3(3.0f, 15.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
@@ -220,7 +220,7 @@ int main()
         bbox, dist, boundary_thickness);
     scene->SetSolver(solver);
     scene->SetupConnectors();
-    scene->SetStepPerFrame(2);
+    // scene->SetStepPerFrame(2);
 
     app->Run();
 

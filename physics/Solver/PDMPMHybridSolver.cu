@@ -9,6 +9,7 @@
 template <unsigned int MAX_RECORD, typename Real>
 void MinRecord<MAX_RECORD, Real>::Create(unsigned int num_element)
 {
+    m_num_element = num_element;
     cudaMalloc((void **)&dev_idx, num_element * MAX_RECORD * sizeof(unsigned int));
     cudaMemset(dev_idx, 0xFF, num_element * MAX_RECORD * sizeof(unsigned int));
     cudaMalloc((void **)&dev_value, num_element * MAX_RECORD * sizeof(Real));
@@ -22,6 +23,13 @@ MinRecord<MAX_RECORD, Real>::~MinRecord()
         cudaFree(dev_idx);
     if (dev_value)
         cudaFree(dev_value);
+}
+
+template <unsigned int MAX_RECORD, typename Real>
+void MinRecord<MAX_RECORD, Real>::Reset()
+{
+    cudaMemset(dev_idx, 0xFF, m_num_element * MAX_RECORD * sizeof(unsigned int));
+    thrust::fill(thrust::device, dev_value, dev_value + m_num_element * MAX_RECORD, std::numeric_limits<Real>::max());
 }
 
 template <unsigned int MAX_RECORD, typename Real>
@@ -732,6 +740,9 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
 template <typename Real>
 void PDMPMHybridSolver<Real>::Step()
 {
+    // Sample2Grid
+    m_data.m_closest_tri.Reset();
+
     // MPM
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);

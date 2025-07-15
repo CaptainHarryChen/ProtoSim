@@ -22,6 +22,7 @@ struct MinRecord
 {
     const unsigned int k_invalid = 0xFFFFFFFFu;
 
+    unsigned int m_num_element;
     unsigned int *dev_idx;
     Real *dev_value;
 
@@ -29,6 +30,7 @@ struct MinRecord
     void Create(unsigned int num_element);
     ~MinRecord();
 
+    void Reset();
     void Add(unsigned int ele, unsigned int idx, Real value);
     void Get(unsigned int ele, unsigned int *&idx, Real *&value);
     void GetMin(unsigned int ele, unsigned int &idx, Real &value) const;
