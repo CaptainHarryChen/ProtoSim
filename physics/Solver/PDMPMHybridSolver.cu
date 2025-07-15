@@ -79,6 +79,28 @@ void MinRecord<MAX_RECORD, Real>::GetMin(unsigned int ele, unsigned int &idx, Re
 namespace PDMPMHybridSolverKernel
 {
     template <typename Real>
+    __global__ void sample_to_grid(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        Real *sample_position = &data->dev_sample_position[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    PDMPMHybridSolver<Real>::get_grid_position(grid_position, grid_id, data);
+                    
+                }
+    }
+
+    template <typename Real>
     __global__ void update_F(PDMPMHybridSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -742,6 +764,7 @@ void PDMPMHybridSolver<Real>::Step()
 {
     // Sample2Grid
     m_data.m_closest_tri.Reset();
+    PDMPMHybridSolverKernel::sample_to_grid<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
     // MPM
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
