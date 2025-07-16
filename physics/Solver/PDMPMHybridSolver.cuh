@@ -40,6 +40,7 @@ struct PDMPMHybridSolverData
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
     Real *dev_grid_velocity;
+    uint64_t *dev_grid_tri_info; // 0~31: (float)closest triangle distance, 32: outside or inside, 33~63: triangle index
 
     unsigned int m_num_vert;
     Real *dev_position_backup;
@@ -68,6 +69,7 @@ struct PDMPMHybridSolverData
     Real *dev_sample_position;
     Real *dev_sample_barycentric;
     unsigned int *dev_sample_tri_idx;
+    unsigned int *dev_sample_to_grid_id;
 
     Real m_time_step;
     Real m_time_step_inv;

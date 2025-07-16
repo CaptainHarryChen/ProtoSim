@@ -1,11 +1,31 @@
 #include "PDMPMHybridSolver.cuh"
-#include <cuda_utils/error.cuh>
-#include <cuda_utils/array.cuh>
+#include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
+#include <Math/geometry.cuh>
 #include <Math/elastic_model.cuh>
+#include <thrust/execution_policy.h>
+#include <thrust/fill.h>
 
 namespace PDMPMHybridSolverKernel
 {
+    __host__ __device__ __forceinline__ uint64_t pack_tri_info(float closest_distance, bool inside, unsigned int tri_idx)
+    {
+        uint64_t result = 0;
+        uint32_t *result_ptr = (uint32_t *)&result;
+        result_ptr[0] = *((uint32_t *)&closest_distance);
+        result_ptr[1] = tri_idx;
+        result_ptr[1] |= (inside ? 1u << 31 : 0u);
+        return result;
+    }
+
+    __host__ __device__ __forceinline__ void unpack_tri_info(uint64_t packed_info, float &closest_distance, bool &inside, unsigned int &tri_idx)
+    {
+        uint32_t *info_ptr = (uint32_t *)&packed_info;
+        closest_distance = *((float *)&info_ptr[0]);
+        tri_idx = info_ptr[1] & 0x7FFFFFFFu; // Clear the inside bit
+        inside = (info_ptr[1] & (1u << 31)) != 0;
+    }
+
     template <typename Real>
     __global__ void update_F(PDMPMHybridSolverData<Real> *data)
     {
@@ -109,6 +129,61 @@ namespace PDMPMHybridSolverKernel
             result *= w;
         }
         return result;
+    }
+
+    template <typename Real>
+    __global__ void calc_sample_to_leftbottom_grid_id(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        // find the nearest grid, so plus 0.5 and floor
+        int x = floor((data->dev_sample_position[i * 3 + 0] - data->dev_outer_bbox[0]) / data->m_grid_spacing + 0.5);
+        int y = floor((data->dev_sample_position[i * 3 + 1] - data->dev_outer_bbox[1]) / data->m_grid_spacing + 0.5);
+        int z = floor((data->dev_sample_position[i * 3 + 2] - data->dev_outer_bbox[2]) / data->m_grid_spacing + 0.5);
+        // get the left bottom grid id
+        x--;
+        y--;
+        z--;
+        if (x < 0 || y < 0 || z < 0 || x >= data->dev_grid_size[0] - 2 || y >= data->dev_grid_size[1] - 2 || z >= data->dev_grid_size[2] - 2)
+        {
+            x = max(0, min(x, (int)data->dev_grid_size[0] - 2));
+            y = max(0, min(y, (int)data->dev_grid_size[1] - 2));
+            z = max(0, min(z, (int)data->dev_grid_size[2] - 2));
+            printf("Warning: sample %d is out of grid, set to %d %d %d\n [Particle position] %.10f %.10f %.10f", i, x, y, z, data->dev_sample_position[i * 3 + 0], data->dev_sample_position[i * 3 + 1], data->dev_sample_position[i * 3 + 2]);
+        }
+
+        data->dev_sample_to_grid_id[i] = x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z;
+    }
+
+    template <typename Real>
+    __global__ void sample_to_grid(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        unsigned int tri_idx = data->dev_sample_tri_idx[i];
+        unsigned int *tri = &data->dev_triangle[tri_idx * 3];
+        Real *tri_a_pos = &data->dev_position[tri[0] * 3];
+        Real *tri_b_pos = &data->dev_position[tri[1] * 3];
+        Real *tri_c_pos = &data->dev_position[tri[2] * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    float distance = cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
+                    bool inside = distance < 0;
+                    distance = inside ? -distance : distance;
+                    uint64_t packed_info = pack_tri_info(distance, inside, tri_idx);
+                    atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
+                }
     }
 
     template <typename Real>
@@ -541,6 +616,7 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMemcpy(m_data.dev_sample_barycentric, sample_barycentric_weights.data(), sizeof(Real) * sample_barycentric_weights.size(), cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_tri_idx, sizeof(unsigned int) * sample_triangle_idx.size());
     cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * sample_triangle_idx.size(), cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&m_data.dev_sample_to_grid_id, sizeof(unsigned int) * m_data.m_num_sample);
 
     assert(particle_position.size() % 3 == 0);
     m_data.m_num_particle = (unsigned int)particle_position.size() / 3;
@@ -598,6 +674,8 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMalloc(&m_data.dev_grid_tri_info, sizeof(uint64_t) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_data.m_num_grid);
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
@@ -620,6 +698,23 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
 template <typename Real>
 PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
 {
+    cudaFree(m_data.dev_particle_position);
+    cudaFree(m_data.dev_particle_velocity);
+    cudaFree(m_data.dev_particle_mass);
+    cudaFree(m_data.dev_particle_volume);
+    cudaFree(m_data.dev_particle_type);
+    cudaFree(m_data.dev_particle_C);
+    cudaFree(m_data.dev_particle_affine_momentum);
+    cudaFree(m_data.dev_particle_F);
+    cudaFree(m_data.dev_particle_to_grid_id);
+    cudaFree(m_data.dev_inner_bbox);
+    cudaFree(m_data.dev_outer_bbox);
+    cudaFree(m_data.dev_grid_size);
+    cudaFree(m_data.dev_grid_momentum);
+    cudaFree(m_data.dev_grid_mass);
+    cudaFree(m_data.dev_grid_velocity);
+    cudaFree(m_data.dev_grid_tri_info);
+
     cudaFree(m_data.dev_position_backup);
     cudaFree(m_data.dev_position_guess);
     cudaFree(m_data.dev_position_prev);
@@ -639,25 +734,12 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
     cudaFree(m_data.dev_invDm);
 
     cudaFree(m_data.dev_triangle);
+
     cudaFree(m_data.dev_sample_position);
     cudaFree(m_data.dev_sample_barycentric);
     cudaFree(m_data.dev_sample_tri_idx);
+    cudaFree(m_data.dev_sample_to_grid_id);
 
-    cudaFree(m_data.dev_particle_position);
-    cudaFree(m_data.dev_particle_velocity);
-    cudaFree(m_data.dev_particle_mass);
-    cudaFree(m_data.dev_particle_volume);
-    cudaFree(m_data.dev_particle_type);
-    cudaFree(m_data.dev_particle_C);
-    cudaFree(m_data.dev_particle_affine_momentum);
-    cudaFree(m_data.dev_particle_F);
-    cudaFree(m_data.dev_particle_to_grid_id);
-    cudaFree(m_data.dev_inner_bbox);
-    cudaFree(m_data.dev_outer_bbox);
-    cudaFree(m_data.dev_grid_size);
-    cudaFree(m_data.dev_grid_momentum);
-    cudaFree(m_data.dev_grid_mass);
-    cudaFree(m_data.dev_grid_velocity);
     cudaFree(m_data.dev_gravity);
 
     cudaFree(m_dev_data);
@@ -666,6 +748,10 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
 template <typename Real>
 void PDMPMHybridSolver<Real>::Step()
 {
+    // sample to grid
+    cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_data.m_num_grid);
+    PDMPMHybridSolverKernel::sample_to_grid<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
     // MPM
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
