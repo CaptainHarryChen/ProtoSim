@@ -353,7 +353,7 @@ namespace cudaPhysics
     }
 
     template <class T>
-    __host__ __device__ __forceinline__ void axpby(T *v, T a, T *x, T b, T *y, unsigned int n)
+    __host__ __device__ __forceinline__ void axpby(T *v, T a, const T *x, T b, const T *y, unsigned int n)
     {
         for (int i = 0; i < n; ++i)
         {
@@ -362,7 +362,7 @@ namespace cudaPhysics
     }
 
     template <class T>
-    __host__ __device__ __forceinline__ void axpbypcz(T *v, T a, T *x, T b, T *y, T c, T *z, unsigned int n)
+    __host__ __device__ __forceinline__ void axpbypcz(T *v, T a, const T *x, T b, const T *y, T c, const T *z, unsigned int n)
     {
         for (int i = 0; i < n; ++i)
         {

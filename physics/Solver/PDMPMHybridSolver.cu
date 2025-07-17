@@ -41,10 +41,10 @@ namespace PDMPMHybridSolverKernel
         if (i >= data->m_num_sample)
             return;
         unsigned int tri_idx = data->dev_sample_tri_idx[i];
-        unsigned int *tri = &data->dev_triangle[tri_idx * 3];
-        Real *tri_a_pos = &data->dev_position[tri[0] * 3];
-        Real *tri_b_pos = &data->dev_position[tri[1] * 3];
-        Real *tri_c_pos = &data->dev_position[tri[2] * 3];
+        const unsigned int *tri = &data->dev_triangle[tri_idx * 3];
+        const Real *tri_a_pos = &data->dev_position[tri[0] * 3];
+        const Real *tri_b_pos = &data->dev_position[tri[1] * 3];
+        const Real *tri_c_pos = &data->dev_position[tri[2] * 3];
         unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
         unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
@@ -248,7 +248,8 @@ namespace PDMPMHybridSolverKernel
             return;
         if (data->dev_particle_type[i] == MPM_STATIC)
             return;
-        Real *particle_position = &data->dev_particle_position[i * 3];
+        const Real *particle_position = &data->dev_particle_position[i * 3];
+        const Real *particle_velocity = &data->dev_particle_velocity[i * 3];
         unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
         unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
@@ -269,7 +270,25 @@ namespace PDMPMHybridSolverKernel
                     PDMPMHybridTools::unpack_tri_info(data->dev_grid_tri_info[grid_id], dis, inside, tri_idx);
                     if (inside)
                     {
-                        grid_velocity[0] = grid_velocity[1] = grid_velocity[2] = 0;
+                        const unsigned int *tri = &data->dev_triangle[tri_idx * 3];
+                        const Real *tri_a_pos = &data->dev_position[tri[0] * 3];
+                        const Real *tri_b_pos = &data->dev_position[tri[1] * 3];
+                        const Real *tri_c_pos = &data->dev_position[tri[2] * 3];
+                        Real bary[3], v_tri[3], normal[3], delta_v[3];
+                        cudaPhysics::projection_barycentric_coordinates(bary, grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
+                        cudaPhysics::axpbypcz(v_tri, bary[0], &data->dev_particle_velocity[tri[0] * 3], bary[1], &data->dev_particle_velocity[tri[1] * 3], bary[2], &data->dev_particle_velocity[tri[2] * 3], 3);
+                        cudaPhysics::triangle_normal(normal, tri_a_pos, tri_b_pos, tri_c_pos);
+                        cudaPhysics::vecSubs3(delta_v, particle_velocity, v_tri);
+                        Real collision_v = cudaPhysics::dot3(normal, delta_v);
+                        collision_v = max(collision_v, 0.0f);
+                        cudaPhysics::axpby(grid_velocity, (Real)1.0, particle_velocity, -collision_v, normal, 3);
+                        Real force[3];
+                        cudaPhysics::vecMul3(force, data->dev_particle_mass[i] * weight * data->m_time_step_inv * collision_v, normal);
+                        for (unsigned int j = 0; j < 3; ++j)
+                            for (unsigned int k = 0; k < 3; ++k)
+                            {
+                                atomicAdd(&data->dev_vert_ext_force[tri[j] * 3 + k], bary[j] * force[k]);
+                            }
                     }
                     else
                     {
@@ -720,6 +739,8 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
 template <typename Real>
 void PDMPMHybridSolver<Real>::Step()
 {
+    cudaMemset(m_data.dev_vert_ext_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
+
     // sample to grid
     PDMPMHybridSolverKernel::calc_sample_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_data.m_num_grid);
