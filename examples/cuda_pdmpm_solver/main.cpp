@@ -225,7 +225,7 @@ int main()
 
     unsigned int num_grid = solver->m_data.m_num_grid;
     auto grid_inside_monitor = std::make_shared<ParticleBatch>(std::vector<Particle>(num_grid));
-    grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.05f));
+    grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.07f));
     app->GetRenderSystem()->AddRenderObject(grid_inside_monitor);
     scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, &solver->m_data, solver->m_dev_data));
 

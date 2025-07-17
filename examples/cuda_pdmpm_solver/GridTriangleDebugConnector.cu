@@ -5,8 +5,9 @@
 #include <cuda_utils/block_size.cuh>
 #include <Geometry/ParticleBatch.h>
 #include <Solver/PDMPMHybridSolver.cuh>
+#include <Solver/PDMPMHybridTools.cuh>
 
-namespace CoupledMPMDebugConnectorKernel
+namespace GridTriangleDebugConnectorKernel
 {
     template <typename Real>
     __global__ void transfer_data(Particle *dev_particles, PDMPMHybridSolverData<Real> *data, unsigned int num_particle)
@@ -26,7 +27,11 @@ namespace CoupledMPMDebugConnectorKernel
         dev_particles[id].Position.x = data->dev_outer_bbox[0] + x * data->m_grid_spacing;
         dev_particles[id].Position.y = data->dev_outer_bbox[1] + y * data->m_grid_spacing;
         dev_particles[id].Position.z = data->dev_outer_bbox[2] + z * data->m_grid_spacing;
-        if (data->dev_grid_tri_info[id] & (1<<31))
+        float dis;
+        bool inside;
+        unsigned int idx;
+        PDMPMHybridTools::unpack_tri_info(data->dev_grid_tri_info[id], dis, inside, idx);
+        if (inside)
         {
             dev_particles[id].Color = glm::vec3(1.0f, 0.5f, 0.0f);
         }
@@ -60,7 +65,7 @@ void GridTriangleDebugConnector<Real>::TransferData()
     cudaCheck(cudaGraphicsResourceGetMappedPointer((void **)&dev_particles, &buffer_size, m_cuda_resource_buf));
     unsigned int num_particle = (unsigned int)(buffer_size / sizeof(Particle));
     assert(num_particle == m_data->m_num_grid);
-    CoupledMPMDebugConnectorKernel::transfer_data<Real><<<CUDA_GRID_SIZE(num_particle), CUDA_BLOCK_SIZE>>>(dev_particles, m_dev_data, num_particle);
+    GridTriangleDebugConnectorKernel::transfer_data<Real><<<CUDA_GRID_SIZE(num_particle), CUDA_BLOCK_SIZE>>>(dev_particles, m_dev_data, num_particle);
     cudaCheck(cudaGraphicsUnmapResources(1, &m_cuda_resource_buf));
 }
 
