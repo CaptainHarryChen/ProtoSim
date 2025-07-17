@@ -51,6 +51,7 @@ struct PDMPMHybridSolverData
     Real *dev_position_delta;
     Real *dev_velocity;
     Real *dev_mass;
+    Real *dev_vert_ext_force;
     Real *dev_vert_force;
     Real *dev_constraint_Hessian_diag;
     Real *dev_stiffness_matrix_diag;

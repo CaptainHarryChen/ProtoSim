@@ -24,6 +24,8 @@ namespace PDMPMHybridSolverKernel
         closest_distance = *((float *)&info_ptr[0]);
         tri_idx = info_ptr[1] & 0x7FFFFFFFu; // Clear the inside bit
         inside = (info_ptr[1] & (1u << 31)) != 0;
+        if (packed_info == 0xFFFFFFFFFFFFFFFFllu)
+            inside = false;
     }
 
     template <typename Real>
@@ -306,14 +308,29 @@ namespace PDMPMHybridSolverKernel
                     get_grid_position(grid_position, grid_id, data);
                     Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
 
+                    Real grid_velocity[3];
+                    float dis;
+                    bool inside;
+                    unsigned int tri_idx;
+                    unpack_tri_info(data->dev_grid_tri_info[grid_id], dis, inside, tri_idx);
+                    if (inside)
+                    {
+                        grid_velocity[0] = grid_velocity[1] = grid_velocity[2] = 0;
+                        printf("asdlfkhasldflaslf\n");
+                    }
+                    else
+                    {
+                        cudaPhysics::vecCopy3(grid_velocity, &data->dev_grid_velocity[grid_id * 3]);
+                    }
+
                     Real velocity[3];
-                    cudaPhysics::vecMul3(velocity, weight, &data->dev_grid_velocity[grid_id * 3]);
+                    cudaPhysics::vecMul3(velocity, weight, grid_velocity);
                     cudaPhysics::vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], velocity);
 
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
                     Real temp_C[9];
-                    cudaPhysics::vecvecT(temp_C, &data->dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
+                    cudaPhysics::vecvecT(temp_C, grid_velocity, delta_position, 3, 3);
                     cudaPhysics::matMul3(temp_C, weight * 4 / data->m_grid_spacing / data->m_grid_spacing, temp_C);
                     cudaPhysics::vecAdd(&data->dev_particle_C[i * 9], temp_C, &data->dev_particle_C[i * 9], 9);
                 }
@@ -593,6 +610,7 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMemset(m_data.dev_velocity, 0, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_mass, sizeof(Real) * m_data.m_num_vert);
     cudaMemset(m_data.dev_mass, 0, sizeof(Real) * m_data.m_num_vert);
+    cudaMalloc((void **)&m_data.dev_vert_ext_force, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_vert_force, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_constraint_Hessian_diag, sizeof(Real) * m_data.m_num_vert);
     cudaMalloc((void **)&m_data.dev_stiffness_matrix_diag, sizeof(Real) * m_data.m_num_vert);
@@ -723,6 +741,7 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
     cudaFree(m_data.dev_position_delta);
     cudaFree(m_data.dev_velocity);
     cudaFree(m_data.dev_mass);
+    cudaFree(m_data.dev_vert_ext_force);
     cudaFree(m_data.dev_vert_force);
     cudaFree(m_data.dev_constraint_Hessian_diag);
     cudaFree(m_data.dev_stiffness_matrix_diag);
