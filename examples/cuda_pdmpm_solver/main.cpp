@@ -16,6 +16,7 @@
 #include <Connector/ParticleConnector.cuh>
 #include <Solver/PDMPMHybridSolver.cuh>
 #include <proj_config.h>
+#include "GridTriangleDebugConnector.cuh"
 
 template <typename Real>
 class HybridPDMPMScene : public SimulationScene<Real>
@@ -196,7 +197,7 @@ int main()
     scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 12.0f, -2.0f), glm::vec3(3.0f, 15.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    scene->SampleSurfaceParticles(5000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+    scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     float dist = 0.2f;
     std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
@@ -220,7 +221,13 @@ int main()
         bbox, dist, boundary_thickness);
     scene->SetSolver(solver);
     scene->SetupConnectors();
-    // scene->SetStepPerFrame(2);
+    scene->SetStepPerFrame(1);
+
+    unsigned int num_grid = solver->m_data.m_num_grid;
+    auto grid_inside_monitor = std::make_shared<ParticleBatch>(std::vector<Particle>(num_grid));
+    grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.05f));
+    app->GetRenderSystem()->AddRenderObject(grid_inside_monitor);
+    scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, &solver->m_data, solver->m_dev_data));
 
     app->Run();
 

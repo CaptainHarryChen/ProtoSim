@@ -20,6 +20,7 @@ public:
 
 	virtual void UpdateParticles(const std::vector<Particle> &data);
     virtual void DrawVAO() const override;
+	virtual inline unsigned int GetVBO() const { return m_VBO; }
 
 protected:
 	template <typename Real>

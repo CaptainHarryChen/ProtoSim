@@ -180,11 +180,14 @@ namespace PDMPMHybridSolverKernel
                     unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
                     get_grid_position(grid_position, grid_id, data);
-                    float distance = cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
-                    bool inside = distance < 0;
-                    distance = inside ? -distance : distance;
-                    uint64_t packed_info = pack_tri_info(distance, inside, tri_idx);
-                    atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
+                    if (cudaPhysics::is_point_in_triangle(grid_position, tri_a_pos, tri_b_pos, tri_c_pos))
+                    {
+                        float distance = cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
+                        bool inside = distance < 0;
+                        distance = inside ? -distance : distance;
+                        uint64_t packed_info = pack_tri_info(distance, inside, tri_idx);
+                        atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
+                    }
                 }
     }
 
@@ -787,6 +790,7 @@ void PDMPMHybridSolver<Real>::Step()
     PDMPMHybridSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PDMPMHybridSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PDMPMHybridSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    fflush(stdout);
 
     // PD
     cudaMemcpy(m_data.dev_position_backup, m_data.dev_position, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);

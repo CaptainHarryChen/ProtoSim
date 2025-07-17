@@ -110,9 +110,9 @@ public:
     Real *GetDeviceParticlePositions();
 
     PDMPMHybridSolverData<Real> m_data;
+    PDMPMHybridSolverData<Real> *m_dev_data;
 
 protected:
-    PDMPMHybridSolverData<Real> *m_dev_data;
 
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
     void SwapPositionBuffers();

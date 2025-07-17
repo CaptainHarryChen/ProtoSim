@@ -31,13 +31,16 @@ namespace cudaPhysics
     template <typename Real>
     __host__ __device__ __forceinline__ bool is_point_in_triangle(const Real *point_pos, const Real *tri_a_pos, const Real *tri_b_pos, const Real *tri_c_pos)
     {
-        Real normal[3], ab[3], bc[3], ca[3], ap[3], bp[3];
+        Real normal[3], ab[3], bc[3], ca[3], ap[3], bp[3], c_abp[3], c_bcp[3], c_cap[3];
         triangle_normal(tri_a_pos, tri_b_pos, tri_c_pos, normal);
         vecSubs3(ab, tri_b_pos, tri_a_pos);
         vecSubs3(bc, tri_c_pos, tri_b_pos);
         vecSubs3(ca, tri_a_pos, tri_c_pos);
         vecSubs3(ap, point_pos, tri_a_pos);
         vecSubs3(bp, point_pos, tri_b_pos);
-        return dot3(normal, cross3(ab, ap)) >= 0 && dot3(normal, cross3(bc, bp)) >= 0 && dot3(normal, cross3(ca, ap)) >= 0;
+        cross3(c_abp, ab, ap);
+        cross3(c_bcp, bc, bp);
+        cross3(c_cap, ca, ap);
+        return dot3(normal, c_abp) >= 0 && dot3(normal, c_bcp) >= 0 && dot3(normal, c_cap) >= 0;
     }
 }
