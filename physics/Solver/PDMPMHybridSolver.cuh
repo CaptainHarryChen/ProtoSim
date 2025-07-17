@@ -6,7 +6,7 @@
 #define MPM_ELASTIC 1
 #define MPM_FLUID 2
 
-const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
+const float YOUNG_K = 10000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
 const float GROUND_COLLISION_STIFFNESS = 1000000.0f;
 const float GRAVITY = 9.81f;

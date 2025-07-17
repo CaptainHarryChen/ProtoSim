@@ -28,7 +28,7 @@ namespace PDMPMHybridSolverKernel
             x = max(0, min(x, (int)data->dev_grid_size[0] - 2));
             y = max(0, min(y, (int)data->dev_grid_size[1] - 2));
             z = max(0, min(z, (int)data->dev_grid_size[2] - 2));
-            printf("Warning: sample %d is out of grid, set to %d %d %d\n [Particle position] %.10f %.10f %.10f", i, x, y, z, data->dev_sample_position[i * 3 + 0], data->dev_sample_position[i * 3 + 1], data->dev_sample_position[i * 3 + 2]);
+            printf("Warning: sample %d is out of grid, set to %d %d %d [Sample position] %.10f %.10f %.10f\n", i, x, y, z, data->dev_sample_position[i * 3 + 0], data->dev_sample_position[i * 3 + 1], data->dev_sample_position[i * 3 + 2]);
         }
 
         data->dev_sample_to_grid_id[i] = x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z;
@@ -136,7 +136,7 @@ namespace PDMPMHybridSolverKernel
             x = max(0, min(x, (int)data->dev_grid_size[0] - 2));
             y = max(0, min(y, (int)data->dev_grid_size[1] - 2));
             z = max(0, min(z, (int)data->dev_grid_size[2] - 2));
-            printf("Warning: particle %d is out of grid, set to %d %d %d\n [Particle position] %.10f %.10f %.10f", i, x, y, z, data->dev_particle_position[i * 3 + 0], data->dev_particle_position[i * 3 + 1], data->dev_particle_position[i * 3 + 2]);
+            printf("Warning: particle %d is out of grid, set to %d %d %d [Particle position] %.10f %.10f %.10f\n", i, x, y, z, data->dev_particle_position[i * 3 + 0], data->dev_particle_position[i * 3 + 1], data->dev_particle_position[i * 3 + 2]);
         }
 
         data->dev_particle_to_grid_id[i] = x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z;
@@ -283,7 +283,7 @@ namespace PDMPMHybridSolverKernel
                         collision_v = max(collision_v, 0.0f);
                         cudaPhysics::axpby(grid_velocity, (Real)1.0, particle_velocity, -collision_v, normal, 3);
                         Real force[3];
-                        cudaPhysics::vecMul3(force, data->dev_particle_mass[i] * weight * data->m_time_step_inv * collision_v, normal);
+                        cudaPhysics::vecMul3(force, -data->dev_particle_mass[i] * weight * data->m_time_step_inv * collision_v, normal);
                         for (unsigned int j = 0; j < 3; ++j)
                             for (unsigned int k = 0; k < 3; ++k)
                             {
@@ -395,7 +395,9 @@ namespace PDMPMHybridSolverKernel
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
             return;
-        cudaPhysics::axpby(&data->dev_velocity[3 * v], (Real)1.0, &data->dev_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
+        Real force[3];
+        cudaPhysics::vecAdd3(force, &data->dev_vert_ext_force[3 * v], data->dev_gravity);
+        cudaPhysics::axpby(&data->dev_velocity[3 * v], (Real)1.0, &data->dev_velocity[3 * v], data->m_time_step, force, 3);
         cudaPhysics::axpby(&data->dev_position[3 * v], (Real)1.0, &data->dev_position[3 * v], data->m_time_step, &data->dev_velocity[3 * v], 3);
     }
 
@@ -453,15 +455,23 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_ground_collision_force(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_box_collision_force(PDMPMHybridSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
             return;
-        if (data->dev_position[3 * v + 1] < 0.0f)
+        for (unsigned int j = 0; j < 3; ++j)
         {
-            data->dev_vert_force[3 * v + 1] += -data->m_ground_collision_stiffness * data->dev_position[3 * v + 1];
-            data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+            if (data->dev_position[3 * v + j] < data->dev_inner_bbox[j])
+            {
+                data->dev_vert_force[3 * v + j] += data->m_ground_collision_stiffness * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]);
+                data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+            }
+            if (data->dev_position[3 * v + j] > data->dev_inner_bbox[j + 3])
+            {
+                data->dev_vert_force[3 * v + j] += data->m_ground_collision_stiffness * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]);
+                data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+            }
         }
     }
 
@@ -775,7 +785,7 @@ void PDMPMHybridSolver<Real>::Step()
         cudaMemset(m_data.dev_constraint_Hessian_diag, 0, sizeof(Real) * m_data.m_num_vert);
         PDMPMHybridSolverKernel::calc_tetrahedron_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PDMPMHybridSolverKernel::accumulate_vert_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PDMPMHybridSolverKernel::calc_ground_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        PDMPMHybridSolverKernel::calc_box_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PDMPMHybridSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PDMPMHybridSolverKernel::update_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         UpdateChebyshevOmega(omega, iter);

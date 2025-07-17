@@ -74,7 +74,7 @@ namespace CoupledMPMSolverKernel
             x = max(0, min(x, (int)data->dev_grid_size[0] - 2));
             y = max(0, min(y, (int)data->dev_grid_size[1] - 2));
             z = max(0, min(z, (int)data->dev_grid_size[2] - 2));
-            printf("Warning: particle %d is out of grid, set to %d %d %d\n [Particle position] %.10f %.10f %.10f", i, x, y, z, data->dev_particle_position[i * 3 + 0], data->dev_particle_position[i * 3 + 1], data->dev_particle_position[i * 3 + 2]);
+            printf("Warning: particle %d is out of grid, set to %d %d %d [Particle position] %.10f %.10f %.10f\n", i, x, y, z, data->dev_particle_position[i * 3 + 0], data->dev_particle_position[i * 3 + 1], data->dev_particle_position[i * 3 + 2]);
         }
 
         data->dev_particle_to_grid_id[i] = (x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z) + (data->dev_particle_object_id[i] * data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2]);
