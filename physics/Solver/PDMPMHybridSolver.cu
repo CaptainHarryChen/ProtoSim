@@ -276,12 +276,12 @@ namespace PDMPMHybridSolverKernel
                         const Real *tri_c_pos = &data->dev_position[tri[2] * 3];
                         Real bary[3], v_tri[3], normal[3], delta_v[3];
                         cudaPhysics::projection_barycentric_coordinates(bary, grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
-                        cudaPhysics::axpbypcz(v_tri, bary[0], &data->dev_particle_velocity[tri[0] * 3], bary[1], &data->dev_particle_velocity[tri[1] * 3], bary[2], &data->dev_particle_velocity[tri[2] * 3], 3);
+                        cudaPhysics::axpbypcz(v_tri, bary[0], &data->dev_velocity[tri[0] * 3], bary[1], &data->dev_velocity[tri[1] * 3], bary[2], &data->dev_velocity[tri[2] * 3], 3);
                         cudaPhysics::triangle_normal(normal, tri_a_pos, tri_b_pos, tri_c_pos);
                         cudaPhysics::vecSubs3(delta_v, particle_velocity, v_tri);
-                        Real collision_v = cudaPhysics::dot3(normal, delta_v);
+                        Real collision_v = -cudaPhysics::dot3(normal, delta_v);
                         collision_v = max(collision_v, 0.0f);
-                        cudaPhysics::axpby(grid_velocity, (Real)1.0, particle_velocity, -collision_v, normal, 3);
+                        cudaPhysics::axpby(grid_velocity, (Real)1.0, particle_velocity, collision_v, normal, 3);
                         Real force[3];
                         cudaPhysics::vecMul3(force, -data->dev_particle_mass[i] * weight * data->m_time_step_inv * collision_v, normal);
                         for (unsigned int j = 0; j < 3; ++j)
