@@ -225,7 +225,7 @@ int main()
     scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 14.0f, -2.0f), glm::vec3(3.0f, 17.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+    scene->SampleSurfaceParticles(40000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     float dist = 0.2f;
     std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};

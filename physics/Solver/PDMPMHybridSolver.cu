@@ -297,7 +297,7 @@ namespace PDMPMHybridSolverKernel
 
                     Real velocity[3];
                     cudaPhysics::vecMul3(velocity, weight, grid_velocity);
-                    cudaPhysics::vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], velocity);
+                    cudaPhysics::vecAdd3(&data->dev_particle_new_velocity[i * 3], &data->dev_particle_new_velocity[i * 3], velocity);
 
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
@@ -626,6 +626,8 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMemcpy(m_data.dev_particle_position, particle_position.data(), sizeof(Real) * m_data.m_num_particle * 3, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_particle_velocity, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
+    cudaMalloc(&m_data.dev_particle_new_velocity, sizeof(Real) * m_data.m_num_particle * 3);
+    cudaMemset(m_data.dev_particle_new_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMalloc(&m_data.dev_particle_mass, sizeof(Real) * particle_mass.size());
     cudaMemcpy(m_data.dev_particle_mass, particle_mass.data(), sizeof(Real) * m_data.m_num_particle, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_particle_volume, sizeof(Real) * particle_volume.size());
@@ -700,6 +702,7 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
 {
     cudaFree(m_data.dev_particle_position);
     cudaFree(m_data.dev_particle_velocity);
+    cudaFree(m_data.dev_particle_new_velocity);
     cudaFree(m_data.dev_particle_mass);
     cudaFree(m_data.dev_particle_volume);
     cudaFree(m_data.dev_particle_type);
@@ -767,9 +770,10 @@ void PDMPMHybridSolver<Real>::Step()
     PDMPMHybridSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     // PDMPMHybridSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PDMPMHybridSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
+    cudaMemset(m_data.dev_particle_new_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
     PDMPMHybridSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemcpy(m_data.dev_particle_velocity, m_data.dev_particle_new_velocity, sizeof(Real) * m_data.m_num_particle * 3, cudaMemcpyDeviceToDevice);
     PDMPMHybridSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PDMPMHybridSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PDMPMHybridSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);

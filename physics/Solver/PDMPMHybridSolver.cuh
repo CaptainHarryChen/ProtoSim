@@ -23,6 +23,7 @@ struct PDMPMHybridSolverData
 
     Real *dev_particle_position;
     Real *dev_particle_velocity;
+    Real *dev_particle_new_velocity;
     Real *dev_particle_mass;
     Real *dev_particle_volume;
     unsigned int *dev_particle_type; // 0: static, 1: elastic, 2: fluid
