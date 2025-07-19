@@ -7,6 +7,7 @@
 #include <Scene/SimulationScene.h>
 #include <Loader/TetrahedronLoader.h>
 #include <Object/CubeLineBox.h>
+#include <Object/LightScene.h>
 #include <Mesh/Mesh.h>
 #include <Mesh/PbrRenderer.h>
 #include <Geometry/ParticleBatch.h>
@@ -149,7 +150,7 @@ public:
             particles[i].Color = color;
         }
         m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
-        // m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(material, radius));
+        m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(material, radius));
         GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
     }
 
@@ -179,6 +180,25 @@ public:
             this->m_connectors.push_back(connector);
         }
     }
+
+    virtual void SetupScene() override
+    {
+        SimulationScene<Real>::SetupScene();
+        auto app = GLFWApp::GetInstance();
+        for (auto &object : app->m_objects)
+        {
+            auto lightScene = std::dynamic_pointer_cast<LightScene>(object);
+            if (lightScene)
+            {
+                lightScene->m_control_gui->m_light_on = {true, true, true, true};
+                lightScene->m_control_gui->m_light_pos = {
+                    glm::vec3(-10.0f, 10.0f, -10.0f),
+                    glm::vec3(-10.0f, 10.0f, 10.0f),
+                    glm::vec3(10.0f, 10.0f, -10.0f),
+                    glm::vec3(10.0f, 10.0f, 10.0f)};
+            }
+        }
+    }
 };
 
 int main()
@@ -191,21 +211,21 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1000.0f,
-                           15.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1000.0f,
+    //                        15.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                        {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 12.0f, -2.0f), glm::vec3(3.0f, 15.0f, 2.0f), 0.08f,
+    //                                MPM_FLUID, 1000.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    // scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+
+    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/armadillo10K", 1000.0f,
+                           0.1f, glm::vec3(0.0f, 5.0f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                            {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
-    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 12.0f, -2.0f), glm::vec3(3.0f, 15.0f, 2.0f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 14.0f, -2.0f), glm::vec3(3.0f, 17.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
-
-    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 5000.0f,
-    //                        15.0f, glm::vec3(0.0f, 3.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
-    //                        {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-5.0f, 0.1f, -5.0f), glm::vec3(5.0f, 2.1f, 5.0f), 0.08f,
-    //                                MPM_ELASTIC, 1000.0f,
-    //                                0.03f, glm::vec3(0.6f, 0.6f, 1.0f), glm::vec2(0.8f, 0.8f));
-    // scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     float dist = 0.2f;
     std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};

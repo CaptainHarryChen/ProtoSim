@@ -26,6 +26,9 @@ public:
     void AddObject(std::shared_ptr<Object> object);
     std::shared_ptr<RenderSystem> GetRenderSystem();
 
+public:
+    std::vector<std::shared_ptr<Object>> m_objects;
+
 protected:
     bool m_has_initialized = false;
     double m_last_time = -1.0;
@@ -33,8 +36,6 @@ protected:
     GLFWwindow *m_window;
     std::shared_ptr<RenderSystem> m_render_system;
     std::shared_ptr<ImGuiSystem> m_imgui_system;
-
-    std::vector<std::shared_ptr<Object>> m_objects;
 
     void ProcessEvent(const Event &event);
 
