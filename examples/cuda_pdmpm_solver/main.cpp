@@ -150,7 +150,7 @@ public:
             particles[i].Color = color;
         }
         m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
-        m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(material, radius));
+        // m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(material, radius));
         GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
     }
 
@@ -227,8 +227,17 @@ int main()
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->SampleSurfaceParticles(40000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
+    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 100.0f,
+    //                        15.0f, glm::vec3(0.0f, 4.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                        {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 3.1f, 4.9f), 0.08f,
+    //                                MPM_FLUID, 1000.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    // scene->SampleSurfaceParticles(10000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+
     float dist = 0.2f;
     std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
+    // std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
     unsigned int boundary_thickness = 1;
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
 
