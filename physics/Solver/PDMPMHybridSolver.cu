@@ -110,7 +110,7 @@ namespace PDMPMHybridSolverKernel
         }
         else if (data->dev_particle_type[i] == MPM_FLUID)
         {
-            Real stress = -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing * data->m_lame_lambda * (data->dev_particle_F[i * 9] - 1);
+            Real stress = -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing * data->m_lame_lambda * (data->dev_particle_F[i * 9] - 1) * data->dev_particle_F[i * 9];
             affine_momentum[0] += stress;
             affine_momentum[4] += stress;
             affine_momentum[8] += stress;
