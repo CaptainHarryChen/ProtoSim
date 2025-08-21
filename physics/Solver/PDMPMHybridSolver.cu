@@ -68,30 +68,6 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void update_F(PDMPMHybridSolverData<Real> *data)
-    {
-        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
-            return;
-        if (data->dev_particle_type[i] == MPM_ELASTIC)
-        {
-            Real F[9], temp[9];
-            cudaPhysics::matMul3(temp, data->m_time_step, &data->dev_particle_C[i * 9]);
-            temp[0] += 1.;
-            temp[4] += 1.;
-            temp[8] += 1.;
-            cudaPhysics::matMul3(F, temp, &data->dev_particle_F[i * 9]);
-            cudaPhysics::vecCopy(&data->dev_particle_F[i * 9], F, 9);
-        }
-        else if (data->dev_particle_type[i] == MPM_FLUID)
-        {
-            // Only use the first element of F to store J
-            Real J = data->dev_particle_F[i * 9] * (1 + data->m_time_step * (data->dev_particle_C[i * 9] + data->dev_particle_C[i * 9 + 4] + data->dev_particle_C[i * 9 + 8]));
-            data->dev_particle_F[i * 9 + 0] = J;
-        }
-    }
-
-    template <typename Real>
     __global__ void calc_particle_affine_momentum(PDMPMHybridSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -177,6 +153,28 @@ namespace PDMPMHybridSolverKernel
 
                     atomicAdd(&data->dev_grid_mass[grid_id], weight * data->dev_particle_mass[i]);
                 }
+    }
+
+    template <typename Real>
+    __global__ void P2G_pressure(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_particle)
+            return;
+        if (data->dev_particle_type[i] != MPM_FLUID)
+            return; // Only fluid particles contribute to pressure
+        Real *particle_position = &data->dev_particle_position[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        unsigned int grid_id = (x + 1) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + 1) * data->dev_grid_size[2] + (z + 1);
+        Real grid_position[3];
+        PDMPMHybridTools::get_grid_position(grid_position, grid_id, data);
+
+        Real particle_pressure = -data->m_lame_lambda * (data->dev_particle_F[i * 9] - 1); // p = -lambda * (J - 1)
+        atomicAdd(&data->dev_grid_pressure[grid_id], data->dev_particle_volume[i] * data->dev_particle_F[i * 9] * particle_pressure); // V_p^n * p_p
+        atomicAdd(&data->dev_grid_pressure_denorm[grid_id], data->dev_particle_volume[i] * data->dev_particle_F[i * 9]); // V_p^n
     }
 
     template <typename Real>
@@ -306,6 +304,30 @@ namespace PDMPMHybridSolverKernel
                     cudaPhysics::matMul3(temp_C, weight * 4 / data->m_grid_spacing / data->m_grid_spacing, temp_C);
                     cudaPhysics::vecAdd(&data->dev_particle_C[i * 9], temp_C, &data->dev_particle_C[i * 9], 9);
                 }
+    }
+
+    template <typename Real>
+    __global__ void update_F(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_particle)
+            return;
+        if (data->dev_particle_type[i] == MPM_ELASTIC)
+        {
+            Real F[9], temp[9];
+            cudaPhysics::matMul3(temp, data->m_time_step, &data->dev_particle_C[i * 9]);
+            temp[0] += 1.;
+            temp[4] += 1.;
+            temp[8] += 1.;
+            cudaPhysics::matMul3(F, temp, &data->dev_particle_F[i * 9]);
+            cudaPhysics::vecCopy(&data->dev_particle_F[i * 9], F, 9);
+        }
+        else if (data->dev_particle_type[i] == MPM_FLUID)
+        {
+            // Only use the first element of F to store J
+            Real J = data->dev_particle_F[i * 9] * (1 + data->m_time_step * (data->dev_particle_C[i * 9] + data->dev_particle_C[i * 9 + 4] + data->dev_particle_C[i * 9 + 8]));
+            data->dev_particle_F[i * 9 + 0] = J;
+        }
     }
 
     template <typename Real>
@@ -676,6 +698,10 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMalloc(&m_data.dev_grid_pressure, sizeof(Real) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_pressure, 0, sizeof(Real) * m_data.m_num_grid);
+    cudaMalloc(&m_data.dev_grid_pressure_denorm, sizeof(Real) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_pressure_denorm, 0, sizeof(Real) * m_data.m_num_grid);
     cudaMalloc(&m_data.dev_grid_tri_info, sizeof(uint64_t) * m_data.m_num_grid);
     cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_data.m_num_grid);
 
@@ -716,6 +742,8 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
     cudaFree(m_data.dev_grid_momentum);
     cudaFree(m_data.dev_grid_mass);
     cudaFree(m_data.dev_grid_velocity);
+    cudaFree(m_data.dev_grid_pressure);
+    cudaFree(m_data.dev_grid_pressure_denorm);
     cudaFree(m_data.dev_grid_tri_info);
 
     cudaFree(m_data.dev_position_backup);
@@ -762,6 +790,9 @@ void PDMPMHybridSolver<Real>::Step()
     PDMPMHybridSolverKernel::sample_to_grid<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
     // MPM
+    cudaMemset(m_data.dev_grid_pressure, 0, sizeof(Real) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_pressure_denorm, 0, sizeof(Real) * m_data.m_num_grid);
+    PDMPMHybridSolverKernel::P2G_pressure<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     PDMPMHybridSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);

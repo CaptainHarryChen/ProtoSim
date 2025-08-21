@@ -41,6 +41,8 @@ struct PDMPMHybridSolverData
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
     Real *dev_grid_velocity;
+    Real *dev_grid_pressure;
+    Real *dev_grid_pressure_denorm;
     uint64_t *dev_grid_tri_info; // 0~31: (float)closest triangle distance, 32: outside or inside, 33~63: triangle index
 
     unsigned int m_num_vert;
