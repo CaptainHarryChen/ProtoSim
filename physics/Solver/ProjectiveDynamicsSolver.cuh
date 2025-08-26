@@ -23,7 +23,6 @@ struct ProjectiveDynamicsSolverData
     Real *dev_position_prev;
     Real *dev_position;
     Real *dev_position_next;
-    Real *dev_position_delta;
     Real *dev_velocity;
     Real *dev_mass;
     Real *dev_vert_force;

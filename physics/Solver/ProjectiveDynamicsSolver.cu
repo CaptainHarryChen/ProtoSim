@@ -141,16 +141,7 @@ namespace ProjectiveDynamicsSolverKernel
         cudaPhysics::vecMul3(grad, data->dev_mass[v] * data->m_time_step_inv * data->m_time_step_inv, delta_x);
         cudaPhysics::vecAdd3(grad, grad, &data->dev_vert_force[3 * v]);
         Real B = data->dev_mass[v] * data->m_time_step_inv * data->m_time_step_inv - data->dev_stiffness_matrix_diag[v] + data->dev_constraint_Hessian_diag[v];
-        cudaPhysics::vecMul3(&data->dev_position_delta[3 * v], (Real)1.0 / B, grad);
-    }
-
-    template <typename Real>
-    __global__ void update_position(ProjectiveDynamicsSolverData<Real> *data)
-    {
-        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
-        if (v >= data->m_num_vert)
-            return;
-        cudaPhysics::vecAdd3(&data->dev_position_next[3 * v], &data->dev_position[3 * v], &data->dev_position_delta[3 * v]);
+        cudaPhysics::axpby(&data->dev_position_next[3 * v], (Real)1, &data->dev_position[3 * v], (Real)1.0 / B, grad, 3);
     }
 
     template <typename Real>
@@ -201,7 +192,6 @@ ProjectiveDynamicsSolver<Real>::ProjectiveDynamicsSolver(const std::vector<Real>
     cudaMalloc((void **)&m_data.dev_position, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMemcpy(m_data.dev_position, position.data(), sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_position_next, sizeof(Real) * m_data.m_num_vert * 3);
-    cudaMalloc((void **)&m_data.dev_position_delta, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_velocity, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMemset(m_data.dev_velocity, 0, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_mass, sizeof(Real) * m_data.m_num_vert);
@@ -246,7 +236,6 @@ ProjectiveDynamicsSolver<Real>::~ProjectiveDynamicsSolver()
     cudaFree(m_data.dev_position_prev);
     cudaFree(m_data.dev_position);
     cudaFree(m_data.dev_position_next);
-    cudaFree(m_data.dev_position_delta);
     cudaFree(m_data.dev_velocity);
     cudaFree(m_data.dev_mass);
     cudaFree(m_data.dev_vert_force);
@@ -280,7 +269,6 @@ void ProjectiveDynamicsSolver<Real>::Step()
         ProjectiveDynamicsSolverKernel::accumulate_vert_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ProjectiveDynamicsSolverKernel::calc_ground_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ProjectiveDynamicsSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        ProjectiveDynamicsSolverKernel::update_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         UpdateChebyshevOmega(omega, iter);
         ProjectiveDynamicsSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         SwapPositionBuffers();
