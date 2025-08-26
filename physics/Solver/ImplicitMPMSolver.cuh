@@ -11,7 +11,7 @@ const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YO
 const float GROUND_COLLISION_STIFFNESS = 1000000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 1000.0f;
-const unsigned int MAX_ITERATIONS = 150;
+const unsigned int MAX_ITERATIONS = 10;
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
 const float UNDER_RELAXATION = 0.7f;

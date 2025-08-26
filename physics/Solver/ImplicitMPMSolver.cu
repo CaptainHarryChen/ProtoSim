@@ -222,7 +222,8 @@ namespace ImplicitMPMSolverKernel
         Real *diag_B = &data->dev_grid_diag_B[i * 3];
         Real *grid_force = &data->dev_grid_force[i * 3];
         diag_B[0] = diag_B[1] = diag_B[2] = (Real)1;
-        cudaPhysics::axpby(diag_B, (Real)1, diag_B, -data->m_time_step / data->dev_grid_mass[i], &data->dev_grid_diag_K[i * 3], 3);
+        if (data->dev_grid_mass[i] > 0)
+            cudaPhysics::axpby(diag_B, (Real)1, diag_B, -data->m_time_step / data->dev_grid_mass[i], &data->dev_grid_diag_K[i * 3], 3);
 
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
@@ -269,9 +270,10 @@ namespace ImplicitMPMSolverKernel
         if (i >= data->m_num_grid)
             return;
         Real grad[3];
-        cudaPhysics::axpbypcz(grad, (Real)1, &data->dev_grid_velocity_hat[i * 3], 
-                                    (Real)-1, &data->dev_grid_velocity[i * 3], 
-                                    data->m_time_step / data->dev_grid_mass[i], &data->dev_grid_force[i * 3], 
+        Real tmp = data->dev_grid_mass[i] > 0 ? data->m_time_step / data->dev_grid_mass[i] : 0;
+        cudaPhysics::axpbypcz(grad, (Real)1, &data->dev_grid_velocity_hat[i * 3],
+                                    (Real)-1, &data->dev_grid_velocity[i * 3],
+                                    tmp, &data->dev_grid_force[i * 3],
                             3);
         cudaPhysics::axpby(&data->dev_grid_velocity_next[3 * i], (Real)1, &data->dev_grid_velocity[3 * i], (Real)1.0 / data->dev_grid_diag_B[i * 3], grad, 3);
     }
