@@ -10,8 +10,8 @@ const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
 const float GROUND_COLLISION_STIFFNESS = 1000000.0f;
 const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 1000.0f;
-const unsigned int MAX_ITERATIONS = 10;
+const float TIME_STEP = 1.0f / 60.0f;
+const unsigned int MAX_ITERATIONS = 100;
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
 const float UNDER_RELAXATION = 0.7f;
@@ -26,6 +26,7 @@ struct ImplicitMPMSolverData
     Real *dev_particle_volume;
     unsigned int *dev_particle_type; // 0: static, 1: elastic, 2: fluid
     Real *dev_particle_C;
+    Real *dev_particle_temp_J;
     Real *dev_particle_F;                  // deformation gradient
     unsigned int *dev_particle_to_grid_id; // order: x y z
 

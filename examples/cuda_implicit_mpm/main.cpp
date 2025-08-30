@@ -44,7 +44,7 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 12.0f, -3.0f), glm::vec3(3.0f, 16.0f, 3.0f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 1.0f, -3.0f), glm::vec3(3.0f, 4.0f, 3.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     // scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 6.0f, -1.0f), glm::vec3(5.0f, 8.0f, 1.0f), 0.08f,
@@ -55,7 +55,8 @@ int main()
     //                                0.03f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
 
     float dist = 0.2f;
-    std::vector<float> bbox = {-10.0f, 0.0f, -12.0f, 10.0f, 20.0f, 8.0f};
+    // std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
+    std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
     unsigned int boundary_thickness = 1;
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
 
