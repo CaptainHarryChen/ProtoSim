@@ -247,45 +247,52 @@ namespace ImplicitMPMSolverKernel
         Real *diag_B = &data->dev_grid_diag_B[i * 3];
         Real *grid_force = &data->dev_grid_force[i * 3];
         diag_B[0] = diag_B[1] = diag_B[2] = (Real)1;
-        if (data->dev_grid_mass[i] > 0)
-            cudaPhysics::axpby(diag_B, (Real)1, diag_B, -data->m_time_step / data->dev_grid_mass[i], &data->dev_grid_diag_K[i * 3], 3);
+        if (data->dev_grid_mass[i] <= 0)
+            return;
+        cudaPhysics::axpby(diag_B, (Real)1, diag_B, -data->m_time_step / data->dev_grid_mass[i], &data->dev_grid_diag_K[i * 3], 3);
 
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
         unsigned int z = i % data->dev_grid_size[2];
-        Real grid_position_after[3];
-        get_grid_position(grid_position_after, i, data);
-        cudaPhysics::axpby(grid_position_after, (Real)1, grid_position_after, data->m_time_step, &data->dev_grid_velocity[i * 3], 3);
-        if (x <= data->m_boundary_thickness && grid_position_after[0] < data->dev_inner_bbox[0])
+        Real *vel = &data->dev_grid_velocity[i * 3];
+        if ((x <= data->m_boundary_thickness && vel[0] < 0) || (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness && vel[0] > 0))
         {
-            diag_B[0] += data->m_ground_stiffness * data->m_time_step;
-            grid_force[0] += data->m_ground_stiffness * (data->dev_inner_bbox[0] - grid_position_after[0]);
+            diag_B[0] += data->dev_grid_mass[i] * data->m_ground_stiffness * data->m_time_step;
+            grid_force[0] += data->dev_grid_mass[i] * data->m_ground_stiffness * (-vel[0]) * data->m_time_step;
         }
-        if (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness && grid_position_after[0] > data->dev_inner_bbox[3])
+        if ((y <= data->m_boundary_thickness && vel[1] < 0) || (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness && vel[1] > 0))
         {
-            diag_B[0] += data->m_ground_stiffness * data->m_time_step;
-            grid_force[0] += data->m_ground_stiffness * (data->dev_inner_bbox[3] - grid_position_after[0]);
+            diag_B[1] += data->dev_grid_mass[i] * data->m_ground_stiffness * data->m_time_step;
+            grid_force[1] += data->dev_grid_mass[i] * data->m_ground_stiffness * (-vel[1]) * data->m_time_step;
         }
-        if (y <= data->m_boundary_thickness && grid_position_after[1] < data->dev_inner_bbox[1])
+        if ((z <= data->m_boundary_thickness && vel[2] < 0) || (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness && vel[2] > 0))
         {
-            diag_B[1] += data->m_ground_stiffness * data->m_time_step;
-            grid_force[1] += data->m_ground_stiffness * (data->dev_inner_bbox[1] - grid_position_after[1]);
+            diag_B[2] += data->dev_grid_mass[i] * data->m_ground_stiffness * data->m_time_step;
+            grid_force[2] += data->dev_grid_mass[i] * data->m_ground_stiffness * (-vel[2]) * data->m_time_step;
         }
-        if (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness && grid_position_after[1] > data->dev_inner_bbox[4])
-        {
-            diag_B[1] += data->m_ground_stiffness * data->m_time_step;
-            grid_force[1] += data->m_ground_stiffness * (data->dev_inner_bbox[4] - grid_position_after[1]);
-        }
-        if (z <= data->m_boundary_thickness && grid_position_after[2] < data->dev_inner_bbox[2])
-        {
-            diag_B[2] += data->m_ground_stiffness * data->m_time_step;
-            grid_force[2] += data->m_ground_stiffness * (data->dev_inner_bbox[2] - grid_position_after[2]);
-        }
-        if (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness && grid_position_after[2] > data->dev_inner_bbox[5])
-        {
-            diag_B[2] += data->m_ground_stiffness * data->m_time_step;
-            grid_force[2] += data->m_ground_stiffness * (data->dev_inner_bbox[5] - grid_position_after[2]);
-        }
+    }
+
+    template <typename Real>
+    __global__ void grids_boundary_conditions(ImplicitMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_grid)
+            return;
+        unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = i % data->dev_grid_size[2];
+        if (x <= data->m_boundary_thickness)
+            data->dev_grid_velocity_next[i * 3 + 0] = max(0., data->dev_grid_velocity_next[i * 3 + 0]);
+        if (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness)
+            data->dev_grid_velocity_next[i * 3 + 0] = min(0., data->dev_grid_velocity_next[i * 3 + 0]);
+        if (y <= data->m_boundary_thickness)
+            data->dev_grid_velocity_next[i * 3 + 1] = max(0., data->dev_grid_velocity_next[i * 3 + 1]);
+        if (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness)
+            data->dev_grid_velocity_next[i * 3 + 1] = min(0., data->dev_grid_velocity_next[i * 3 + 1]);
+        if (z <= data->m_boundary_thickness)
+            data->dev_grid_velocity_next[i * 3 + 2] = max(0., data->dev_grid_velocity_next[i * 3 + 2]);
+        if (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness)
+            data->dev_grid_velocity_next[i * 3 + 2] = min(0., data->dev_grid_velocity_next[i * 3 + 2]);
     }
 
     template <typename Real>
@@ -529,14 +536,16 @@ void ImplicitMPMSolver<Real>::Step()
     Real omega = 1;
     for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
     {
+        fflush(stdout);
         cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
         ImplicitMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitMPMSolverKernel::grid_op<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitMPMSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        ImplicitMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         UpdateChebyshevOmega(omega, iter);
         ImplicitMPMSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
-        SwapAnswerBuffers();
+        SwapAnswerBuffers(); 
     }
 
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);

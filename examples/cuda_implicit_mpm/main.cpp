@@ -44,7 +44,7 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 1.0f, -3.0f), glm::vec3(3.0f, 4.0f, 3.0f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 0.3f, -3.0f), glm::vec3(3.0f, 3.3f, 3.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     // scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 6.0f, -1.0f), glm::vec3(5.0f, 8.0f, 1.0f), 0.08f,
