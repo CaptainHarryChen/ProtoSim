@@ -11,10 +11,19 @@ const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YO
 const float GROUND_COLLISION_STIFFNESS = 10000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 200.0f;
-const unsigned int MAX_ITERATIONS = 100;
+const unsigned int MAX_ITERATIONS = 200;
+
+// Chebyshev hyperparameters
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
 const float UNDER_RELAXATION = 0.7f;
+
+// Line search hyperparameters
+const unsigned int LINE_SEARCH_ITER = 8;
+const float RESIDUAL_TOLERANCE = 1e-2f;
+const float INITIAL_ALPHA = 1.0f;
+const float MIN_ALPHA = 1e-5f;
+const float ALPHA_DECAY = 0.5f;
 
 template <typename Real>
 struct ImplicitMPMSolverData
@@ -42,9 +51,14 @@ struct ImplicitMPMSolverData
     Real *dev_grid_velocity;
     Real *dev_grid_velocity_hat;
     Real *dev_grid_velocity_prev;
+    Real *dev_grid_velocity_delta;
     Real *dev_grid_velocity_next;
     Real *dev_grid_diag_K;
     Real *dev_grid_diag_B;
+
+     // unified memory
+    Real *u_energy;
+    Real *u_residual;
 
     Real m_time_step;
     Real m_under_relaxation;
@@ -65,9 +79,21 @@ public:
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
 
+    enum
+    {
+        NEWTON,
+        NEWTON_WITH_LINE_SEARCH,
+        CHEBYSHEV
+    } m_solver_type = CHEBYSHEV;
+    bool m_verbose = false;
+
     ImplicitMPMSolverData<Real> m_data;
 protected:
     ImplicitMPMSolverData<Real> *m_dev_data;
+
+    void NewtonSolver();
+    void NewtonWithLineSearch();
+    void ChebyshevSolver();
 
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
     void SwapAnswerBuffers();

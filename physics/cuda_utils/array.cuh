@@ -35,4 +35,19 @@ namespace cudaPhysics
     {
         array_real_inv_kernel<Real><<<CUDA_GRID_SIZE(size), CUDA_BLOCK_SIZE>>>(dst, src, size);
     }
+
+    template <typename Real>
+    __global__ void array_axpby_kernel(Real *res, Real a, const Real *x, Real b, const Real *y, unsigned int size)
+    {
+        unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
+        if (index < size)
+        {
+            res[index] = a * x[index] + b * y[index];
+        }
+    }
+    template <typename Real>
+    void array_axpby(Real *res, Real a, const Real *x, Real b, const Real *y, unsigned int size)
+    {
+        array_axpby_kernel<Real><<<CUDA_GRID_SIZE(size), CUDA_BLOCK_SIZE>>>(res, a, x, b, y, size);
+    }
 }
