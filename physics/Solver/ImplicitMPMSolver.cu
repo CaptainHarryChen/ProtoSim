@@ -692,12 +692,22 @@ void ImplicitMPMSolver<Real>::ChebyshevSolver()
         ImplicitMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitMPMSolverKernel::grid_op<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        if (m_verbose)
+        {
+            cudaDeviceSynchronize();
+            *m_data.u_residual = 0;
+        }
         ImplicitMPMSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, (Real)1, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
         ImplicitMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         UpdateChebyshevOmega(omega, iter);
         ImplicitMPMSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         SwapAnswerBuffers();
+    }
+    if (m_verbose)
+    {
+        cudaDeviceSynchronize();
+        printf("Final residual: %f\n", *m_data.u_residual / m_data.m_num_grid);
     }
 }
 
