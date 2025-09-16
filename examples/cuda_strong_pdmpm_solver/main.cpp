@@ -69,6 +69,50 @@ public:
             m_surface_triangles[i + offset * 3] = surface_triangles[i] + offset;
     }
 
+    void LoadTetrahedronWithPLYSample(std::string inputfile, Real density,
+                         float scale, glm::vec3 translate, glm::vec3 rotate,
+                         std::vector<glm::vec3> render_material)
+    {
+        std::vector<float> positions;
+        std::vector<unsigned int> surface_triangles;
+        std::vector<unsigned int> tetrahedras;
+        std::vector<unsigned int> sample_tri_idx;
+        std::vector<float> sample_barycentric_weights;
+        TetrahedronLoader::LoadTetrahedronWithPLYSample(inputfile, scale, translate, rotate, positions, surface_triangles, tetrahedras, sample_tri_idx, sample_barycentric_weights);
+
+        std::vector<Vertex> vertices(positions.size() / 3);
+        for (size_t i = 0; i < positions.size() / 3; ++i)
+        {
+            vertices[i].position = glm::vec3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+            vertices[i].normal = glm::vec3(0.0f, 0.0f, 0.0f);
+            vertices[i].tex_coords = glm::vec2(0.0f, 0.0f);
+        }
+        auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
+        mesh->AddRenderer(std::make_shared<PbrRenderer>(render_material));
+        SimulationScene<Real>::AddMesh(mesh);
+
+        unsigned int offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
+        m_tetrahedras.resize(m_tetrahedras.size() + tetrahedras.size());
+        for (size_t i = 0; i < tetrahedras.size(); ++i)
+            m_tetrahedras[i + offset * 4] = tetrahedras[i] + offset;
+        m_tetrahedras_densities.resize(m_tetrahedras.size() / 4);
+        for (size_t i = 0; i < m_tetrahedras_densities.size(); ++i)
+            m_tetrahedras_densities[i] = density;
+
+        m_surface_triangles.resize(m_surface_triangles.size() + surface_triangles.size());
+        for (size_t i = 0; i < surface_triangles.size(); ++i)
+            m_surface_triangles[i + offset * 3] = surface_triangles[i] + offset;
+
+        unsigned int sample_offset = (unsigned int)m_sample_tri_idx.size();
+        m_sample_tri_idx.resize(m_sample_tri_idx.size() + sample_tri_idx.size());
+        for (size_t i = 0; i < sample_tri_idx.size(); ++i)
+            m_sample_tri_idx[i + sample_offset] = sample_tri_idx[i] + offset;
+        
+        m_sample_barycentric_weights.resize(sample_offset * 3 + sample_barycentric_weights.size());
+        for (size_t i = 0; i < sample_barycentric_weights.size(); ++i)
+            m_sample_barycentric_weights[i + sample_offset * 3] = sample_barycentric_weights[i];
+    }
+
     void AddMPMCubeParticleBatch(glm::vec3 lower_bound, glm::vec3 upper_bound, float dis,
                                  unsigned int particle_type, Real density,
                                  float radius, glm::vec3 color, glm::vec2 material)
@@ -218,8 +262,8 @@ int main()
     //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     // scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/armadillo10K", 1000.0f,
-                           0.05f, glm::vec3(0.0f, 2.5f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f,
+                           15.0f, glm::vec3(0.0f, 2.5f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                            {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
     scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 7.0f, -2.0f), glm::vec3(3.0f, 9.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
