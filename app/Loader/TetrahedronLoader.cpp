@@ -207,7 +207,8 @@ namespace TetrahedronLoader
         float x, y, z, tri_id, b0, b1, b2;
         for (unsigned int i = 0; i < nSamples; ++i)
         {
-            plyFS >> x >> y >> z >> tri_id >> b0 >> b1 >> b2;
+            unsigned int _;
+            plyFS >> x >> y >> z >> tri_id >> _ >> b0 >> b1 >> b2;
             sample_tri_idx[i] = (unsigned int)tri_id;
             sample_barycentric_weights[3 * i] = b0;
             sample_barycentric_weights[3 * i + 1] = b1;
