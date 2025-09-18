@@ -70,8 +70,9 @@ public:
     }
 
     void LoadTetrahedronWithPLYSample(std::string inputfile, Real density,
-                         float scale, glm::vec3 translate, glm::vec3 rotate,
-                         std::vector<glm::vec3> render_material)
+                                      float scale, glm::vec3 translate, glm::vec3 rotate,
+                                      std::vector<glm::vec3> mesh_render_material,
+                                      float sample_radius, glm::vec3 sample_color, glm::vec2 sample_material)
     {
         std::vector<float> positions;
         std::vector<unsigned int> surface_triangles;
@@ -88,7 +89,7 @@ public:
             vertices[i].tex_coords = glm::vec2(0.0f, 0.0f);
         }
         auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
-        mesh->AddRenderer(std::make_shared<PbrRenderer>(render_material));
+        mesh->AddRenderer(std::make_shared<PbrRenderer>(mesh_render_material));
         SimulationScene<Real>::AddMesh(mesh);
 
         unsigned int offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
@@ -107,10 +108,28 @@ public:
         m_sample_tri_idx.resize(m_sample_tri_idx.size() + sample_tri_idx.size());
         for (size_t i = 0; i < sample_tri_idx.size(); ++i)
             m_sample_tri_idx[i + sample_offset] = sample_tri_idx[i] + offset;
-        
+
         m_sample_barycentric_weights.resize(sample_offset * 3 + sample_barycentric_weights.size());
         for (size_t i = 0; i < sample_barycentric_weights.size(); ++i)
             m_sample_barycentric_weights[i + sample_offset * 3] = sample_barycentric_weights[i];
+
+        std::vector<Particle> particles(m_sample_tri_idx.size());
+        for (size_t i = 0; i < m_sample_tri_idx.size(); ++i)
+        {
+            unsigned int tri_idx = m_sample_tri_idx[i];
+            glm::vec3 bary_coords = glm::vec3(
+                m_sample_barycentric_weights[i * 3 + 0],
+                m_sample_barycentric_weights[i * 3 + 1],
+                m_sample_barycentric_weights[i * 3 + 2]);
+            glm::vec3 v0 = vertices[m_surface_triangles[tri_idx * 3 + 0]].position;
+            glm::vec3 v1 = vertices[m_surface_triangles[tri_idx * 3 + 1]].position;
+            glm::vec3 v2 = vertices[m_surface_triangles[tri_idx * 3 + 2]].position;
+            particles[i].Position = bary_coords.x * v0 + bary_coords.y * v1 + bary_coords.z * v2;
+            particles[i].Color = sample_color;
+        }
+        m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
+        m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(sample_material, sample_radius));
+        GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
     }
 
     void AddMPMCubeParticleBatch(glm::vec3 lower_bound, glm::vec3 upper_bound, float dis,
@@ -262,13 +281,18 @@ int main()
     //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     // scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f,
+    //                                     15.0f, glm::vec3(0.0f, 2.5f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
+    //                                     0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
     scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f,
-                           15.0f, glm::vec3(0.0f, 2.5f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
-                           {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
+                                        1.0f, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(glm::radians(0.0f), 0.0f, 0.0f),
+                                        {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
+                                        0.001f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
     scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 7.0f, -2.0f), glm::vec3(3.0f, 9.0f, 2.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    scene->SampleSurfaceParticles(40000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+    // scene->SampleSurfaceParticles(40000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 100.0f,
     //                        15.0f, glm::vec3(0.0f, 4.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
@@ -302,7 +326,6 @@ int main()
     scene->SetSolver(solver);
     scene->SetupConnectors();
     scene->SetStepPerFrame(1);
-
 
     app->Run();
 
