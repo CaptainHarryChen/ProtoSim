@@ -57,17 +57,19 @@ public:
         mesh->AddRenderer(std::make_shared<PbrRenderer>(render_material));
         SimulationScene<Real>::AddMesh(mesh);
 
-        unsigned int offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
+        unsigned int node_offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
+        unsigned int tet_offset = (unsigned int)m_tetrahedras.size() / 4;
         m_tetrahedras.resize(m_tetrahedras.size() + tetrahedras.size());
         for (size_t i = 0; i < tetrahedras.size(); ++i)
-            m_tetrahedras[i + offset * 4] = tetrahedras[i] + offset;
-        m_tetrahedras_densities.resize(m_tetrahedras.size() / 4);
-        for (size_t i = 0; i < m_tetrahedras_densities.size(); ++i)
-            m_tetrahedras_densities[i] = density;
+            m_tetrahedras[i + tet_offset * 4] = tetrahedras[i] + node_offset;
+        m_tetrahedras_densities.resize(m_tetrahedras_densities.size() + m_tetrahedras.size() / 4);
+        for (size_t i = 0; i < m_tetrahedras.size() / 4; ++i)
+            m_tetrahedras_densities[i + tet_offset] = density;
 
+        unsigned int tri_offset = (unsigned int)m_surface_triangles.size() / 3;
         m_surface_triangles.resize(m_surface_triangles.size() + surface_triangles.size());
         for (size_t i = 0; i < surface_triangles.size(); ++i)
-            m_surface_triangles[i + offset * 3] = surface_triangles[i] + offset;
+            m_surface_triangles[i + tri_offset * 3] = surface_triangles[i] + node_offset;
     }
 
     void AddMPMCubeParticleBatch(glm::vec3 lower_bound, glm::vec3 upper_bound, float dis,

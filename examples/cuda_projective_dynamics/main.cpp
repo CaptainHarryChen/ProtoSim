@@ -37,13 +37,14 @@ public:
         mesh->AddRenderer(std::make_shared<PbrRenderer>(render_material));
         SimulationScene<Real>::AddMesh(mesh);
 
-        unsigned int offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
+        unsigned int node_offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
+        unsigned int tet_offset = (unsigned int)m_tetrahedras.size() / 4;
         m_tetrahedras.resize(m_tetrahedras.size() + tetrahedras.size());
         for (size_t i = 0; i < tetrahedras.size(); ++i)
-            m_tetrahedras[i + offset * 4] = tetrahedras[i] + offset;
-        m_tetrahedras_densities.resize(m_tetrahedras.size() / 4);
-        for (size_t i = 0; i < m_tetrahedras_densities.size(); ++i)
-            m_tetrahedras_densities[i] = density;
+            m_tetrahedras[i + tet_offset * 4] = tetrahedras[i] + node_offset;
+        m_tetrahedras_densities.resize(m_tetrahedras_densities.size() + m_tetrahedras.size() / 4);
+        for (size_t i = 0; i < m_tetrahedras.size() / 4; ++i)
+            m_tetrahedras_densities[i + tet_offset] = density;
     }
 };
 
