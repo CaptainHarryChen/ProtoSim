@@ -70,36 +70,62 @@ namespace TetrahedronLoader
         }
 
         // 2. generate surface triangles
-        std::map<std::vector<unsigned int>, unsigned int> triangles;
-        for (unsigned int i = 0; i < nTets; ++i)
+        std::fstream faceFS(filename + ".face");
+        if (faceFS.is_open())
         {
-            for (unsigned int j = 0; j < 4; ++j)
+            // <# of faces> <# of attributes>
+            unsigned int nFaces, nFaceAttributes;
+            faceFS >> nFaces >> nFaceAttributes;
+            surface_triangles.resize(nFaces * 3);
+            for (unsigned int i = 0; i < nFaces; ++i)
             {
-                std::vector<unsigned int> tri = {tetrahedras[4 * i + j], tetrahedras[4 * i + (j + 1) % 4], tetrahedras[4 * i + (j + 2) % 4]};
-                std::sort(tri.begin(), tri.end());
-                if (triangles.find(tri) == triangles.end())
-                    triangles[tri] = tetrahedras[4 * i + (j + 3) % 4];
-                else
-                    triangles[tri] = -1;
+                unsigned int _;
+                faceFS >> _ >> surface_triangles[3 * i] >> surface_triangles[3 * i + 2] >> surface_triangles[3 * i + 1];
+                if (nodeStartAtZero == false)
+                {
+                    surface_triangles[3 * i] -= 1;
+                    surface_triangles[3 * i + 1] -= 1;
+                    surface_triangles[3 * i + 2] -= 1;
+                }
+                for (unsigned int j = 0; j < nFaceAttributes; ++j)
+                {
+                    faceFS >> _;
+                }
             }
         }
-        for (const auto &iter : triangles)
+        else
         {
-            if (iter.second == -1)
-                continue;
-            unsigned int id_a = iter.first[0];
-            unsigned int id_b = iter.first[1];
-            unsigned int id_c = iter.first[2];
-            unsigned int id_d = iter.second;
-            glm::vec3 a = glm::vec3(vertices[id_a * 3], vertices[id_a * 3 + 1], vertices[id_a * 3 + 2]);
-            glm::vec3 b = glm::vec3(vertices[id_b * 3], vertices[id_b * 3 + 1], vertices[id_b * 3 + 2]);
-            glm::vec3 c = glm::vec3(vertices[id_c * 3], vertices[id_c * 3 + 1], vertices[id_c * 3 + 2]);
-            glm::vec3 d = glm::vec3(vertices[id_d * 3], vertices[id_d * 3 + 1], vertices[id_d * 3 + 2]);
-            if (glm::dot(glm::cross(b - a, c - a), d - a) > 0.0f)
-                std::swap(id_b, id_c);
-            surface_triangles.push_back(id_a);
-            surface_triangles.push_back(id_b);
-            surface_triangles.push_back(id_c);
+            std::map<std::vector<unsigned int>, unsigned int> triangles;
+            for (unsigned int i = 0; i < nTets; ++i)
+            {
+                for (unsigned int j = 0; j < 4; ++j)
+                {
+                    std::vector<unsigned int> tri = {tetrahedras[4 * i + j], tetrahedras[4 * i + (j + 1) % 4], tetrahedras[4 * i + (j + 2) % 4]};
+                    std::sort(tri.begin(), tri.end());
+                    if (triangles.find(tri) == triangles.end())
+                        triangles[tri] = tetrahedras[4 * i + (j + 3) % 4];
+                    else
+                        triangles[tri] = -1;
+                }
+            }
+            for (const auto &iter : triangles)
+            {
+                if (iter.second == -1)
+                    continue;
+                unsigned int id_a = iter.first[0];
+                unsigned int id_b = iter.first[1];
+                unsigned int id_c = iter.first[2];
+                unsigned int id_d = iter.second;
+                glm::vec3 a = glm::vec3(vertices[id_a * 3], vertices[id_a * 3 + 1], vertices[id_a * 3 + 2]);
+                glm::vec3 b = glm::vec3(vertices[id_b * 3], vertices[id_b * 3 + 1], vertices[id_b * 3 + 2]);
+                glm::vec3 c = glm::vec3(vertices[id_c * 3], vertices[id_c * 3 + 1], vertices[id_c * 3 + 2]);
+                glm::vec3 d = glm::vec3(vertices[id_d * 3], vertices[id_d * 3 + 1], vertices[id_d * 3 + 2]);
+                if (glm::dot(glm::cross(b - a, c - a), d - a) > 0.0f)
+                    std::swap(id_b, id_c);
+                surface_triangles.push_back(id_a);
+                surface_triangles.push_back(id_b);
+                surface_triangles.push_back(id_c);
+            }
         }
     }
 
