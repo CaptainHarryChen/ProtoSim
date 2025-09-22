@@ -1,4 +1,5 @@
 #include "StrongPDMPMSolver.cuh"
+#include <thrust/fill.h>
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
 #include <Math/elastic_model.cuh>
@@ -51,6 +52,23 @@ namespace StrongPDMPMSolverKernel
         K_diag[0] = delta_f[0] + delta_f[1] + delta_f[2] + delta_f[3] + delta_f[4] + delta_f[5] + delta_f[6] + delta_f[7] + delta_f[8];
         for (unsigned int i = 0; i < 4; ++i)
             atomicAdd(&data->dev_stiffness_matrix_diag[v[i]], K_diag[i]);
+    }
+
+    template <typename Real>
+    __global__ void sample_initialize(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int s = blockDim.x * blockIdx.x + threadIdx.x;
+        if (s >= data->m_num_sample)
+            return;
+        unsigned int tri_idx = (unsigned int)data->dev_sample_tri_idx[s];
+        Real mass_inv = 0.0f;
+        for (unsigned int i = 0; i < 3; ++i)
+        {
+            unsigned int v = data->dev_triangle[tri_idx * 3 + i];
+            mass_inv += (data->dev_sample_barycentric[s * 3 + i] * data->dev_sample_barycentric[s * 3 + i]) / data->dev_mass[v];
+        }
+        data->dev_sample_mass[s] = 1.0f / mass_inv;
+        data->dev_sample_J[s] = 1.0f;
     }
 
     template <typename Real>
@@ -207,7 +225,12 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
     const std::vector<Real> &tetrahedron_density,
 
     const std::vector<Real> &sample_barycentric_weights,
-    const std::vector<unsigned int> &sample_triangle_idx
+    const std::vector<unsigned int> &sample_triangle_idx,
+    const std::vector<Real> &sample_area,
+
+    std::vector<Real> bbox,
+    Real grid_spacing,
+    unsigned int boundary_thickness
 )
 {
     m_data.m_num_vert = (unsigned int)node_position.size() / 3;
@@ -251,6 +274,46 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
     cudaMemcpy(m_data.dev_sample_barycentric, sample_barycentric_weights.data(), sizeof(Real) * m_data.m_num_sample * 3, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_tri_idx, sizeof(unsigned int) * m_data.m_num_sample);
     cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * m_data.m_num_sample, cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&m_data.dev_sample_area, sizeof(Real) * m_data.m_num_sample);
+    cudaMemcpy(m_data.dev_sample_area, sample_area.data(), sizeof(Real) * m_data.m_num_sample, cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&m_data.dev_sample_velocity, sizeof(Real) * m_data.m_num_sample * 3);
+    cudaMalloc((void **)&m_data.dev_sample_mass, sizeof(Real) * m_data.m_num_sample);
+    cudaMalloc((void **)&m_data.dev_sample_J, sizeof(Real) * m_data.m_num_sample);
+    cudaMalloc((void **)&m_data.dev_sample_temp_J, sizeof(Real) * m_data.m_num_sample);
+
+    // need expand the bbox to ensure the particles can get 3x3x3 grids
+    std::vector<Real> inner_bbox;
+    std::vector<Real> outer_bbox;
+    std::vector<unsigned int> grid_size; // order: x y z
+    m_data.m_grid_spacing = grid_spacing;
+    m_data.m_boundary_thickness = boundary_thickness;
+    inner_bbox = bbox;
+    outer_bbox = bbox;
+    for (unsigned int i = 0; i < 3; ++i)
+    {
+        outer_bbox[i] -= m_data.m_boundary_thickness * m_data.m_grid_spacing;
+        outer_bbox[i + 3] += m_data.m_boundary_thickness * m_data.m_grid_spacing;
+    }
+    grid_size.clear();
+    for (unsigned int i = 0; i < 3; ++i)
+        grid_size.push_back((unsigned int)(floor((outer_bbox[i + 3] - outer_bbox[i]) / m_data.m_grid_spacing + 0.5)) + 1);
+    for (unsigned int i = 0; i < 3; ++i)
+        outer_bbox[i + 3] = outer_bbox[i] + m_data.m_grid_spacing * grid_size[i];
+    m_data.m_num_grid = grid_size[0] * grid_size[1] * grid_size[2];
+    printf("num_grid = %u grid_size = [%u %u %u] boundary_thickness = %u\n", m_data.m_num_grid, grid_size[0], grid_size[1], grid_size[2], m_data.m_boundary_thickness);
+
+    cudaMalloc(&m_data.dev_inner_bbox, sizeof(Real) * 6);
+    cudaMemcpy(m_data.dev_inner_bbox, inner_bbox.data(), sizeof(Real) * 6, cudaMemcpyHostToDevice);
+    cudaMalloc(&m_data.dev_outer_bbox, sizeof(Real) * 6);
+    cudaMemcpy(m_data.dev_outer_bbox, outer_bbox.data(), sizeof(Real) * 6, cudaMemcpyHostToDevice);
+    cudaMalloc(&m_data.dev_grid_size, sizeof(unsigned int) * 3);
+    cudaMemcpy(m_data.dev_grid_size, grid_size.data(), sizeof(unsigned int) * 3, cudaMemcpyHostToDevice);
+    cudaMalloc(&m_data.dev_grid_momentum, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMalloc(&m_data.dev_grid_mass, sizeof(Real) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
+    cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
@@ -268,6 +331,7 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
     StrongPDMPMSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
     StrongPDMPMSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
     StrongPDMPMSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::sample_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
@@ -289,6 +353,24 @@ StrongPDMPMSolver<Real>::~StrongPDMPMSolver()
     cudaFree(m_data.dev_tet_volume);
     cudaFree(m_data.dev_tet_force);
     cudaFree(m_data.dev_invDm);
+
+    cudaFree(m_data.dev_triangle);
+
+    cudaFree(m_data.dev_sample_position);
+    cudaFree(m_data.dev_sample_barycentric);
+    cudaFree(m_data.dev_sample_tri_idx);
+    cudaFree(m_data.dev_sample_area);
+    cudaFree(m_data.dev_sample_velocity);
+    cudaFree(m_data.dev_sample_mass);
+    cudaFree(m_data.dev_sample_J);
+    cudaFree(m_data.dev_sample_temp_J);
+
+    cudaFree(m_data.dev_inner_bbox);
+    cudaFree(m_data.dev_outer_bbox);
+    cudaFree(m_data.dev_grid_size);
+    cudaFree(m_data.dev_grid_momentum);
+    cudaFree(m_data.dev_grid_mass);
+    cudaFree(m_data.dev_grid_velocity);
 
     cudaFree(m_data.dev_gravity);
 
