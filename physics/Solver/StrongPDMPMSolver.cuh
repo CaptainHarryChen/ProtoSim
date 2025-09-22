@@ -37,12 +37,13 @@ struct StrongPDMPMSolverData
 
     unsigned int m_num_tri;
     unsigned int *dev_triangle;
+    Real *dev_tri_normal;
 
     unsigned int m_num_sample;
     Real *dev_sample_position;
     Real *dev_sample_barycentric;
     unsigned int *dev_sample_tri_idx;
-    Real *dev_sample_area;
+    Real *dev_sample_volume;
     Real *dev_sample_velocity;
     Real *dev_sample_mass;
     Real *dev_sample_J;
@@ -56,6 +57,7 @@ struct StrongPDMPMSolverData
     unsigned int *dev_grid_size;
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
+    Real *dev_grid_force;
     Real *dev_grid_velocity;
 
     Real m_time_step;
@@ -79,7 +81,7 @@ public:
 
         const std::vector<Real> &sample_barycentric_weights,
         const std::vector<unsigned int> &sample_triangle_idx,
-        const std::vector<Real> &sample_area,
+        const std::vector<Real> &sample_volume,
 
         std::vector<Real> bbox,
         Real grid_spacing,

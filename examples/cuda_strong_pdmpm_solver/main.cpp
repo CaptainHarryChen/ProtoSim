@@ -29,7 +29,7 @@ public:
 
     std::vector<Real> m_sample_barycentric_weights;
     std::vector<unsigned int> m_sample_tri_idx;
-    std::vector<Real> m_sample_areas;
+    std::vector<Real> m_sample_volumes;
     std::shared_ptr<ParticleBatch> m_sample_particle_batch;
     std::vector<std::pair<std::shared_ptr<ParticleBatch>, size_t>> m_sample_batch_offsets;
 
@@ -73,7 +73,7 @@ public:
             m_surface_triangles[i + tri_offset * 3] = surface_triangles[i] + node_offset;
     }
 
-    void LoadTetrahedronWithPLYSample(std::string inputfile, Real density, Real per_sample_area,
+    void LoadTetrahedronWithPLYSample(std::string inputfile, Real density, Real per_sample_volume,
                                       float scale, glm::vec3 translate, glm::vec3 rotate,
                                       std::vector<glm::vec3> mesh_render_material,
                                       float sample_radius, glm::vec3 sample_color, glm::vec2 sample_material)
@@ -119,9 +119,9 @@ public:
         for (size_t i = 0; i < sample_barycentric_weights.size(); ++i)
             m_sample_barycentric_weights[i + sample_offset * 3] = sample_barycentric_weights[i];
 
-        m_sample_areas.resize(m_sample_tri_idx.size());
+        m_sample_volumes.resize(m_sample_tri_idx.size());
         for (size_t i = 0; i < sample_tri_idx.size(); ++i)
-            m_sample_areas[i + sample_offset] = per_sample_area;
+            m_sample_volumes[i + sample_offset] = per_sample_volume;
 
         std::vector<Particle> particles(sample_tri_idx.size());
         for (size_t i = 0; i < sample_tri_idx.size(); ++i)
@@ -235,12 +235,12 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f,
+    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
                                         15.0f, glm::vec3(0.0f, 6.0f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f,
+    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
                                         15.0f, glm::vec3(0.0f, 2.0f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
@@ -259,7 +259,7 @@ int main()
 
         scene->m_sample_barycentric_weights,
         scene->m_sample_tri_idx,
-        scene->m_sample_areas,
+        scene->m_sample_volumes,
 
         bbox, dist, boundary_thickness
     );

@@ -55,6 +55,21 @@ namespace StrongPDMPMSolverKernel
     }
 
     template <typename Real>
+    __global__ void calc_triangle_normal(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
+        if (t >= data->m_num_tri)
+            return;
+        unsigned int v0 = data->dev_triangle[t * 3 + 0] * 3;
+        unsigned int v1 = data->dev_triangle[t * 3 + 1] * 3;
+        unsigned int v2 = data->dev_triangle[t * 3 + 2] * 3;
+        Real e1[3], e2[3];
+        cudaPhysics::vecSubs3(e1, &data->dev_position[v1], &data->dev_position[v0]);
+        cudaPhysics::vecSubs3(e2, &data->dev_position[v2], &data->dev_position[v0]);
+        cudaPhysics::cross3(&data->dev_tri_normal[t * 3], e1, e2);
+    }
+
+    template <typename Real>
     __global__ void sample_initialize(StrongPDMPMSolverData<Real> *data)
     {
         unsigned int s = blockDim.x * blockIdx.x + threadIdx.x;
@@ -215,6 +230,26 @@ namespace StrongPDMPMSolverKernel
         sample_position[1] = barycentric[0] * data->dev_position[v0 + 1] + barycentric[1] * data->dev_position[v1 + 1] + barycentric[2] * data->dev_position[v2 + 1];
         sample_position[2] = barycentric[0] * data->dev_position[v0 + 2] + barycentric[1] * data->dev_position[v1 + 2] + barycentric[2] * data->dev_position[v2 + 2];
     }
+
+    template <typename Real>
+    __global__ void calc_sample_velocity(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        unsigned int tri_idx = (unsigned int)data->dev_sample_tri_idx[i];
+        Real barycentric[3];
+        barycentric[0] = data->dev_sample_barycentric[i * 3 + 0];
+        barycentric[1] = data->dev_sample_barycentric[i * 3 + 1];
+        barycentric[2] = data->dev_sample_barycentric[i * 3 + 2];
+        unsigned int v0 = data->dev_triangle[tri_idx * 3 + 0] * 3;
+        unsigned int v1 = data->dev_triangle[tri_idx * 3 + 1] * 3;
+        unsigned int v2 = data->dev_triangle[tri_idx * 3 + 2] * 3;
+        Real *sample_velocity = &data->dev_sample_velocity[i * 3];
+        sample_velocity[0] = barycentric[0] * data->dev_velocity[v0 + 0] + barycentric[1] * data->dev_velocity[v1 + 0] + barycentric[2] * data->dev_velocity[v2 + 0];
+        sample_velocity[1] = barycentric[0] * data->dev_velocity[v0 + 1] + barycentric[1] * data->dev_velocity[v1 + 1] + barycentric[2] * data->dev_velocity[v2 + 1];
+        sample_velocity[2] = barycentric[0] * data->dev_velocity[v0 + 2] + barycentric[1] * data->dev_velocity[v1 + 2] + barycentric[2] * data->dev_velocity[v2 + 2];
+    }
 }
 
 template <typename Real>
@@ -226,7 +261,7 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
 
     const std::vector<Real> &sample_barycentric_weights,
     const std::vector<unsigned int> &sample_triangle_idx,
-    const std::vector<Real> &sample_area,
+    const std::vector<Real> &sample_volume,
 
     std::vector<Real> bbox,
     Real grid_spacing,
@@ -268,14 +303,15 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
 
     cudaMalloc((void **)&m_data.dev_triangle, sizeof(unsigned int) * m_data.m_num_tri * 3);
     cudaMemcpy(m_data.dev_triangle, surface_triangle.data(), sizeof(unsigned int) * m_data.m_num_tri * 3, cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&m_data.dev_tri_normal, sizeof(Real) * m_data.m_num_tri * 3);
 
     cudaMalloc((void **)&m_data.dev_sample_position, sizeof(Real) * m_data.m_num_sample * 3);
     cudaMalloc((void **)&m_data.dev_sample_barycentric, sizeof(Real) * m_data.m_num_sample * 3);
     cudaMemcpy(m_data.dev_sample_barycentric, sample_barycentric_weights.data(), sizeof(Real) * m_data.m_num_sample * 3, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_tri_idx, sizeof(unsigned int) * m_data.m_num_sample);
     cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * m_data.m_num_sample, cudaMemcpyHostToDevice);
-    cudaMalloc((void **)&m_data.dev_sample_area, sizeof(Real) * m_data.m_num_sample);
-    cudaMemcpy(m_data.dev_sample_area, sample_area.data(), sizeof(Real) * m_data.m_num_sample, cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&m_data.dev_sample_volume, sizeof(Real) * m_data.m_num_sample);
+    cudaMemcpy(m_data.dev_sample_volume, sample_volume.data(), sizeof(Real) * m_data.m_num_sample, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_velocity, sizeof(Real) * m_data.m_num_sample * 3);
     cudaMalloc((void **)&m_data.dev_sample_mass, sizeof(Real) * m_data.m_num_sample);
     cudaMalloc((void **)&m_data.dev_sample_J, sizeof(Real) * m_data.m_num_sample);
@@ -312,6 +348,8 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_mass, sizeof(Real) * m_data.m_num_grid);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
+    cudaMalloc(&m_data.dev_grid_force, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
@@ -355,11 +393,12 @@ StrongPDMPMSolver<Real>::~StrongPDMPMSolver()
     cudaFree(m_data.dev_invDm);
 
     cudaFree(m_data.dev_triangle);
+    cudaFree(m_data.dev_tri_normal);
 
     cudaFree(m_data.dev_sample_position);
     cudaFree(m_data.dev_sample_barycentric);
     cudaFree(m_data.dev_sample_tri_idx);
-    cudaFree(m_data.dev_sample_area);
+    cudaFree(m_data.dev_sample_volume);
     cudaFree(m_data.dev_sample_velocity);
     cudaFree(m_data.dev_sample_mass);
     cudaFree(m_data.dev_sample_J);
@@ -370,6 +409,7 @@ StrongPDMPMSolver<Real>::~StrongPDMPMSolver()
     cudaFree(m_data.dev_grid_size);
     cudaFree(m_data.dev_grid_momentum);
     cudaFree(m_data.dev_grid_mass);
+    cudaFree(m_data.dev_grid_force);
     cudaFree(m_data.dev_grid_velocity);
 
     cudaFree(m_data.dev_gravity);
