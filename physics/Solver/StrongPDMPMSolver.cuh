@@ -27,6 +27,7 @@ struct StrongPDMPMSolverData
     Real *dev_mass;
     Real *dev_vert_force;
     Real *dev_constraint_Hessian_diag;
+    Real *dev_collision_Hessian_diag;
     Real *dev_stiffness_matrix_diag;
 
     unsigned int *dev_tetrahedron;
@@ -48,6 +49,10 @@ struct StrongPDMPMSolverData
     Real *dev_sample_mass;
     Real *dev_sample_J;
     Real *dev_sample_temp_J;
+    Real *dev_sample_C;
+    Real *dev_sample_force;
+    Real *dev_sample_diag_K;
+    unsigned int *dev_sample_to_grid_id;
 
     unsigned int m_num_grid;
     Real m_grid_spacing;
@@ -59,6 +64,7 @@ struct StrongPDMPMSolverData
     Real *dev_grid_mass;
     Real *dev_grid_force;
     Real *dev_grid_velocity;
+    Real *dev_grid_diag_K;
 
     Real m_time_step;
     Real m_time_step_inv;

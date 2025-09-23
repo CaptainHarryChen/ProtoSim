@@ -97,6 +97,168 @@ namespace StrongPDMPMSolverKernel
     }
 
     template <typename Real>
+    __global__ void calc_sample_to_leftbottom_grid_id(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        // find the nearest grid, so plus 0.5 and floor
+        int x = floor((data->dev_sample_position[i * 3 + 0] - data->dev_outer_bbox[0]) / data->m_grid_spacing + 0.5);
+        int y = floor((data->dev_sample_position[i * 3 + 1] - data->dev_outer_bbox[1]) / data->m_grid_spacing + 0.5);
+        int z = floor((data->dev_sample_position[i * 3 + 2] - data->dev_outer_bbox[2]) / data->m_grid_spacing + 0.5);
+        // get the left bottom grid id
+        x--;
+        y--;
+        z--;
+        if (x < 0 || y < 0 || z < 0 || x >= data->dev_grid_size[0] - 2 || y >= data->dev_grid_size[1] - 2 || z >= data->dev_grid_size[2] - 2)
+        {
+            x = max(0, min(x, (int)data->dev_grid_size[0] - 2));
+            y = max(0, min(y, (int)data->dev_grid_size[1] - 2));
+            z = max(0, min(z, (int)data->dev_grid_size[2] - 2));
+            printf("Warning: sample %d is out of grid, set to %d %d %d [Sample position] %.10f %.10f %.10f\n", i, x, y, z, data->dev_sample_position[i * 3 + 0], data->dev_sample_position[i * 3 + 1], data->dev_sample_position[i * 3 + 2]);
+        }
+
+        data->dev_sample_to_grid_id[i] = x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z;
+    }
+
+    template <typename Real>
+    __device__ void get_grid_position(Real *grid_position, unsigned int id, StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int z = id % data->dev_grid_size[2];
+        unsigned int y = (id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int x = id / data->dev_grid_size[2] / data->dev_grid_size[1];
+        grid_position[0] = data->dev_outer_bbox[0] + x * data->m_grid_spacing;
+        grid_position[1] = data->dev_outer_bbox[1] + y * data->m_grid_spacing;
+        grid_position[2] = data->dev_outer_bbox[2] + z * data->m_grid_spacing;
+    }
+
+    template <typename Real>
+    __device__ Real grid_particle_quadratic_weight(const Real *grid_position, const Real *particle_position, Real grid_spacing)
+    {
+        Real result = 1.;
+        for (unsigned int i = 0; i < 3; ++i)
+        {
+            Real d = (particle_position[i] - grid_position[i]) / grid_spacing;
+            Real w = 0;
+            if (-0.5 < d && d < 0.5)
+                w = 0.75 - d * d;
+            else if (0.5 <= d && d < 1.5)
+                w = 0.5 * (1.5 - d) * (1.5 - d);
+            else if (-1.5 < d && d <= -0.5)
+                w = 0.5 * (1.5 + d) * (1.5 + d);
+            result *= w;
+        }
+        return result;
+    }
+
+    template <typename Real>
+    __global__ void P2G_mass(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        const Real *sample_position = &data->dev_sample_position[i * 3];
+        const Real *sample_velocity = &data->dev_sample_velocity[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+                    atomicAdd(&data->dev_grid_mass[grid_id], weight * data->dev_sample_mass[i]);
+                }
+    }
+
+    template <typename Real>
+    __global__ void P2G_grid_diag_K(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        const Real *sample_position = &data->dev_sample_position[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+                    Real delta_position[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, sample_position);
+                    
+                    Real diag_K[3];
+                    cudaPhysics::vecMul3(diag_K, delta_position, delta_position);
+                    cudaPhysics::vecMul3(diag_K, -data->dev_sample_volume[i]
+                                                * data->m_lame_lambda
+                                                * data->dev_sample_J[i] * data->dev_sample_J[i]
+                                                * 16 * weight * weight
+                                                / (data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing));
+                    atomicAdd(&data->dev_grid_diag_K[grid_id * 3 + 0], diag_K[0]);
+                    atomicAdd(&data->dev_grid_diag_K[grid_id * 3 + 1], diag_K[1]);
+                    atomicAdd(&data->dev_grid_diag_K[grid_id * 3 + 2], diag_K[2]);
+                }
+    }
+
+    template <typename Real>
+    __global__ void G2P_sample_diag_K(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        const Real *sample_position = &data->dev_sample_position[i * 3];
+        const Real *sample_normal = &data->dev_tri_normal[data->dev_sample_tri_idx[i] * 3];
+        Real sample_mass = data->dev_sample_mass[i];
+        Real *sample_diag_K = &data->dev_sample_diag_K[i * 3];
+        sample_diag_K[0] = sample_diag_K[1] = sample_diag_K[2] = 0;
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+
+                    cudaPhysics::axpby(sample_diag_K, (Real)1.0, sample_diag_K, weight * weight / data->dev_grid_mass[grid_id], &data->dev_grid_diag_K[grid_id * 3], 3);
+                }
+        cudaPhysics::vecMul3(sample_diag_K, sample_diag_K, sample_normal);
+        cudaPhysics::vecMul3(sample_diag_K, sample_diag_K, sample_normal);
+        cudaPhysics::vecMul3(sample_diag_K, sample_mass);
+    }
+
+    template <typename Real>
+    __global__ void accumulate_collision_Hessian_diag_from_sample(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockIdx.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        Real *sample_diag_K = &data->dev_sample_diag_K[i * 3];
+        for (unsigned int j = 0; j < 3; ++j)
+        {
+            Real weight = data->dev_sample_barycentric[i * 3 + j];
+            unsigned int v = data->dev_triangle[data->dev_sample_tri_idx[i] * 3 + j];
+            atomicAdd(&data->dev_collision_Hessian_diag[v * 3 + 0], sample_diag_K[0] * weight * weight * data->m_time_step_inv);
+            atomicAdd(&data->dev_collision_Hessian_diag[v * 3 + 1], sample_diag_K[1] * weight * weight * data->m_time_step_inv);
+            atomicAdd(&data->dev_collision_Hessian_diag[v * 3 + 2], sample_diag_K[2] * weight * weight * data->m_time_step_inv);
+        }
+    }
+
+    template <typename Real>
     __global__ void calc_tetrahedron_force(StrongPDMPMSolverData<Real> *data)
     {
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
@@ -133,7 +295,7 @@ namespace StrongPDMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void accumulate_vert_force(StrongPDMPMSolverData<Real> *data)
+    __global__ void accumulate_vert_force_from_tet(StrongPDMPMSolverData<Real> *data)
     {
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
         if (t >= data->m_num_tet)
@@ -150,15 +312,189 @@ namespace StrongPDMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_ground_collision_force(StrongPDMPMSolverData<Real> *data)
+    __global__ void P2G_momentum(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        const Real *sample_position = &data->dev_sample_position[i * 3];
+        const Real *sample_velocity = &data->dev_sample_velocity[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+                    Real momentum[3];
+                    Real delta_position[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, sample_position);
+                    cudaPhysics::matVec3(momentum, &data->dev_sample_C[i * 9], delta_position);
+                    cudaPhysics::vecMul3(momentum, data->dev_sample_mass[i], momentum);
+
+                    Real temp_momentum[3];
+                    cudaPhysics::vecMul3(temp_momentum, data->dev_sample_mass[i], sample_velocity);
+                    cudaPhysics::vecAdd3(momentum, temp_momentum, momentum);
+                    cudaPhysics::vecMul3(momentum, weight, momentum);
+                    atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 0], momentum[0]);
+                    atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 1], momentum[1]);
+                    atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 2], momentum[2]);
+                }
+    }
+
+    template <typename Real>
+    __global__ void calc_grids_velocity(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_grid)
+            return;
+        if (data->dev_grid_mass[i] > 0)
+            cudaPhysics::vecMul3(&data->dev_grid_velocity[i * 3], (Real)(1. / data->dev_grid_mass[i]), &data->dev_grid_momentum[i * 3]);
+        else
+        {
+            data->dev_grid_velocity[i * 3 + 0] = 0;
+            data->dev_grid_velocity[i * 3 + 1] = 0;
+            data->dev_grid_velocity[i * 3 + 2] = 0;
+        }
+    }
+
+    template <typename Real>
+    __global__ void G2P_calc_sample_temp_J(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        Real &temp_J = data->dev_sample_temp_J[i];
+        temp_J = 0;
+        const Real *sample_position = &data->dev_sample_position[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+
+                    Real delta_position[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, sample_position);
+                    temp_J += weight * cudaPhysics::dot3(&data->dev_grid_velocity[grid_id * 3], delta_position);
+                }
+        temp_J = (1 + data->m_time_step * 4 / (data->m_grid_spacing * data->m_grid_spacing) * temp_J) * data->dev_sample_J[i];
+    }
+
+    template <typename Real>
+    __global__ void P2G_calc_grid_force(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        const Real *sample_position = &data->dev_sample_position[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+                    Real delta_position[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, sample_position);
+                    Real temp = -data->dev_sample_volume[i] 
+                            * data->m_lame_lambda 
+                            * (data->dev_sample_temp_J[i] - 1)
+                            * data->dev_sample_J[i]
+                            * 4 / (data->m_grid_spacing * data->m_grid_spacing)
+                            * weight;
+                    Real force[3];
+                    cudaPhysics::vecMul3(force, temp, delta_position);
+                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 0], force[0]);
+                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 1], force[1]);
+                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 2], force[2]);
+                }
+    }
+
+    template <typename Real>
+    __global__ void G2P_calc_sample_force(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        const Real *sample_position = &data->dev_sample_position[i * 3];
+        const Real *sample_normal = &data->dev_tri_normal[data->dev_sample_tri_idx[i] * 3];
+        Real sample_mass = data->dev_sample_mass[i];
+        Real *sample_force = &data->dev_sample_force[i * 3];
+        sample_force[0] = sample_force[1] = sample_force[2] = 0;
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+
+                    Real len = cudaPhysics::dot3(&data->dev_grid_velocity[grid_id * 3], sample_normal);
+                    if (len >= 0)
+                    {
+                        len = 0;
+                    }
+                    cudaPhysics::axpby(sample_force, (Real)1.0, sample_force, sample_mass * weight / data->dev_grid_mass[grid_id] * len, sample_normal, 3);
+                }
+    }
+
+    template <typename Real>
+    __global__ void accumulate_vert_force_from_sample(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        Real *sample_force = &data->dev_sample_force[i * 3];
+        for (unsigned int j = 0; j < 3; ++j)
+        {
+            Real weight = data->dev_sample_barycentric[i * 3 + j];
+            unsigned int v = data->dev_triangle[data->dev_sample_tri_idx[i] * 3 + j];
+            atomicAdd(&data->dev_vert_force[3 * v + 0], sample_force[0] * weight);
+            atomicAdd(&data->dev_vert_force[3 * v + 1], sample_force[1] * weight);
+            atomicAdd(&data->dev_vert_force[3 * v + 2], sample_force[2] * weight);
+        }
+    }
+
+    template <typename Real>
+    __global__ void calc_box_collision_force(StrongPDMPMSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
             return;
-        if (data->dev_position[3 * v + 1] < 0.0f)
+        for (unsigned int j = 0; j < 3; ++j)
         {
-            data->dev_vert_force[3 * v + 1] += -data->m_ground_collision_stiffness * data->dev_position[3 * v + 1];
-            data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+            if (data->dev_position[3 * v + j] < data->dev_inner_bbox[j])
+            {
+                data->dev_vert_force[3 * v + j] += data->m_ground_collision_stiffness * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]);
+                data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+            }
+            if (data->dev_position[3 * v + j] > data->dev_inner_bbox[j + 3])
+            {
+                data->dev_vert_force[3 * v + j] += data->m_ground_collision_stiffness * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]);
+                data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+            }
         }
     }
 
@@ -173,8 +509,14 @@ namespace StrongPDMPMSolverKernel
         cudaPhysics::vecSubs3(delta_x, &data->dev_position_guess[3 * v], &data->dev_position[3 * v]);
         cudaPhysics::vecMul3(grad, data->dev_mass[v] * data->m_time_step_inv * data->m_time_step_inv, delta_x);
         cudaPhysics::vecAdd3(grad, grad, &data->dev_vert_force[3 * v]);
-        Real B = data->dev_mass[v] * data->m_time_step_inv * data->m_time_step_inv - data->dev_stiffness_matrix_diag[v] + data->dev_constraint_Hessian_diag[v];
-        cudaPhysics::axpby(&data->dev_position_next[3 * v], (Real)1, &data->dev_position[3 * v], (Real)1.0 / B, grad, 3);
+        Real B_const = data->dev_mass[v] * data->m_time_step_inv * data->m_time_step_inv - data->dev_stiffness_matrix_diag[v] + data->dev_constraint_Hessian_diag[v];
+        Real inv_B[3];
+        inv_B[0] = (Real)1.0 / (B_const + data->dev_collision_Hessian_diag[3 * v + 0]);
+        inv_B[1] = (Real)1.0 / (B_const + data->dev_collision_Hessian_diag[3 * v + 1]);
+        inv_B[2] = (Real)1.0 / (B_const + data->dev_collision_Hessian_diag[3 * v + 2]);
+        Real delta_position[3];
+        cudaPhysics::vecMul3(delta_position, inv_B, grad);
+        cudaPhysics::vecAdd3(&data->dev_position_next[3 * v], &data->dev_position[3 * v], delta_position);
     }
 
     template <typename Real>
@@ -288,6 +630,7 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
     cudaMemset(m_data.dev_mass, 0, sizeof(Real) * m_data.m_num_vert);
     cudaMalloc((void **)&m_data.dev_vert_force, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_constraint_Hessian_diag, sizeof(Real) * m_data.m_num_vert);
+    cudaMalloc((void **)&m_data.dev_collision_Hessian_diag, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_stiffness_matrix_diag, sizeof(Real) * m_data.m_num_vert);
     cudaMemset(m_data.dev_stiffness_matrix_diag, 0, sizeof(Real) * m_data.m_num_vert);
 
@@ -316,6 +659,11 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
     cudaMalloc((void **)&m_data.dev_sample_mass, sizeof(Real) * m_data.m_num_sample);
     cudaMalloc((void **)&m_data.dev_sample_J, sizeof(Real) * m_data.m_num_sample);
     cudaMalloc((void **)&m_data.dev_sample_temp_J, sizeof(Real) * m_data.m_num_sample);
+    cudaMalloc((void **)&m_data.dev_sample_C, sizeof(Real) * m_data.m_num_sample * 9);
+    cudaMemset(m_data.dev_sample_C, 0, sizeof(Real) * m_data.m_num_sample * 9);
+    cudaMalloc((void **)&m_data.dev_sample_force, sizeof(Real) * m_data.m_num_sample * 3);
+    cudaMalloc((void **)&m_data.dev_sample_diag_K, sizeof(Real) * m_data.m_num_sample * 3);
+    cudaMalloc((void **)&m_data.dev_sample_to_grid_id, sizeof(unsigned int) * m_data.m_num_sample);
 
     // need expand the bbox to ensure the particles can get 3x3x3 grids
     std::vector<Real> inner_bbox;
@@ -352,6 +700,8 @@ StrongPDMPMSolver<Real>::StrongPDMPMSolver(
     cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_velocity, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMalloc(&m_data.dev_grid_diag_K, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_diag_K, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
@@ -384,6 +734,7 @@ StrongPDMPMSolver<Real>::~StrongPDMPMSolver()
     cudaFree(m_data.dev_mass);
     cudaFree(m_data.dev_vert_force);
     cudaFree(m_data.dev_constraint_Hessian_diag);
+    cudaFree(m_data.dev_collision_Hessian_diag);
     cudaFree(m_data.dev_stiffness_matrix_diag);
 
     cudaFree(m_data.dev_tetrahedron);
@@ -403,6 +754,10 @@ StrongPDMPMSolver<Real>::~StrongPDMPMSolver()
     cudaFree(m_data.dev_sample_mass);
     cudaFree(m_data.dev_sample_J);
     cudaFree(m_data.dev_sample_temp_J);
+    cudaFree(m_data.dev_sample_C);
+    cudaFree(m_data.dev_sample_force);
+    cudaFree(m_data.dev_sample_diag_K);
+    cudaFree(m_data.dev_sample_to_grid_id);
 
     cudaFree(m_data.dev_inner_bbox);
     cudaFree(m_data.dev_outer_bbox);
@@ -411,6 +766,7 @@ StrongPDMPMSolver<Real>::~StrongPDMPMSolver()
     cudaFree(m_data.dev_grid_mass);
     cudaFree(m_data.dev_grid_force);
     cudaFree(m_data.dev_grid_velocity);
+    cudaFree(m_data.dev_grid_diag_K);
 
     cudaFree(m_data.dev_gravity);
 
@@ -420,6 +776,15 @@ StrongPDMPMSolver<Real>::~StrongPDMPMSolver()
 template <typename Real>
 void StrongPDMPMSolver<Real>::Step()
 {
+    StrongPDMPMSolverKernel::calc_triangle_normal<Real><<<CUDA_GRID_SIZE(m_data.m_num_tri), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::calc_sample_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::P2G_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemset(m_data.dev_grid_diag_K, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    StrongPDMPMSolverKernel::P2G_grid_diag_K<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::G2P_sample_diag_K<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemset(m_data.dev_collision_Hessian_diag, 0, sizeof(Real) * m_data.m_num_vert * 3);
+    StrongPDMPMSolverKernel::accumulate_collision_Hessian_diag_from_sample<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
     cudaMemcpy(m_data.dev_position_backup, m_data.dev_position, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
     StrongPDMPMSolverKernel::initial_guess<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemcpy(m_data.dev_position_guess, m_data.dev_position, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
@@ -427,17 +792,31 @@ void StrongPDMPMSolver<Real>::Step()
     Real omega = 1;
     for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
     {
+        cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
+        cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
         cudaMemset(m_data.dev_vert_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
         cudaMemset(m_data.dev_constraint_Hessian_diag, 0, sizeof(Real) * m_data.m_num_vert);
+        StrongPDMPMSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        StrongPDMPMSolverKernel::calc_sample_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
         StrongPDMPMSolverKernel::calc_tetrahedron_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        StrongPDMPMSolverKernel::accumulate_vert_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        StrongPDMPMSolverKernel::calc_ground_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        StrongPDMPMSolverKernel::accumulate_vert_force_from_tet<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+        StrongPDMPMSolverKernel::P2G_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        StrongPDMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        StrongPDMPMSolverKernel::G2P_calc_sample_temp_J<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        StrongPDMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        StrongPDMPMSolverKernel::G2P_calc_sample_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        StrongPDMPMSolverKernel::accumulate_vert_force_from_sample<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+        StrongPDMPMSolverKernel::calc_box_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
         StrongPDMPMSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         UpdateChebyshevOmega(omega, iter);
         StrongPDMPMSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         SwapPositionBuffers();
     }
-    StrongPDMPMSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    
     StrongPDMPMSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
