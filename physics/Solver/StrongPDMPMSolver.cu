@@ -554,6 +554,37 @@ namespace StrongPDMPMSolverKernel
     }
 
     template <typename Real>
+    __global__ void G2P_update_sample_C_J(StrongPDMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_sample)
+            return;
+        Real *sample_position = &data->dev_sample_position[i * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    get_grid_position(grid_position, grid_id, data);
+                    Real weight = grid_particle_quadratic_weight(grid_position, sample_position, data->m_grid_spacing);
+
+                    Real delta_position[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, sample_position);
+                    Real temp_C[9];
+                    cudaPhysics::vecvecT(temp_C, &data->dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
+                    cudaPhysics::matMul3(temp_C, weight * 4 / data->m_grid_spacing / data->m_grid_spacing, temp_C);
+                    cudaPhysics::vecAdd(&data->dev_sample_C[i * 9], temp_C, &data->dev_sample_C[i * 9], 9);
+                }
+
+        data->dev_sample_J[i] = (1 + data->m_time_step * (data->dev_sample_C[0] + data->dev_sample_C[4] + data->dev_sample_C[8])) * data->dev_sample_J[i];
+    }
+
+    template <typename Real>
     __global__ void calc_sample_position(StrongPDMPMSolverData<Real> *data)
     {
         unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -778,6 +809,7 @@ void StrongPDMPMSolver<Real>::Step()
 {
     StrongPDMPMSolverKernel::calc_triangle_normal<Real><<<CUDA_GRID_SIZE(m_data.m_num_tri), CUDA_BLOCK_SIZE>>>(m_dev_data);
     StrongPDMPMSolverKernel::calc_sample_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
     StrongPDMPMSolverKernel::P2G_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_grid_diag_K, 0, sizeof(Real) * m_data.m_num_grid * 3);
     StrongPDMPMSolverKernel::P2G_grid_diag_K<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -793,7 +825,6 @@ void StrongPDMPMSolver<Real>::Step()
     for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
     {
         cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
-        cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
         cudaMemset(m_data.dev_vert_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
         cudaMemset(m_data.dev_constraint_Hessian_diag, 0, sizeof(Real) * m_data.m_num_vert);
         StrongPDMPMSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -817,6 +848,11 @@ void StrongPDMPMSolver<Real>::Step()
         SwapPositionBuffers();
     }
     
+    StrongPDMPMSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::calc_sample_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::P2G_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    StrongPDMPMSolverKernel::G2P_update_sample_C_J<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
     StrongPDMPMSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
