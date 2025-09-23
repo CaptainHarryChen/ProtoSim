@@ -286,7 +286,11 @@ namespace ImplicitMPMSolverKernel
                                     tmp, &data->dev_grid_force[i * 3],
                             3);
         atomicAdd(data->u_residual, grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
-        cudaPhysics::vecMul3(&data->dev_grid_velocity_delta[3 * i], (Real)1.0 / data->dev_grid_diag_B[i * 3], grad);
+        Real inv_B[3];
+        inv_B[0] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 0];
+        inv_B[1] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 1];
+        inv_B[2] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 2];
+        cudaPhysics::vecMul3(&data->dev_grid_velocity_delta[3 * i], inv_B, grad);
     }
 
     template <typename Real>
