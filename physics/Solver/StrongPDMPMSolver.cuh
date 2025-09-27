@@ -6,7 +6,7 @@ const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
 const float GROUND_COLLISION_STIFFNESS = 1000000.0f;
 const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 200.0f;
+const float TIME_STEP = 1.0f / 1000.0f;
 const unsigned int MAX_ITERATIONS = 150;
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
@@ -46,6 +46,7 @@ struct StrongPDMPMSolverData
     unsigned int *dev_sample_tri_idx;
     Real *dev_sample_volume;
     Real *dev_sample_velocity;
+    Real *dev_sample_velocity_backup;
     Real *dev_sample_mass;
     Real *dev_sample_J;
     Real *dev_sample_temp_J;

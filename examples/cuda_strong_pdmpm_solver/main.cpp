@@ -136,6 +136,8 @@ public:
             glm::vec3 v2 = vertices[surface_triangles[tri_idx * 3 + 2]].position;
             particles[i].Position = bary_coords.x * v0 + bary_coords.y * v1 + bary_coords.z * v2;
             particles[i].Color = sample_color;
+            // if (i != 77)
+            //     particles[i].Color = glm::vec3(1.0f, 1.0f, 1.0f);
         }
         m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
         m_sample_batch_offsets.push_back(std::make_pair(m_sample_particle_batch, sample_offset * 3));
@@ -235,13 +237,13 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
-                                        15.0f, glm::vec3(0.0f, 6.0f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
-                                        {glm::vec3(1.0f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)},
-                                        0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
+    //                                     15.0f, glm::vec3(0.0f, 4.0f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                                     {glm::vec3(1.0f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)},
+    //                                     0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
-                                        15.0f, glm::vec3(0.0f, 2.0f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+                                        15.0f, glm::vec3(0.0f, 0.5f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
