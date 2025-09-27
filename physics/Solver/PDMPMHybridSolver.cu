@@ -241,6 +241,42 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
+    __global__ void grids_inside_velocity(PDMPMHybridSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_grid)
+            return;
+        float dis;
+        bool inside;
+        unsigned int tri_idx;
+        PDMPMHybridTools::unpack_tri_info(data->dev_grid_tri_info[i], dis, inside, tri_idx);
+        if (inside)
+        {
+            const unsigned int *tri = &data->dev_triangle[tri_idx * 3];
+            const Real *tri_a_pos = &data->dev_position[tri[0] * 3];
+            const Real *tri_b_pos = &data->dev_position[tri[1] * 3];
+            const Real *tri_c_pos = &data->dev_position[tri[2] * 3];
+            Real bary[3], v_tri[3], normal[3], delta_v[3];
+            Real grid_position[3];
+            PDMPMHybridTools::get_grid_position(grid_position, i, data);
+            cudaPhysics::projection_barycentric_coordinates(bary, grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
+            cudaPhysics::axpbypcz(v_tri, bary[0], &data->dev_velocity[tri[0] * 3], bary[1], &data->dev_velocity[tri[1] * 3], bary[2], &data->dev_velocity[tri[2] * 3], 3);
+            cudaPhysics::triangle_normal(normal, tri_a_pos, tri_b_pos, tri_c_pos);
+            cudaPhysics::vecSubs3(delta_v, &data->dev_grid_velocity[i * 3], v_tri);
+            Real collision_v = -cudaPhysics::dot3(normal, delta_v);
+            collision_v = max(collision_v, 0.0f);
+            cudaPhysics::axpby(&data->dev_grid_velocity[i * 3], (Real)1.0, &data->dev_grid_velocity[i * 3], collision_v, normal, 3);
+            Real force[3];
+            cudaPhysics::vecMul3(force, -data->dev_grid_mass[i] * data->m_time_step_inv * collision_v, normal);
+            for (unsigned int j = 0; j < 3; ++j)
+                for (unsigned int k = 0; k < 3; ++k)
+                {
+                    atomicAdd(&data->dev_vert_ext_force[tri[j] * 3 + k], bary[j] * force[k]);
+                }
+        }
+    }
+
+    template <typename Real>
     __global__ void G2P_velocity_and_C(PDMPMHybridSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -263,46 +299,14 @@ namespace PDMPMHybridSolverKernel
                     PDMPMHybridTools::get_grid_position(grid_position, grid_id, data);
                     Real weight = PDMPMHybridTools::grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
 
-                    Real grid_velocity[3];
-                    float dis;
-                    bool inside;
-                    unsigned int tri_idx;
-                    PDMPMHybridTools::unpack_tri_info(data->dev_grid_tri_info[grid_id], dis, inside, tri_idx);
-                    if (inside)
-                    {
-                        const unsigned int *tri = &data->dev_triangle[tri_idx * 3];
-                        const Real *tri_a_pos = &data->dev_position[tri[0] * 3];
-                        const Real *tri_b_pos = &data->dev_position[tri[1] * 3];
-                        const Real *tri_c_pos = &data->dev_position[tri[2] * 3];
-                        Real bary[3], v_tri[3], normal[3], delta_v[3];
-                        cudaPhysics::projection_barycentric_coordinates(bary, grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
-                        cudaPhysics::axpbypcz(v_tri, bary[0], &data->dev_velocity[tri[0] * 3], bary[1], &data->dev_velocity[tri[1] * 3], bary[2], &data->dev_velocity[tri[2] * 3], 3);
-                        cudaPhysics::triangle_normal(normal, tri_a_pos, tri_b_pos, tri_c_pos);
-                        cudaPhysics::vecSubs3(delta_v, particle_velocity, v_tri);
-                        Real collision_v = -cudaPhysics::dot3(normal, delta_v);
-                        collision_v = max(collision_v, 0.0f);
-                        cudaPhysics::axpby(grid_velocity, (Real)1.0, particle_velocity, collision_v, normal, 3);
-                        Real force[3];
-                        cudaPhysics::vecMul3(force, -data->dev_particle_mass[i] * weight * data->m_time_step_inv * collision_v, normal);
-                        for (unsigned int j = 0; j < 3; ++j)
-                            for (unsigned int k = 0; k < 3; ++k)
-                            {
-                                atomicAdd(&data->dev_vert_ext_force[tri[j] * 3 + k], bary[j] * force[k]);
-                            }
-                    }
-                    else
-                    {
-                        cudaPhysics::vecCopy3(grid_velocity, &data->dev_grid_velocity[grid_id * 3]);
-                    }
-
                     Real velocity[3];
-                    cudaPhysics::vecMul3(velocity, weight, grid_velocity);
+                    cudaPhysics::vecMul3(velocity, weight, &data->dev_grid_velocity[grid_id * 3]);
                     cudaPhysics::vecAdd3(&data->dev_particle_new_velocity[i * 3], &data->dev_particle_new_velocity[i * 3], velocity);
 
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
                     Real temp_C[9];
-                    cudaPhysics::vecvecT(temp_C, grid_velocity, delta_position, 3, 3);
+                    cudaPhysics::vecvecT(temp_C, &data->dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
                     cudaPhysics::matMul3(temp_C, weight * 4 / data->m_grid_spacing / data->m_grid_spacing, temp_C);
                     cudaPhysics::vecAdd(&data->dev_particle_C[i * 9], temp_C, &data->dev_particle_C[i * 9], 9);
                 }
@@ -772,6 +776,7 @@ void PDMPMHybridSolver<Real>::Step()
     PDMPMHybridSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_particle_new_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
+    PDMPMHybridSolverKernel::grids_inside_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PDMPMHybridSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemcpy(m_data.dev_particle_velocity, m_data.dev_particle_new_velocity, sizeof(Real) * m_data.m_num_particle * 3, cudaMemcpyDeviceToDevice);
     PDMPMHybridSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
