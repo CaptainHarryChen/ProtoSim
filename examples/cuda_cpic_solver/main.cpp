@@ -15,12 +15,12 @@
 #include <Render/RenderSystem.h>
 #include <Connector/MeshConnector.cuh>
 #include <Connector/ParticleConnector.cuh>
-#include <Solver/PDMPMHybridSolver.cuh>
+#include <Solver/CPICSolver.cuh>
 #include <proj_config.h>
 #include "GridTriangleDebugConnector.cuh"
 
 template <typename Real>
-class HybridPDMPMScene : public SimulationScene<Real>
+class CPICScene : public SimulationScene<Real>
 {
 public:
     // std::vector<Real> m_positions;
@@ -158,8 +158,8 @@ public:
 
     virtual void SetupConnectors() override
     {
-        auto solver = std::dynamic_pointer_cast<PDMPMHybridSolver<Real>>(this->m_solver);
-        assert(solver != nullptr && "Solver must be PDMPMHybridSolver");
+        auto solver = std::dynamic_pointer_cast<CPICSolver<Real>>(this->m_solver);
+        assert(solver != nullptr && "Solver must be CPICSolver");
         for (auto &[mesh, offset] : this->m_mesh_offsets)
         {
             auto position_ptr = solver->GetDeviceNodePositions();
@@ -209,7 +209,7 @@ int main()
 
     auto app = GLFWApp::GetInstance("PD-MPM Hybrid Solver Example", 1600, 900);
 
-    auto scene = std::make_shared<HybridPDMPMScene<Real>>();
+    auto scene = std::make_shared<CPICScene<Real>>();
     scene->SetupScene();
     app->AddObject(scene);
 
@@ -243,7 +243,7 @@ int main()
     unsigned int boundary_thickness = 1;
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
 
-    auto solver = std::make_shared<PDMPMHybridSolver<Real>>(
+    auto solver = std::make_shared<CPICSolver<Real>>(
         scene->m_positions,
         scene->m_surface_triangles,
         scene->m_tetrahedras,

@@ -4,13 +4,13 @@
 #include <cuda_utils/error.cuh>
 #include <cuda_utils/block_size.cuh>
 #include <Geometry/ParticleBatch.h>
-#include <Solver/PDMPMHybridSolver.cuh>
-#include <Solver/PDMPMHybridTools.cuh>
+#include <Solver/CPICSolver.cuh>
+#include <Solver/CPICTools.cuh>
 
 namespace GridTriangleDebugConnectorKernel
 {
     template <typename Real>
-    __global__ void transfer_data(Particle *dev_particles, PDMPMHybridSolverData<Real> *data, unsigned int num_particle)
+    __global__ void transfer_data(Particle *dev_particles, CPICSolverData<Real> *data, unsigned int num_particle)
     {
         unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
         if (id >= num_particle)
@@ -30,7 +30,7 @@ namespace GridTriangleDebugConnectorKernel
         float dis;
         bool inside;
         unsigned int idx;
-        PDMPMHybridTools::unpack_tri_info(data->dev_grid_tri_info[id], dis, inside, idx);
+        CPICTools::unpack_tri_info(data->dev_grid_tri_info[id], dis, inside, idx);
         if (inside)
         {
             dev_particles[id].Color = glm::vec3(1.0f, 0.5f, 0.0f);
@@ -43,7 +43,7 @@ namespace GridTriangleDebugConnectorKernel
 }
 
 template <typename Real>
-GridTriangleDebugConnector<Real>::GridTriangleDebugConnector(std::shared_ptr<ParticleBatch> particles, PDMPMHybridSolverData<Real> *data, PDMPMHybridSolverData<Real> *dev_data)
+GridTriangleDebugConnector<Real>::GridTriangleDebugConnector(std::shared_ptr<ParticleBatch> particles, CPICSolverData<Real> *data, CPICSolverData<Real> *dev_data)
     : m_particles(particles), m_data(data), m_dev_data(dev_data)
 {
     cudaCheck(cudaGraphicsGLRegisterBuffer(&m_cuda_resource_buf, particles->GetVBO(), cudaGraphicsRegisterFlagsNone));

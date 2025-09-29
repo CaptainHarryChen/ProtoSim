@@ -1,7 +1,7 @@
 #pragma once
-#include "PDMPMHybridSolver.cuh"
+#include "CPICSolver.cuh"
 
-namespace PDMPMHybridTools
+namespace CPICTools
 {
     __host__ __device__ __forceinline__ uint64_t pack_tri_info(float closest_distance, bool inside, unsigned int tri_idx)
     {
@@ -24,7 +24,7 @@ namespace PDMPMHybridTools
     }
 
     template <typename Real>
-    __device__ void get_grid_position(Real *grid_position, unsigned int id, const PDMPMHybridSolverData<Real> *data)
+    __device__ void get_grid_position(Real *grid_position, unsigned int id, const CPICSolverData<Real> *data)
     {
         unsigned int z = id % data->dev_grid_size[2];
         unsigned int y = (id / data->dev_grid_size[2]) % data->dev_grid_size[1];

@@ -17,7 +17,7 @@ const float CHEBYSHEV_RHO = 0.9f;
 const float UNDER_RELAXATION = 0.7f;
 
 template <typename Real>
-struct PDMPMHybridSolverData
+struct CPICSolverData
 {
     unsigned int m_num_particle;
 
@@ -83,10 +83,10 @@ struct PDMPMHybridSolverData
 };
 
 template <typename Real>
-class PDMPMHybridSolver : public Solver<Real>
+class CPICSolver : public Solver<Real>
 {
 public:
-    PDMPMHybridSolver(
+    CPICSolver(
         const std::vector<Real> &node_position,
         const std::vector<unsigned int> &surface_triangle,
         const std::vector<unsigned int> &tetrahedron,
@@ -103,15 +103,15 @@ public:
         Real grid_spacing,
         unsigned int boundary_thickness //
     );
-    virtual ~PDMPMHybridSolver();
+    virtual ~CPICSolver();
 
     virtual void Step() override;
     Real *GetDeviceNodePositions();
     Real *GetDeviceSamplePositions();
     Real *GetDeviceParticlePositions();
 
-    PDMPMHybridSolverData<Real> m_data;
-    PDMPMHybridSolverData<Real> *m_dev_data;
+    CPICSolverData<Real> m_data;
+    CPICSolverData<Real> *m_dev_data;
 
 protected:
 
@@ -119,7 +119,7 @@ protected:
     void SwapPositionBuffers();
 };
 
-extern template struct PDMPMHybridSolverData<float>;
-extern template struct PDMPMHybridSolverData<double>;
-extern template class PDMPMHybridSolver<float>;
-extern template class PDMPMHybridSolver<double>;
+extern template struct CPICSolverData<float>;
+extern template struct CPICSolverData<double>;
+extern template class CPICSolver<float>;
+extern template class CPICSolver<double>;

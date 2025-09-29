@@ -1,5 +1,5 @@
-#include "PDMPMHybridSolver.cuh"
-#include "PDMPMHybridTools.cuh"
+#include "CPICSolver.cuh"
+#include "CPICTools.cuh"
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
 #include <Math/geometry.cuh>
@@ -7,10 +7,10 @@
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
 
-namespace PDMPMHybridSolverKernel
+namespace CPICSolverKernel
 {
     template <typename Real>
-    __global__ void calc_sample_to_leftbottom_grid_id(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_sample_to_leftbottom_grid_id(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_sample)
@@ -35,7 +35,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void sample_to_grid(PDMPMHybridSolverData<Real> *data)
+    __global__ void sample_to_grid(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_sample)
@@ -55,20 +55,20 @@ namespace PDMPMHybridSolverKernel
                 {
                     unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
-                    PDMPMHybridTools::get_grid_position(grid_position, grid_id, data);
+                    CPICTools::get_grid_position(grid_position, grid_id, data);
                     if (cudaPhysics::is_point_in_triangle(grid_position, tri_a_pos, tri_b_pos, tri_c_pos))
                     {
                         float distance = cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
                         bool inside = distance < 0;
                         distance = inside ? -distance : distance;
-                        uint64_t packed_info = PDMPMHybridTools::pack_tri_info(distance, inside, tri_idx);
+                        uint64_t packed_info = CPICTools::pack_tri_info(distance, inside, tri_idx);
                         atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
                     }
                 }
     }
 
     template <typename Real>
-    __global__ void update_F(PDMPMHybridSolverData<Real> *data)
+    __global__ void update_F(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -92,7 +92,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_particle_affine_momentum(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_particle_affine_momentum(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -118,7 +118,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_particle_to_leftbottom_grid_id(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_particle_to_leftbottom_grid_id(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -143,7 +143,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void P2G_momentum_and_mass(PDMPMHybridSolverData<Real> *data)
+    __global__ void P2G_momentum_and_mass(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -161,8 +161,8 @@ namespace PDMPMHybridSolverKernel
                 {
                     unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
-                    PDMPMHybridTools::get_grid_position(grid_position, grid_id, data);
-                    Real weight = PDMPMHybridTools::grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
+                    CPICTools::get_grid_position(grid_position, grid_id, data);
+                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
                     Real momentum[3];
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
@@ -180,7 +180,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_grids_velocity(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_grids_velocity(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -196,7 +196,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void grids_gravity(PDMPMHybridSolverData<Real> *data)
+    __global__ void grids_gravity(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -207,7 +207,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void particles_gravity(PDMPMHybridSolverData<Real> *data)
+    __global__ void particles_gravity(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -218,7 +218,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void grids_boundary_conditions(PDMPMHybridSolverData<Real> *data)
+    __global__ void grids_boundary_conditions(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -241,7 +241,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void grids_inside_velocity(PDMPMHybridSolverData<Real> *data)
+    __global__ void grids_inside_velocity(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -249,7 +249,7 @@ namespace PDMPMHybridSolverKernel
         float dis;
         bool inside;
         unsigned int tri_idx;
-        PDMPMHybridTools::unpack_tri_info(data->dev_grid_tri_info[i], dis, inside, tri_idx);
+        CPICTools::unpack_tri_info(data->dev_grid_tri_info[i], dis, inside, tri_idx);
         if (inside)
         {
             const unsigned int *tri = &data->dev_triangle[tri_idx * 3];
@@ -258,7 +258,7 @@ namespace PDMPMHybridSolverKernel
             const Real *tri_c_pos = &data->dev_position[tri[2] * 3];
             Real bary[3], v_tri[3], normal[3], delta_v[3];
             Real grid_position[3];
-            PDMPMHybridTools::get_grid_position(grid_position, i, data);
+            CPICTools::get_grid_position(grid_position, i, data);
             cudaPhysics::projection_barycentric_coordinates(bary, grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
             cudaPhysics::axpbypcz(v_tri, bary[0], &data->dev_velocity[tri[0] * 3], bary[1], &data->dev_velocity[tri[1] * 3], bary[2], &data->dev_velocity[tri[2] * 3], 3);
             cudaPhysics::triangle_normal(normal, tri_a_pos, tri_b_pos, tri_c_pos);
@@ -277,7 +277,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void G2P_velocity_and_C(PDMPMHybridSolverData<Real> *data)
+    __global__ void G2P_velocity_and_C(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -296,8 +296,8 @@ namespace PDMPMHybridSolverKernel
                 {
                     unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
-                    PDMPMHybridTools::get_grid_position(grid_position, grid_id, data);
-                    Real weight = PDMPMHybridTools::grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
+                    CPICTools::get_grid_position(grid_position, grid_id, data);
+                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
 
                     Real velocity[3];
                     cudaPhysics::vecMul3(velocity, weight, &data->dev_grid_velocity[grid_id * 3]);
@@ -313,7 +313,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void update_particle_positions(PDMPMHybridSolverData<Real> *data)
+    __global__ void update_particle_positions(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -327,7 +327,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void particles_boundary_conditions(PDMPMHybridSolverData<Real> *data)
+    __global__ void particles_boundary_conditions(CPICSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -346,7 +346,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void tetrahedron_initialize(PDMPMHybridSolverData<Real> *data)
+    __global__ void tetrahedron_initialize(CPICSolverData<Real> *data)
     {
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
         if (t >= data->m_num_tet)
@@ -372,7 +372,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void tet_stiffness_matrix_diag(PDMPMHybridSolverData<Real> *data)
+    __global__ void tet_stiffness_matrix_diag(CPICSolverData<Real> *data)
     {
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
         if (t >= data->m_num_tet)
@@ -394,7 +394,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void initial_guess(PDMPMHybridSolverData<Real> *data)
+    __global__ void initial_guess(CPICSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
@@ -406,7 +406,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_tetrahedron_force(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_tetrahedron_force(CPICSolverData<Real> *data)
     {
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
         if (t >= data->m_num_tet)
@@ -442,7 +442,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void accumulate_vert_force(PDMPMHybridSolverData<Real> *data)
+    __global__ void accumulate_vert_force(CPICSolverData<Real> *data)
     {
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
         if (t >= data->m_num_tet)
@@ -459,7 +459,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_box_collision_force(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_box_collision_force(CPICSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
@@ -480,7 +480,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void jacobi_iteration(PDMPMHybridSolverData<Real> *data)
+    __global__ void jacobi_iteration(CPICSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
@@ -495,7 +495,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void update_position(PDMPMHybridSolverData<Real> *data)
+    __global__ void update_position(CPICSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
@@ -504,7 +504,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void Chebyshev(PDMPMHybridSolverData<Real> *data, Real omega)
+    __global__ void Chebyshev(CPICSolverData<Real> *data, Real omega)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
@@ -517,7 +517,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void swap_position(PDMPMHybridSolverData<Real> *data)
+    __global__ void swap_position(CPICSolverData<Real> *data)
     {
         Real *temp = data->dev_position;
         data->dev_position = data->dev_position_prev;
@@ -528,7 +528,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void update_velocity(PDMPMHybridSolverData<Real> *data)
+    __global__ void update_velocity(CPICSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
@@ -538,7 +538,7 @@ namespace PDMPMHybridSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_sample_position(PDMPMHybridSolverData<Real> *data)
+    __global__ void calc_sample_position(CPICSolverData<Real> *data)
     {
         unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
         if (i >= data->m_num_sample)
@@ -559,7 +559,7 @@ namespace PDMPMHybridSolverKernel
 }
 
 template <typename Real>
-PDMPMHybridSolver<Real>::PDMPMHybridSolver(
+CPICSolver<Real>::CPICSolver(
     const std::vector<Real> &node_position,
     const std::vector<unsigned int> &surface_triangle,
     const std::vector<unsigned int> &tetrahedron,
@@ -693,16 +693,16 @@ PDMPMHybridSolver<Real>::PDMPMHybridSolver(
     std::vector<Real> gravity = {0., -GRAVITY, 0.};
     cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
 
-    cudaMalloc(&m_dev_data, sizeof(PDMPMHybridSolverData<Real>));
-    cudaMemcpy(m_dev_data, &m_data, sizeof(PDMPMHybridSolverData<Real>), cudaMemcpyHostToDevice);
+    cudaMalloc(&m_dev_data, sizeof(CPICSolverData<Real>));
+    cudaMemcpy(m_dev_data, &m_data, sizeof(CPICSolverData<Real>), cudaMemcpyHostToDevice);
 
-    PDMPMHybridSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
-PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
+CPICSolver<Real>::~CPICSolver()
 {
     cudaFree(m_data.dev_particle_position);
     cudaFree(m_data.dev_particle_velocity);
@@ -754,77 +754,77 @@ PDMPMHybridSolver<Real>::~PDMPMHybridSolver()
 }
 
 template <typename Real>
-void PDMPMHybridSolver<Real>::Step()
+void CPICSolver<Real>::Step()
 {
     cudaMemset(m_data.dev_vert_ext_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
 
     // Particle guess
-    PDMPMHybridSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     // sample to grid
-    PDMPMHybridSolverKernel::calc_sample_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::calc_sample_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_data.m_num_grid);
-    PDMPMHybridSolverKernel::sample_to_grid<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::sample_to_grid<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
     // MPM
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
-    PDMPMHybridSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    // PDMPMHybridSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // CPICSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_particle_new_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
-    PDMPMHybridSolverKernel::grids_inside_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::grids_inside_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemcpy(m_data.dev_particle_velocity, m_data.dev_particle_new_velocity, sizeof(Real) * m_data.m_num_particle * 3, cudaMemcpyDeviceToDevice);
-    PDMPMHybridSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
     // PD
     cudaMemcpy(m_data.dev_position_backup, m_data.dev_position, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
-    PDMPMHybridSolverKernel::initial_guess<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::initial_guess<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemcpy(m_data.dev_position_guess, m_data.dev_position, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
     Real omega = 1;
     for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
     {
         cudaMemset(m_data.dev_vert_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
         cudaMemset(m_data.dev_constraint_Hessian_diag, 0, sizeof(Real) * m_data.m_num_vert);
-        PDMPMHybridSolverKernel::calc_tetrahedron_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PDMPMHybridSolverKernel::accumulate_vert_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PDMPMHybridSolverKernel::calc_box_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PDMPMHybridSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PDMPMHybridSolverKernel::update_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CPICSolverKernel::calc_tetrahedron_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CPICSolverKernel::accumulate_vert_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CPICSolverKernel::calc_box_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CPICSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CPICSolverKernel::update_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         UpdateChebyshevOmega(omega, iter);
-        PDMPMHybridSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
+        CPICSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         SwapPositionBuffers();
     }
-    PDMPMHybridSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PDMPMHybridSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CPICSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
-Real *PDMPMHybridSolver<Real>::GetDeviceNodePositions()
+Real *CPICSolver<Real>::GetDeviceNodePositions()
 {
     return m_data.dev_position;
 }
 
 template <typename Real>
-Real *PDMPMHybridSolver<Real>::GetDeviceSamplePositions()
+Real *CPICSolver<Real>::GetDeviceSamplePositions()
 {
     return m_data.dev_sample_position;
 }
 
 template <typename Real>
-Real *PDMPMHybridSolver<Real>::GetDeviceParticlePositions()
+Real *CPICSolver<Real>::GetDeviceParticlePositions()
 {
     return m_data.dev_particle_position;
 }
 
 template <typename Real>
-void PDMPMHybridSolver<Real>::UpdateChebyshevOmega(Real &omega, unsigned int iter)
+void CPICSolver<Real>::UpdateChebyshevOmega(Real &omega, unsigned int iter)
 {
     if (iter < CHEBYSHEV_DELAY_ITER)
         omega = 1;
@@ -835,14 +835,14 @@ void PDMPMHybridSolver<Real>::UpdateChebyshevOmega(Real &omega, unsigned int ite
 }
 
 template <typename Real>
-void PDMPMHybridSolver<Real>::SwapPositionBuffers()
+void CPICSolver<Real>::SwapPositionBuffers()
 {
     std::swap(m_data.dev_position, m_data.dev_position_prev);
     std::swap(m_data.dev_position, m_data.dev_position_next);
-    PDMPMHybridSolverKernel::swap_position<Real><<<1, 1>>>(m_dev_data);
+    CPICSolverKernel::swap_position<Real><<<1, 1>>>(m_dev_data);
 }
 
-template class PDMPMHybridSolver<float>;
-template class PDMPMHybridSolver<double>;
-template struct PDMPMHybridSolverData<float>;
-template struct PDMPMHybridSolverData<double>;
+template class CPICSolver<float>;
+template class CPICSolver<double>;
+template struct CPICSolverData<float>;
+template struct CPICSolverData<double>;
