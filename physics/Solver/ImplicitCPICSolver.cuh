@@ -8,9 +8,9 @@
 
 const float YOUNG_K = 10000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
-const float GROUND_COLLISION_STIFFNESS = 10000000.0f;
+const float GROUND_COLLISION_STIFFNESS = 10000.0f;
 const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 1000.0f;
+const float TIME_STEP = 1.0f / 100.0f;
 const unsigned int MAX_ITERATIONS = 150;
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
@@ -23,12 +23,11 @@ struct ImplicitCPICSolverData
 
     Real *dev_particle_position;
     Real *dev_particle_velocity;
-    Real *dev_particle_new_velocity;
     Real *dev_particle_mass;
     Real *dev_particle_volume;
     unsigned int *dev_particle_type; // 0: static, 1: elastic, 2: fluid
     Real *dev_particle_C;
-    Real *dev_particle_affine_momentum;    // become momentum after multiplied by delta x
+    Real *dev_particle_temp_J;
     Real *dev_particle_F;                  // deformation gradient
     unsigned int *dev_particle_to_grid_id; // order: x y z
 
@@ -40,8 +39,15 @@ struct ImplicitCPICSolverData
     unsigned int *dev_grid_size;
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
+    Real *dev_grid_force;
     Real *dev_grid_velocity;
     uint64_t *dev_grid_tri_info; // 0~31: (float)closest triangle distance, 32: outside or inside, 33~63: triangle index
+    Real *dev_grid_velocity_hat;
+    Real *dev_grid_velocity_prev;
+    Real *dev_grid_velocity_delta;
+    Real *dev_grid_velocity_next;
+    Real *dev_grid_diag_K;
+    Real *dev_grid_diag_B;
 
     unsigned int m_num_vert;
     Real *dev_position_backup;
@@ -116,7 +122,7 @@ public:
 protected:
 
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
-    void SwapPositionBuffers();
+    void SwapAnswerBuffers();
 };
 
 extern template struct ImplicitCPICSolverData<float>;
