@@ -293,13 +293,13 @@ namespace ImplicitCPICSolverKernel
         {
             if (grid_pos[j] <= data->dev_inner_bbox[j])
             {
-                diag_B[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * data->m_time_step;
-                grid_force[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * (data->dev_inner_bbox[j] - grid_pos[j]);
+                diag_B[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * data->m_time_step;
+                grid_force[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * (data->dev_inner_bbox[j] - grid_pos[j]);
             }
             if (grid_pos[j] >= data->dev_inner_bbox[j + 3])
             {
-                diag_B[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * data->m_time_step;
-                grid_force[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * (data->dev_inner_bbox[j + 3] - grid_pos[j]);
+                diag_B[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * data->m_time_step;
+                grid_force[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * (data->dev_inner_bbox[j + 3] - grid_pos[j]);
             }
         }
     }
@@ -587,13 +587,13 @@ namespace ImplicitCPICSolverKernel
         {
             if (data->dev_position[3 * v + j] < data->dev_inner_bbox[j])
             {
-                data->dev_vert_force[3 * v + j] += data->m_ground_collision_stiffness * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]);
-                data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+                data->dev_vert_force[3 * v + j] += data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]) * data->dev_mass[v];
+                data->dev_constraint_Hessian_diag[v] += data->m_solid_box_collision_stiffness * data->dev_mass[v];
             }
             if (data->dev_position[3 * v + j] > data->dev_inner_bbox[j + 3])
             {
-                data->dev_vert_force[3 * v + j] += data->m_ground_collision_stiffness * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]);
-                data->dev_constraint_Hessian_diag[v] += data->m_ground_collision_stiffness;
+                data->dev_vert_force[3 * v + j] += data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]) * data->dev_mass[v];
+                data->dev_constraint_Hessian_diag[v] += data->m_solid_box_collision_stiffness * data->dev_mass[v];
             }
         }
     }
@@ -790,7 +790,8 @@ ImplicitCPICSolver<Real>::ImplicitCPICSolver(
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
     m_data.m_lame_mu = LAME_MU;
     m_data.m_lame_lambda = LAME_LAMBDA;
-    m_data.m_ground_collision_stiffness = GROUND_COLLISION_STIFFNESS;
+    m_data.m_grid_box_collision_stiffness = GRID_BOX_COLLISION_STIFFNESS;
+    m_data.m_solid_box_collision_stiffness = SOLID_BOX_COLLISION_STIFFNESS;
     m_data.m_under_relaxation = UNDER_RELAXATION;
     cudaMalloc(&m_data.dev_gravity, sizeof(Real) * 3);
     std::vector<Real> gravity = {0., -GRAVITY, 0.};
