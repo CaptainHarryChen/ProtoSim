@@ -286,21 +286,21 @@ namespace ImplicitCPICSolverKernel
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
         unsigned int z = i % data->dev_grid_size[2];
-        Real *vel = &data->dev_grid_velocity[i * 3];
-        if ((x <= data->m_boundary_thickness && vel[0] < 0) || (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness && vel[0] > 0))
+        Real grid_pos[3];
+        CPICTools::get_grid_position(grid_pos, i, data->dev_grid_size, data->dev_outer_bbox, data->m_grid_spacing);
+        cudaPhysics::axpby(grid_pos, (Real)1, grid_pos, data->m_time_step, &data->dev_grid_velocity[i * 3], 3);
+        for (unsigned int j = 0; j < 3; j++)
         {
-            diag_B[0] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * data->m_time_step;
-            grid_force[0] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * (-vel[0]) * data->m_time_step;
-        }
-        if ((y <= data->m_boundary_thickness && vel[1] < 0) || (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness && vel[1] > 0))
-        {
-            diag_B[1] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * data->m_time_step;
-            grid_force[1] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * (-vel[1]) * data->m_time_step;
-        }
-        if ((z <= data->m_boundary_thickness && vel[2] < 0) || (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness && vel[2] > 0))
-        {
-            diag_B[2] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * data->m_time_step;
-            grid_force[2] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * (-vel[2]) * data->m_time_step;
+            if (grid_pos[j] <= data->dev_inner_bbox[j])
+            {
+                diag_B[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * data->m_time_step;
+                grid_force[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * (data->dev_inner_bbox[j] - grid_pos[j]);
+            }
+            if (grid_pos[j] >= data->dev_inner_bbox[j + 3])
+            {
+                diag_B[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * data->m_time_step;
+                grid_force[j] += data->dev_grid_mass[i] * data->m_ground_collision_stiffness * (data->dev_inner_bbox[j + 3] - grid_pos[j]);
+            }
         }
     }
 
