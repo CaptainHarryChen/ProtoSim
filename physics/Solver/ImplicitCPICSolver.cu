@@ -629,6 +629,46 @@ namespace ImplicitCPICSolverKernel
     }
 
     template <typename Real>
+    __global__ void calc_particle_internal_energy(ImplicitCPICSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_particle)
+            return;
+        atomicAdd(data->dev_energy, 0.5 * data->m_lame_lambda * (data->dev_particle_temp_J[i] - 1) * (data->dev_particle_temp_J[i] - 1) * data->dev_particle_volume[i]);
+    }
+
+    template <typename Real>
+    __global__ void calc_grid_energy(ImplicitCPICSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_grid)
+            return;
+        Real energy = 0;
+        Real delta_velocity[3];
+        cudaPhysics::vecSubs3(delta_velocity, &data->dev_grid_velocity[i * 3], &data->dev_grid_velocity_hat[i * 3]);
+        energy += 0.5 * data->dev_grid_mass[i] * cudaPhysics::dot3(delta_velocity, delta_velocity); // inertial energy
+        
+        unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
+        unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
+        unsigned int z = i % data->dev_grid_size[2];
+        Real grid_pos[3];
+        CPICTools::get_grid_position(grid_pos, i, data->dev_grid_size, data->dev_outer_bbox, data->m_grid_spacing);
+        cudaPhysics::axpby(grid_pos, (Real)1, grid_pos, data->m_time_step, &data->dev_grid_velocity[i * 3], 3);
+        for (unsigned int j = 0; j < 3; j++)
+        {
+            if (grid_pos[j] <= data->dev_inner_bbox[j])
+            {
+                energy += 0.5 * data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * (data->dev_inner_bbox[j] - grid_pos[j]) * (data->dev_inner_bbox[j] - grid_pos[j]);
+            }
+            if (grid_pos[j] >= data->dev_inner_bbox[j + 3])
+            {
+                energy += 0.5 * data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * (data->dev_inner_bbox[j + 3] - grid_pos[j]) * (data->dev_inner_bbox[j + 3] - grid_pos[j]);
+            }
+        }
+        atomicAdd(data->dev_energy, energy);
+    }
+
+    template <typename Real>
     __global__ void PD_Chebyshev(ImplicitCPICSolverData<Real> *data, Real omega)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
@@ -815,6 +855,9 @@ ImplicitCPICSolver<Real>::ImplicitCPICSolver(
     cudaMalloc(&m_dev_data, sizeof(ImplicitCPICSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(ImplicitCPICSolverData<Real>), cudaMemcpyHostToDevice);
 
+    m_energy = new Real(0);
+    cudaMalloc(&m_data.dev_energy, sizeof(Real));
+
     ImplicitCPICSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
     ImplicitCPICSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
     ImplicitCPICSolverKernel::calc_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -872,9 +915,12 @@ ImplicitCPICSolver<Real>::~ImplicitCPICSolver()
     cudaFree(m_data.dev_sample_tri_idx);
     cudaFree(m_data.dev_sample_to_grid_id);
 
+    cudaFree(m_data.dev_energy);
+
     cudaFree(m_data.dev_gravity);
 
     cudaFree(m_dev_data);
+    delete m_energy;
 }
 
 template <typename Real>
@@ -922,15 +968,35 @@ void ImplicitCPICSolver<Real>::Step()
 
         // global solve
         ImplicitCPICSolverKernel::mpm_jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, (Real)1, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
-        ImplicitCPICSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitCPICSolverKernel::pd_jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+        // if (iter % LINE_SEARCH_ITER == 0)
+        // {
+        //     cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+        //     ResetEnergy();
+        //     ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     Real initial_energy = GetEnergy();
+        //     if (m_verbose)
+        //         printf("  iter %u, initial energy = %e\n", iter, initial_energy);
+        //     Real alpha = 1.0f;
+        //     while (alpha > MIN_ALPHA)
+        //     {
+        //         ResetEnergy();
+        //     }
+        // }
+
+        cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, (Real)1, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
         cudaPhysics::array_axpby(m_data.dev_position_next, (Real)1, m_data.dev_position, (Real)1, m_data.dev_position_delta, 3 * m_data.m_num_vert);
         UpdateChebyshevOmega(omega, iter);
         ImplicitCPICSolverKernel::MPM_Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         ImplicitCPICSolverKernel::PD_Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         SwapAnswerBuffers();
     }
+    cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+    ImplicitCPICSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    SwapAnswerBuffers();
 
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
@@ -957,6 +1023,20 @@ template <typename Real>
 Real *ImplicitCPICSolver<Real>::GetDeviceParticlePositions()
 {
     return m_data.dev_particle_position;
+}
+
+template <typename Real>
+Real ImplicitCPICSolver<Real>::GetEnergy()
+{
+    Real energy;
+    cudaMemcpy(&energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
+    return energy;
+}
+
+template <typename Real>
+void ImplicitCPICSolver<Real>::ResetEnergy()
+{
+    cudaMemset(m_data.dev_energy, 0, sizeof(Real));
 }
 
 template <typename Real>

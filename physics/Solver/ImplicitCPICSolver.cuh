@@ -17,6 +17,8 @@ const unsigned int MAX_ITERATIONS = 200;
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
 const float UNDER_RELAXATION = 0.7f;
+const unsigned int LINE_SEARCH_ITER = 8;
+const float MIN_ALPHA = 1e-5f;
 
 template <typename Real>
 struct ImplicitCPICSolverData
@@ -80,6 +82,8 @@ struct ImplicitCPICSolverData
     unsigned int *dev_sample_tri_idx;
     unsigned int *dev_sample_to_grid_id;
 
+    Real *dev_energy;
+
     Real m_time_step;
     Real m_time_step_inv;
     Real m_lame_mu;
@@ -123,7 +127,11 @@ public:
     ImplicitCPICSolverData<Real> *m_dev_data;
 
 protected:
+    Real *m_energy;
+    bool m_verbose = false;
 
+    Real GetEnergy();
+    void ResetEnergy();
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
     void SwapAnswerBuffers();
 };
