@@ -259,6 +259,7 @@ int main()
         scene->m_particle_volumes,
 
         bbox, dist, boundary_thickness);
+    // solver->m_verbose = true;
     scene->SetSolver(solver);
     scene->SetupConnectors();
     scene->SetStepPerFrame(1);

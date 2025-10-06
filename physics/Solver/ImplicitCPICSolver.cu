@@ -360,7 +360,7 @@ namespace ImplicitCPICSolverKernel
                                     (Real)-1, &data->dev_grid_velocity[i * 3],
                                     tmp, &data->dev_grid_force[i * 3],
                             3);
-        // atomicAdd(data->u_residual, grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
+        // atomicAdd(data->dev_residual, (grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]) / data->m_num_grid);
         Real inv_B[3];
         inv_B[0] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 0];
         inv_B[1] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 1];
@@ -614,6 +614,7 @@ namespace ImplicitCPICSolverKernel
         Real grad[3];
         cudaPhysics::axpbypcz(grad, (Real)1, &data->dev_velocity_hat[3 * v], (Real)-1, &data->dev_velocity[3 * v],
                                     data->m_time_step / data->dev_mass[v], &data->dev_vert_force[3 * v], 3);
+        // atomicAdd(data->dev_residual, (grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]) / data->m_num_vert);
         Real B[3];
         B[0] = B[1] = B[2] = 1 - data->m_time_step * data->m_time_step / data->dev_mass[v] * data->dev_stiffness_matrix_diag[v];
         cudaPhysics::axpby(B, (Real)1, B, data->m_time_step * data->m_time_step / data->dev_mass[v], &data->dev_constraint_diag_K[3 * v], 3);
@@ -630,6 +631,7 @@ namespace ImplicitCPICSolverKernel
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
             return;
+        // fluid potential energy
         atomicAdd(data->dev_energy, 0.5 * data->m_lame_lambda * (data->dev_particle_temp_J[i] - 1) * (data->dev_particle_temp_J[i] - 1) * data->dev_particle_volume[i]);
     }
 
@@ -641,15 +643,16 @@ namespace ImplicitCPICSolverKernel
             return;
         Real energy = 0;
         Real delta_velocity[3];
-        cudaPhysics::vecSubs3(delta_velocity, &data->dev_grid_velocity[i * 3], &data->dev_grid_velocity_hat[i * 3]);
-        energy += 0.5 * data->dev_grid_mass[i] * cudaPhysics::dot3(delta_velocity, delta_velocity); // inertial energy
+        cudaPhysics::vecSubs3(delta_velocity, &data->dev_grid_velocity_next[i * 3], &data->dev_grid_velocity_hat[i * 3]);
+        energy += 0.5 * data->dev_grid_mass[i] * data->m_time_step_inv * cudaPhysics::dot3(delta_velocity, delta_velocity); // inertial energy
         
+        // box constraint potential energy
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
         unsigned int z = i % data->dev_grid_size[2];
         Real grid_pos[3];
         CPICTools::get_grid_position(grid_pos, i, data->dev_grid_size, data->dev_outer_bbox, data->m_grid_spacing);
-        cudaPhysics::axpby(grid_pos, (Real)1, grid_pos, data->m_time_step, &data->dev_grid_velocity[i * 3], 3);
+        cudaPhysics::axpby(grid_pos, (Real)1, grid_pos, data->m_time_step, &data->dev_grid_velocity_next[i * 3], 3);
         for (unsigned int j = 0; j < 3; j++)
         {
             if (grid_pos[j] <= data->dev_inner_bbox[j])
@@ -662,6 +665,95 @@ namespace ImplicitCPICSolverKernel
             }
         }
         atomicAdd(data->dev_energy, energy);
+    }
+
+    template <typename Real>
+    __global__ void calc_tet_energy(ImplicitCPICSolverData<Real> *data)
+    {
+        unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
+        if (t >= data->m_num_tet)
+            return;
+        int ind[4];
+        for (unsigned int i = 0; i < 4; ++i)
+        {
+            ind[i] = data->dev_tetrahedron[t * 4 + i] * 3;
+        }
+
+        Real Ds[9];
+        Real *idm = &data->dev_invDm[t * 9];
+        Ds[0] = data->dev_position[ind[1] + 0] - data->dev_position[ind[0] + 0];
+        Ds[3] = data->dev_position[ind[1] + 1] - data->dev_position[ind[0] + 1];
+        Ds[6] = data->dev_position[ind[1] + 2] - data->dev_position[ind[0] + 2];
+        Ds[1] = data->dev_position[ind[2] + 0] - data->dev_position[ind[0] + 0];
+        Ds[4] = data->dev_position[ind[2] + 1] - data->dev_position[ind[0] + 1];
+        Ds[7] = data->dev_position[ind[2] + 2] - data->dev_position[ind[0] + 2];
+        Ds[2] = data->dev_position[ind[3] + 0] - data->dev_position[ind[0] + 0];
+        Ds[5] = data->dev_position[ind[3] + 1] - data->dev_position[ind[0] + 1];
+        Ds[8] = data->dev_position[ind[3] + 2] - data->dev_position[ind[0] + 2];
+        Real F[9], R[9];
+        cudaPhysics::matMul3(F, Ds, idm);
+        cudaPhysics::polar_decomposition_R(R, F);
+
+        Real f[9]; // f = -2 * V0 * stiffness * invDm * (F - R)^T
+        Real FSubR[9];
+        cudaPhysics::vecSubs(FSubR, F, R, 9);
+        atomicAdd(data->dev_energy, data->dev_tet_volume[t] * data->m_lame_mu * cudaPhysics::dot(FSubR, FSubR, 9));
+    }
+
+    template <typename Real>
+    __global__ void calc_vert_energy(ImplicitCPICSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        Real delta_v[3];
+        cudaPhysics::vecSubs3(delta_v, &data->dev_velocity_next[3 * v], &data->dev_velocity_hat[3 * v]);
+        Real energy = 0.5 * data->dev_mass[v] * data->m_time_step_inv * cudaPhysics::dot3(delta_v, delta_v); // inertial energy
+
+        // box constraint potential energy
+        for (unsigned int j = 0; j < 3; ++j)
+        {
+            if (data->dev_position[3 * v + j] < data->dev_inner_bbox[j])
+            {
+                energy += 0.5 * data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]) * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]);
+            }
+            if (data->dev_position[3 * v + j] > data->dev_inner_bbox[j + 3])
+            {
+                energy += 0.5 * data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]) * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]);
+            }
+        }
+    }
+
+    template <typename Real>
+    __global__ void calc_couple_energy(ImplicitCPICSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_grid || data->dev_grid_tri_info[i] == UINT64_MAX || data->dev_grid_mass[i] <= 0)
+            return;
+        float _;
+        bool __;
+        unsigned int tri_idx;
+        CPICTools::unpack_tri_info(data->dev_grid_tri_info[i], _, __, tri_idx);
+
+        const unsigned int *tri = &data->dev_triangle[tri_idx * 3];
+        // dev_position is x^(k), which has already been updated by velocity
+        const Real *tri_a_pos = &data->dev_position[tri[0] * 3];
+        const Real *tri_b_pos = &data->dev_position[tri[1] * 3];
+        const Real *tri_c_pos = &data->dev_position[tri[2] * 3];
+
+        Real grid_position[3];
+        CPICTools::get_grid_position(grid_position, i, data->dev_grid_size, data->dev_outer_bbox, data->m_grid_spacing);
+        // grid_position need to be updated by velocity in implicit euler
+        cudaPhysics::axpby(grid_position, (Real)1, grid_position, data->m_time_step, &data->dev_grid_velocity[i * 3], 3);
+        
+        Real cur_dis = cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
+        if (cur_dis < 0)
+        {
+            Real bary[3], normal[3], force[3], hessian[3];
+            cudaPhysics::triangle_normal(normal, tri_a_pos, tri_b_pos, tri_c_pos);
+            cudaPhysics::projection_barycentric_coordinates(bary, grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
+            atomicAdd(data->dev_energy, 0.5 * data->m_couple_collision_stiffness * data->dev_grid_mass[i] * cur_dis * cur_dis); // potential energy
+        }
     }
 
     template <typename Real>
@@ -825,6 +917,9 @@ ImplicitCPICSolver<Real>::ImplicitCPICSolver(
     cudaMalloc(&m_data.dev_grid_diag_Kv, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_diag_B, sizeof(Real) * m_data.m_num_grid * 3);
 
+    cudaMalloc(&m_data.dev_energy, sizeof(Real));
+    cudaMalloc(&m_data.dev_residual, sizeof(Real));
+
     m_data.m_time_step = TIME_STEP;
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
     m_data.m_lame_mu = LAME_MU;
@@ -839,9 +934,6 @@ ImplicitCPICSolver<Real>::ImplicitCPICSolver(
 
     cudaMalloc(&m_dev_data, sizeof(ImplicitCPICSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(ImplicitCPICSolverData<Real>), cudaMemcpyHostToDevice);
-
-    m_energy = new Real(0);
-    cudaMalloc(&m_data.dev_energy, sizeof(Real));
 
     ImplicitCPICSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
     ImplicitCPICSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -901,11 +993,11 @@ ImplicitCPICSolver<Real>::~ImplicitCPICSolver()
     cudaFree(m_data.dev_sample_to_grid_id);
 
     cudaFree(m_data.dev_energy);
+    cudaFree(m_data.dev_residual);
 
     cudaFree(m_data.dev_gravity);
 
     cudaFree(m_dev_data);
-    delete m_energy;
 }
 
 template <typename Real>
@@ -954,35 +1046,61 @@ void ImplicitCPICSolver<Real>::Step()
         ImplicitCPICSolverKernel::inside_grids_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
         // global solve
+        cudaMemset(m_data.dev_residual, 0, sizeof(Real) * m_data.m_num_grid * 3);
         ImplicitCPICSolverKernel::mpm_jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitCPICSolverKernel::pd_jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-
-        // if (iter % LINE_SEARCH_ITER == 0)
+        // if (m_verbose)
         // {
-        //     cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-        //     ResetEnergy();
-        //     ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        //     ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        //     ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        //     Real initial_energy = GetEnergy();
-        //     if (m_verbose)
-        //         printf("  iter %u, initial energy = %e\n", iter, initial_energy);
-        //     Real alpha = 1.0f;
-        //     while (alpha > MIN_ALPHA)
-        //     {
-        //         ResetEnergy();
-        //     }
+        //     Real residual = 0;
+        //     cudaMemcpy(&residual, m_data.dev_residual, sizeof(Real), cudaMemcpyDeviceToHost);
+        //     printf("iter %u residual = %e\n", iter, residual);
         // }
 
-        cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, (Real)1, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
-        cudaPhysics::array_axpby(m_data.dev_velocity_next, (Real)1, m_data.dev_velocity, (Real)1, m_data.dev_velocity_delta, 3 * m_data.m_num_vert);
+        Real alpha = 1.0f;
+        if (iter % LINE_SEARCH_ITER == 0)
+        {
+            cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+            cudaMemcpy(m_data.dev_velocity_next, m_data.dev_velocity, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+            cudaMemset(m_data.dev_energy, 0, sizeof(Real));
+            Real initial_energy = 0;
+            ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+            ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+            ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+            ImplicitCPICSolverKernel::calc_vert_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+            ImplicitCPICSolverKernel::calc_couple_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+            cudaMemcpy(&initial_energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
+            if (m_verbose)
+                printf("  iter %u, initial energy = %e\n", iter, initial_energy);
+            while (alpha > MIN_ALPHA)
+            {
+                cudaMemset(m_data.dev_energy, 0, sizeof(Real));
+                cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, alpha, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
+                cudaPhysics::array_axpby(m_data.dev_velocity_next, (Real)1, m_data.dev_velocity, alpha, m_data.dev_velocity_delta, 3 * m_data.m_num_vert);
+                cudaPhysics::array_axpby(m_data.dev_position, (Real)1, m_data.dev_position_backup, m_data.m_time_step, m_data.dev_velocity_next, 3 * m_data.m_num_vert);
+                ImplicitCPICSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data, alpha);
+                ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+                ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+                ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+                ImplicitCPICSolverKernel::calc_vert_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+                ImplicitCPICSolverKernel::calc_couple_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+                Real current_energy = 0;
+                cudaMemcpy(&current_energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
+                if (m_verbose)
+                    printf("    alpha %e, current energy = %e\n", alpha, current_energy);
+                if (current_energy < initial_energy)
+                    break;
+                alpha *= 0.5f;
+            }
+        }
+        cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, alpha, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
+        cudaPhysics::array_axpby(m_data.dev_velocity_next, (Real)1, m_data.dev_velocity, alpha, m_data.dev_velocity_delta, 3 * m_data.m_num_vert);
         UpdateChebyshevOmega(omega, iter);
         ImplicitCPICSolverKernel::MPM_Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         ImplicitCPICSolverKernel::PD_Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         SwapAnswerBuffers();
     }
-    ImplicitCPICSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
+    ImplicitCPICSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
     ImplicitCPICSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -1008,20 +1126,6 @@ template <typename Real>
 Real *ImplicitCPICSolver<Real>::GetDeviceParticlePositions()
 {
     return m_data.dev_particle_position;
-}
-
-template <typename Real>
-Real ImplicitCPICSolver<Real>::GetEnergy()
-{
-    Real energy;
-    cudaMemcpy(&energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
-    return energy;
-}
-
-template <typename Real>
-void ImplicitCPICSolver<Real>::ResetEnergy()
-{
-    cudaMemset(m_data.dev_energy, 0, sizeof(Real));
 }
 
 template <typename Real>

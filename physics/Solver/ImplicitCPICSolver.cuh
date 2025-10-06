@@ -13,11 +13,11 @@ const float SOLID_BOX_COLLISION_STIFFNESS = 10000000.0f;
 const float COUPLE_COLLISION_STIFFNESS = 10000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 60.0f;
-const unsigned int MAX_ITERATIONS = 200;
+const unsigned int MAX_ITERATIONS = 150;
 const unsigned int CHEBYSHEV_DELAY_ITER = 10;
 const float CHEBYSHEV_RHO = 0.9f;
 const float UNDER_RELAXATION = 0.7f;
-const unsigned int LINE_SEARCH_ITER = 8;
+const unsigned int LINE_SEARCH_ITER = 15;
 const float MIN_ALPHA = 1e-5f;
 
 template <typename Real>
@@ -83,6 +83,7 @@ struct ImplicitCPICSolverData
     unsigned int *dev_sample_to_grid_id;
 
     Real *dev_energy;
+    Real *dev_residual;
 
     Real m_time_step;
     Real m_time_step_inv;
@@ -125,13 +126,9 @@ public:
 
     ImplicitCPICSolverData<Real> m_data;
     ImplicitCPICSolverData<Real> *m_dev_data;
-
-protected:
-    Real *m_energy;
     bool m_verbose = false;
 
-    Real GetEnergy();
-    void ResetEnergy();
+protected:
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
     void SwapAnswerBuffers();
 };
