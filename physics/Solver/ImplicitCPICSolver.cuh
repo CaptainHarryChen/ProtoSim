@@ -10,6 +10,7 @@ const float YOUNG_K = 10000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
 const float GRID_BOX_COLLISION_STIFFNESS = 10000.0f;
 const float SOLID_BOX_COLLISION_STIFFNESS = 1000000.0f;
+const float COUPLE_COLLISION_STIFFNESS = 10000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 100.0f;
 const unsigned int MAX_ITERATIONS = 150;
@@ -59,7 +60,6 @@ struct ImplicitCPICSolverData
     Real *dev_position_delta;
     Real *dev_velocity;
     Real *dev_mass;
-    Real *dev_vert_ext_force;
     Real *dev_vert_force;
     Real *dev_constraint_Hessian_diag;
     Real *dev_stiffness_matrix_diag;
@@ -86,6 +86,7 @@ struct ImplicitCPICSolverData
     Real m_lame_lambda;
     Real m_grid_box_collision_stiffness;
     Real m_solid_box_collision_stiffness;
+    Real m_couple_collision_stiffness;
     Real m_under_relaxation;
     Real *dev_gravity;
 };

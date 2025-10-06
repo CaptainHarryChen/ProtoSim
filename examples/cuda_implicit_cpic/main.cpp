@@ -214,9 +214,9 @@ int main()
     app->AddObject(scene);
 
     // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1000.0f,
-    //                        15.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                        15.0f, glm::vec3(0.0f, 0.2f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
     //                        {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)});
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 12.0f, -2.0f), glm::vec3(3.0f, 15.0f, 2.0f), 0.08f,
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 4.5f, -2.0f), glm::vec3(3.0f, 5.5f, 2.0f), 0.08f,
     //                                MPM_FLUID, 1000.0f,
     //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     // scene->SampleSurfaceParticles(20000, 0.03f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
