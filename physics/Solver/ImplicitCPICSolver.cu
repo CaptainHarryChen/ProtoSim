@@ -159,9 +159,9 @@ namespace ImplicitCPICSolverKernel
                                                 * data->dev_particle_F[i * 9] * data->dev_particle_F[i * 9]
                                                 * 16 * weight * weight
                                                 / (data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing));
-                    atomicAdd(&data->dev_grid_diag_K[grid_id * 3 + 0], diag_K[0]);
-                    atomicAdd(&data->dev_grid_diag_K[grid_id * 3 + 1], diag_K[1]);
-                    atomicAdd(&data->dev_grid_diag_K[grid_id * 3 + 2], diag_K[2]);
+                    atomicAdd(&data->dev_grid_diag_Kv[grid_id * 3 + 0], diag_K[0]);
+                    atomicAdd(&data->dev_grid_diag_Kv[grid_id * 3 + 1], diag_K[1]);
+                    atomicAdd(&data->dev_grid_diag_Kv[grid_id * 3 + 2], diag_K[2]);
                 }
     }
 
@@ -281,7 +281,7 @@ namespace ImplicitCPICSolverKernel
         diag_B[0] = diag_B[1] = diag_B[2] = (Real)1;
         if (data->dev_grid_mass[i] <= 0)
             return;
-        cudaPhysics::axpby(diag_B, (Real)1, diag_B, -data->m_time_step / data->dev_grid_mass[i], &data->dev_grid_diag_K[i * 3], 3);
+        cudaPhysics::axpby(diag_B, (Real)1, diag_B, -data->m_time_step / data->dev_grid_mass[i], &data->dev_grid_diag_Kv[i * 3], 3);
 
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
@@ -293,12 +293,12 @@ namespace ImplicitCPICSolverKernel
         {
             if (grid_pos[j] <= data->dev_inner_bbox[j])
             {
-                diag_B[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * data->m_time_step;
+                diag_B[j] += data->m_grid_box_collision_stiffness * data->m_time_step * data->m_time_step;
                 grid_force[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * (data->dev_inner_bbox[j] - grid_pos[j]);
             }
             if (grid_pos[j] >= data->dev_inner_bbox[j + 3])
             {
-                diag_B[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * data->m_time_step;
+                diag_B[j] += data->m_grid_box_collision_stiffness * data->m_time_step * data->m_time_step;
                 grid_force[j] += data->dev_grid_mass[i] * data->m_grid_box_collision_stiffness * (data->dev_inner_bbox[j + 3] - grid_pos[j]);
             }
         }
@@ -336,7 +336,7 @@ namespace ImplicitCPICSolverKernel
             cudaPhysics::vecMul3(hessian, normal, normal);
             cudaPhysics::vecMul3(hessian, data->m_couple_collision_stiffness * data->dev_grid_mass[i], hessian);
 
-            cudaPhysics::axpby(&data->dev_grid_diag_B[i * 3], (Real)1, &data->dev_grid_diag_B[i * 3], data->m_time_step, hessian, 3);
+            cudaPhysics::axpby(&data->dev_grid_diag_B[i * 3], (Real)1, &data->dev_grid_diag_B[i * 3], (Real)1 / data->dev_grid_mass[i] * data->m_time_step * data->m_time_step, hessian, 3);
             cudaPhysics::vecAdd3(&data->dev_grid_force[i * 3], &data->dev_grid_force[i * 3], force);
 
             for (unsigned int j = 0; j < 3; ++j)
@@ -439,18 +439,19 @@ namespace ImplicitCPICSolverKernel
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
         unsigned int z = i % data->dev_grid_size[2];
-        if (x <= data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 0] = max(0., data->dev_grid_velocity_next[i * 3 + 0]);
-        if (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 0] = min(0., data->dev_grid_velocity_next[i * 3 + 0]);
-        if (y <= data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 1] = max(0., data->dev_grid_velocity_next[i * 3 + 1]);
-        if (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 1] = min(0., data->dev_grid_velocity_next[i * 3 + 1]);
-        if (z <= data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 2] = max(0., data->dev_grid_velocity_next[i * 3 + 2]);
-        if (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 2] = min(0., data->dev_grid_velocity_next[i * 3 + 2]);
+        Real grid_pos[3];
+        CPICTools::get_grid_position(grid_pos, i, data->dev_grid_size, data->dev_outer_bbox, data->m_grid_spacing);
+        for (unsigned int j = 0; j < 3; j++)
+        {
+            if (grid_pos[j] + data->dev_grid_velocity_next[i * 3 + j] * data->m_time_step < data->dev_inner_bbox[j])
+            {
+                data->dev_grid_velocity_next[i * 3 + j] = (data->dev_inner_bbox[j] - grid_pos[j]) * data->m_time_step_inv;
+            }
+            if (grid_pos[j] + data->dev_grid_velocity_next[i * 3 + j] * data->m_time_step > data->dev_inner_bbox[j + 3])
+            {
+                data->dev_grid_velocity_next[i * 3 + j] = (data->dev_inner_bbox[j + 3] - grid_pos[j]) * data->m_time_step_inv;
+            }
+        }
     }
 
     template <typename Real>
@@ -594,13 +595,13 @@ namespace ImplicitCPICSolverKernel
         {
             if (data->dev_position[3 * v + j] < data->dev_inner_bbox[j])
             {
-                data->dev_vert_force[3 * v + j] += data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]) * data->dev_mass[v];
-                data->dev_constraint_Hessian_diag[3 * v + j] += data->m_solid_box_collision_stiffness * data->dev_mass[v];
+                data->dev_vert_force[3 * v + j] += data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j] - data->dev_position[3 * v + j]);
+                data->dev_constraint_Hessian_diag[3 * v + j] += data->m_solid_box_collision_stiffness;
             }
             if (data->dev_position[3 * v + j] > data->dev_inner_bbox[j + 3])
             {
-                data->dev_vert_force[3 * v + j] += data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]) * data->dev_mass[v];
-                data->dev_constraint_Hessian_diag[3 * v + j] += data->m_solid_box_collision_stiffness * data->dev_mass[v];
+                data->dev_vert_force[3 * v + j] += data->m_solid_box_collision_stiffness * (data->dev_inner_bbox[j + 3] - data->dev_position[3 * v + j]);
+                data->dev_constraint_Hessian_diag[3 * v + j] += data->m_solid_box_collision_stiffness;
             }
         }
     }
@@ -796,7 +797,7 @@ ImplicitCPICSolver<Real>::ImplicitCPICSolver(
     cudaMalloc(&m_data.dev_grid_velocity_prev, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_velocity_delta, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_velocity_next, sizeof(Real) * m_data.m_num_grid * 3);
-    cudaMalloc(&m_data.dev_grid_diag_K, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMalloc(&m_data.dev_grid_diag_Kv, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_diag_B, sizeof(Real) * m_data.m_num_grid * 3);
 
     m_data.m_time_step = TIME_STEP;
@@ -843,7 +844,7 @@ ImplicitCPICSolver<Real>::~ImplicitCPICSolver()
     cudaFree(m_data.dev_grid_velocity_prev);
     cudaFree(m_data.dev_grid_velocity_delta);
     cudaFree(m_data.dev_grid_velocity_next);
-    cudaFree(m_data.dev_grid_diag_K);
+    cudaFree(m_data.dev_grid_diag_Kv);
     cudaFree(m_data.dev_grid_diag_B);
 
     cudaFree(m_data.dev_position_backup);
@@ -886,7 +887,7 @@ void ImplicitCPICSolver<Real>::Step()
     // MPM
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
-    cudaMemset(m_data.dev_grid_diag_K, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_diag_Kv, 0, sizeof(Real) * m_data.m_num_grid * 3);
     ImplicitCPICSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     ImplicitCPICSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     ImplicitCPICSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -916,10 +917,8 @@ void ImplicitCPICSolver<Real>::Step()
         ImplicitCPICSolverKernel::accumulate_vert_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
         ImplicitCPICSolverKernel::calc_box_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
-        cudaCheck(cudaDeviceSynchronize());
         // couple local solve
         ImplicitCPICSolverKernel::inside_grids_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaCheck(cudaDeviceSynchronize());
 
         // global solve
         ImplicitCPICSolverKernel::mpm_jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);

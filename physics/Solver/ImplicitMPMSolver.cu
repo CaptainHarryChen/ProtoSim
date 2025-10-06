@@ -262,12 +262,12 @@ namespace ImplicitMPMSolverKernel
         {
             if (grid_pos[j] <= data->dev_inner_bbox[j])
             {
-                diag_B[j] += data->dev_grid_mass[i] * data->m_ground_stiffness * data->m_time_step;
+                diag_B[j] += data->m_ground_stiffness * data->m_time_step * data->m_time_step;
                 grid_force[j] += data->dev_grid_mass[i] * data->m_ground_stiffness * (data->dev_inner_bbox[j] - grid_pos[j]);
             }
             if (grid_pos[j] >= data->dev_inner_bbox[j + 3])
             {
-                diag_B[j] += data->dev_grid_mass[i] * data->m_ground_stiffness * data->m_time_step;
+                diag_B[j] += data->m_ground_stiffness * data->m_time_step * data->m_time_step;
                 grid_force[j] += data->dev_grid_mass[i] * data->m_ground_stiffness * (data->dev_inner_bbox[j + 3] - grid_pos[j]);
             }
         }
