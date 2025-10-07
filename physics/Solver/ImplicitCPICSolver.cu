@@ -1057,41 +1057,41 @@ void ImplicitCPICSolver<Real>::Step()
         // }
 
         Real alpha = 1.0f;
-        if (iter % LINE_SEARCH_ITER == 0)
-        {
-            cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-            cudaMemcpy(m_data.dev_velocity_next, m_data.dev_velocity, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
-            cudaMemset(m_data.dev_energy, 0, sizeof(Real));
-            Real initial_energy = 0;
-            ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            ImplicitCPICSolverKernel::calc_vert_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            ImplicitCPICSolverKernel::calc_couple_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            cudaMemcpy(&initial_energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
-            if (m_verbose)
-                printf("  iter %u, initial energy = %e\n", iter, initial_energy);
-            while (alpha > MIN_ALPHA)
-            {
-                cudaMemset(m_data.dev_energy, 0, sizeof(Real));
-                cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, alpha, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
-                cudaPhysics::array_axpby(m_data.dev_velocity_next, (Real)1, m_data.dev_velocity, alpha, m_data.dev_velocity_delta, 3 * m_data.m_num_vert);
-                cudaPhysics::array_axpby(m_data.dev_position, (Real)1, m_data.dev_position_backup, m_data.m_time_step, m_data.dev_velocity_next, 3 * m_data.m_num_vert);
-                ImplicitCPICSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data, alpha);
-                ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-                ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-                ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-                ImplicitCPICSolverKernel::calc_vert_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-                ImplicitCPICSolverKernel::calc_couple_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-                Real current_energy = 0;
-                cudaMemcpy(&current_energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
-                if (m_verbose)
-                    printf("    alpha %e, current energy = %e\n", alpha, current_energy);
-                if (current_energy < initial_energy)
-                    break;
-                alpha *= 0.5f;
-            }
-        }
+        // if (iter % LINE_SEARCH_ITER == 0)
+        // {
+        //     cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+        //     cudaMemcpy(m_data.dev_velocity_next, m_data.dev_velocity, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+        //     cudaMemset(m_data.dev_energy, 0, sizeof(Real));
+        //     Real initial_energy = 0;
+        //     ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     ImplicitCPICSolverKernel::calc_vert_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     ImplicitCPICSolverKernel::calc_couple_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //     cudaMemcpy(&initial_energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
+        //     if (m_verbose)
+        //         printf("  iter %u, initial energy = %e\n", iter, initial_energy);
+        //     while (alpha > MIN_ALPHA)
+        //     {
+        //         cudaMemset(m_data.dev_energy, 0, sizeof(Real));
+        //         cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, alpha, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
+        //         cudaPhysics::array_axpby(m_data.dev_velocity_next, (Real)1, m_data.dev_velocity, alpha, m_data.dev_velocity_delta, 3 * m_data.m_num_vert);
+        //         cudaPhysics::array_axpby(m_data.dev_position, (Real)1, m_data.dev_position_backup, m_data.m_time_step, m_data.dev_velocity_next, 3 * m_data.m_num_vert);
+        //         ImplicitCPICSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data, alpha);
+        //         ImplicitCPICSolverKernel::calc_particle_internal_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //         ImplicitCPICSolverKernel::calc_grid_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //         ImplicitCPICSolverKernel::calc_tet_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //         ImplicitCPICSolverKernel::calc_vert_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //         ImplicitCPICSolverKernel::calc_couple_energy<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        //         Real current_energy = 0;
+        //         cudaMemcpy(&current_energy, m_data.dev_energy, sizeof(Real), cudaMemcpyDeviceToHost);
+        //         if (m_verbose)
+        //             printf("    alpha %e, current energy = %e\n", alpha, current_energy);
+        //         if (current_energy < initial_energy)
+        //             break;
+        //         alpha *= 0.5f;
+        //     }
+        // }
         cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, alpha, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
         cudaPhysics::array_axpby(m_data.dev_velocity_next, (Real)1, m_data.dev_velocity, alpha, m_data.dev_velocity_delta, 3 * m_data.m_num_vert);
         UpdateChebyshevOmega(omega, iter);
