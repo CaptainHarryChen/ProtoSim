@@ -12,17 +12,7 @@ namespace PCGMPMSolverKernel
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
             return;
-        if (data->dev_particle_type[i] == MPM_ELASTIC)
-        {
-            // Real F[9], temp[9];
-            // cudaPhysics::matMul3(temp, data->m_time_step, &data->dev_particle_C[i * 9]);
-            // temp[0] += 1.;
-            // temp[4] += 1.;
-            // temp[8] += 1.;
-            // cudaPhysics::matMul3(F, temp, &data->dev_particle_F[i * 9]);
-            // cudaPhysics::vecCopy(&data->dev_particle_F[i * 9], F, 9);
-        }
-        else if (data->dev_particle_type[i] == MPM_FLUID)
+        assert(data->dev_particle_type[i] == MPM_FLUID);
         {
             // Only use the first element of F to store J
             Real J = data->dev_particle_F[i * 9] * (1 + data->m_time_step * (data->dev_particle_C[i * 9] + data->dev_particle_C[i * 9 + 4] + data->dev_particle_C[i * 9 + 8]));
@@ -178,7 +168,6 @@ namespace PCGMPMSolverKernel
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
             return;
-        assert(data->dev_particle_type[i] == MPM_FLUID);
         Real &temp_J = data->dev_particle_temp_J[i];
         temp_J = 0;
         Real *particle_position = &data->dev_particle_position[i * 3];
@@ -582,18 +571,7 @@ void PCGMPMSolver<Real>::Step()
     PCGMPMSolverKernel::P2G_momentum_and_mass_and_K<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PCGMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
-    switch (m_solver_type)
-    {
-    case NEWTON:
-        NewtonSolver();
-        break;
-    case NEWTON_WITH_LINE_SEARCH:
-        NewtonWithLineSearch();
-        break;
-    case CHEBYSHEV:
-        ChebyshevSolver();
-        break;
-    }
+    ChebyshevSolver();
 
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
@@ -606,82 +584,6 @@ template <typename Real>
 Real *PCGMPMSolver<Real>::GetDevicePositions()
 {
     return m_data.dev_particle_position;
-}
-
-template <typename Real>
-void PCGMPMSolver<Real>::NewtonSolver()
-{
-    cudaMemcpy(m_data.dev_grid_velocity_hat, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_data.dev_grid_velocity_prev, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-    for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
-    {
-        cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
-        PCGMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::grid_op<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, (Real)1, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
-        PCGMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        SwapAnswerBuffers();
-    }
-}
-
-template <typename Real>
-void PCGMPMSolver<Real>::NewtonWithLineSearch()
-{
-    cudaMemcpy(m_data.dev_grid_velocity_hat, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-    cudaMemcpy(m_data.dev_grid_velocity_prev, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-    for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
-    {
-        if (m_verbose)
-            printf("Iteration %d ", iter);
-
-        cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
-        PCGMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::grid_op<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaDeviceSynchronize();
-        *m_data.u_residual = 0;
-        PCGMPMSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaDeviceSynchronize();
-        Real residual = *m_data.u_residual / m_data.m_num_grid;
-        if (m_verbose)
-            printf("residual: %f\n", residual);
-        if (residual < RESIDUAL_TOLERANCE)
-            break;
-
-        // line search
-        if (iter % LINE_SEARCH_ITER == 0)
-        {
-            cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-            PCGMPMSolverKernel::calc_particle_internal_energy<<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            PCGMPMSolverKernel::calc_grid_op_energy<<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            cudaDeviceSynchronize();
-            Real initial_energy = *m_data.u_energy;
-            if (m_verbose)
-                printf("Step initial_energy: %f\n", initial_energy);
-            Real alpha = INITIAL_ALPHA;
-            while (alpha > MIN_ALPHA)
-            {
-                *m_data.u_energy = 0;
-                cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, alpha, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
-                PCGMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data, alpha);
-                PCGMPMSolverKernel::calc_particle_internal_energy<<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-                PCGMPMSolverKernel::calc_grid_op_energy<<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-                cudaDeviceSynchronize();
-                if (m_verbose)
-                    printf("Try alpha: %f Energy: %f\n", alpha, *m_data.u_energy);
-                if (*m_data.u_energy < initial_energy)
-                    break;
-                alpha *= ALPHA_DECAY;
-            }
-            *m_data.u_energy = 0;
-        }
-        SwapAnswerBuffers();
-    }
-    cudaMemcpy(m_data.dev_grid_velocity_next, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-    PCGMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    SwapAnswerBuffers();
 }
 
 template <typename Real>

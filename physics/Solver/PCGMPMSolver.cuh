@@ -79,20 +79,12 @@ public:
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
 
-    enum
-    {
-        NEWTON,
-        NEWTON_WITH_LINE_SEARCH,
-        CHEBYSHEV
-    } m_solver_type = CHEBYSHEV;
     bool m_verbose = false;
 
     PCGMPMSolverData<Real> m_data;
 protected:
     PCGMPMSolverData<Real> *m_dev_data;
 
-    void NewtonSolver();
-    void NewtonWithLineSearch();
     void ChebyshevSolver();
 
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
