@@ -35,7 +35,7 @@ struct PCGMPMSolverData
     Real *dev_particle_volume;
     unsigned int *dev_particle_type; // 0: static, 1: elastic, 2: fluid
     Real *dev_particle_C;
-    Real *dev_particle_temp_J;
+    Real *dev_particle_next_F;
     Real *dev_particle_F;                  // deformation gradient
     unsigned int *dev_particle_to_grid_id; // order: x y z
 
