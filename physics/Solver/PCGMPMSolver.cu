@@ -34,7 +34,7 @@ namespace PCGMPMSolverKernel
         x--;
         y--;
         z--;
-        if (x < 0 || y < 0 || z < 0 || x >= data->dev_grid_size[0] - 3 || y >= data->dev_grid_size[1] - 3 || z >= data->dev_grid_size[2] - 3)
+        if (x < 0 || y < 0 || z < 0 || x >= data->dev_grid_size[0] - 2 || y >= data->dev_grid_size[1] - 2 || z >= data->dev_grid_size[2] - 2)
         {
             x = max(0, min(x, (int)data->dev_grid_size[0] - 3));
             y = max(0, min(y, (int)data->dev_grid_size[1] - 3));
@@ -288,18 +288,21 @@ namespace PCGMPMSolverKernel
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
         unsigned int z = i % data->dev_grid_size[2];
-        if (x <= data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 0] = max(0., data->dev_grid_velocity_next[i * 3 + 0]);
-        if (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 0] = min(0., data->dev_grid_velocity_next[i * 3 + 0]);
-        if (y <= data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 1] = max(0., data->dev_grid_velocity_next[i * 3 + 1]);
-        if (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 1] = min(0., data->dev_grid_velocity_next[i * 3 + 1]);
-        if (z <= data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 2] = max(0., data->dev_grid_velocity_next[i * 3 + 2]);
-        if (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity_next[i * 3 + 2] = min(0., data->dev_grid_velocity_next[i * 3 + 2]);
+        Real grid_pos[3];
+        grid_pos[0] = data->dev_outer_bbox[0] + x * data->m_grid_spacing;
+        grid_pos[1] = data->dev_outer_bbox[1] + y * data->m_grid_spacing;
+        grid_pos[2] = data->dev_outer_bbox[2] + z * data->m_grid_spacing;
+        for (unsigned int j = 0; j < 3; j++)
+        {
+            if (grid_pos[j] + data->dev_grid_velocity[i * 3 + j] * data->m_time_step < data->dev_inner_bbox[j])
+            {
+                data->dev_grid_velocity[i * 3 + j] = (data->dev_inner_bbox[j] - grid_pos[j]) / data->m_time_step;
+            }
+            if (grid_pos[j] + data->dev_grid_velocity[i * 3 + j] * data->m_time_step > data->dev_inner_bbox[j + 3])
+            {
+                data->dev_grid_velocity[i * 3 + j] = (data->dev_inner_bbox[j + 3] - grid_pos[j]) / data->m_time_step;
+            }
+        }
     }
 
     template <typename Real>
