@@ -36,9 +36,9 @@ namespace PCGMPMSolverKernel
         z--;
         if (x < 0 || y < 0 || z < 0 || x >= data->dev_grid_size[0] - 2 || y >= data->dev_grid_size[1] - 2 || z >= data->dev_grid_size[2] - 2)
         {
-            x = max(0, min(x, (int)data->dev_grid_size[0] - 2));
-            y = max(0, min(y, (int)data->dev_grid_size[1] - 2));
-            z = max(0, min(z, (int)data->dev_grid_size[2] - 2));
+            x = max(0, min(x, (int)data->dev_grid_size[0] - 3));
+            y = max(0, min(y, (int)data->dev_grid_size[1] - 3));
+            z = max(0, min(z, (int)data->dev_grid_size[2] - 3));
             printf("Warning: particle %d is out of grid, set to %d %d %d [Particle position] %.10f %.10f %.10f\n", i, x, y, z, data->dev_particle_position[i * 3 + 0], data->dev_particle_position[i * 3 + 1], data->dev_particle_position[i * 3 + 2]);
         }
 
