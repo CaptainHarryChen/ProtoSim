@@ -56,10 +56,6 @@ struct PCGMPMSolverData
     Real *dev_grid_diag_K;
     Real *dev_grid_diag_B;
 
-     // unified memory
-    Real *u_energy;
-    Real *u_residual;
-
     Real m_time_step;
     Real m_under_relaxation;
     Real m_ground_stiffness;

@@ -274,47 +274,11 @@ namespace PCGMPMSolverKernel
                                     (Real)-1, &data->dev_grid_velocity[i * 3],
                                     tmp, &data->dev_grid_force[i * 3],
                             3);
-        atomicAdd(data->u_residual, grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
         Real inv_B[3];
         inv_B[0] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 0];
         inv_B[1] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 1];
         inv_B[2] = (Real)1.0 / data->dev_grid_diag_B[i * 3 + 2];
         cudaPhysics::vecMul3(&data->dev_grid_velocity_delta[3 * i], inv_B, grad);
-    }
-
-    template <typename Real>
-    __global__ void calc_particle_internal_energy(PCGMPMSolverData<Real> *data)
-    {
-        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
-            return;
-        atomicAdd(data->u_energy, 0.5 * data->m_lame_lambda * (data->dev_particle_temp_J[i] - 1) * (data->dev_particle_temp_J[i] - 1) * data->dev_particle_volume[i]);
-    }
-
-    template <typename Real>
-    __global__ void calc_grid_op_energy(PCGMPMSolverData<Real> *data)
-    {
-        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_grid)
-            return;
-        Real energy = 0;
-        unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
-        unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
-        unsigned int z = i % data->dev_grid_size[2];
-        Real *vel = &data->dev_grid_velocity[i * 3];
-        if ((x <= data->m_boundary_thickness && vel[0] < 0) || (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness && vel[0] > 0))
-        {
-            energy += 0.5 * data->m_ground_stiffness * data->dev_grid_mass[i] * vel[0] * vel[0] * data->m_time_step;
-        }
-        if ((y <= data->m_boundary_thickness && vel[1] < 0) || (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness && vel[1] > 0))
-        {
-            energy += 0.5 * data->m_ground_stiffness * data->dev_grid_mass[i] * vel[1] * vel[1] * data->m_time_step;
-        }
-        if ((z <= data->m_boundary_thickness && vel[2] < 0) || (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness && vel[2] > 0))
-        {
-            energy += 0.5 * data->m_ground_stiffness * data->dev_grid_mass[i] * vel[2] * vel[2] * data->m_time_step;
-        }
-        atomicAdd(data->u_energy, energy);
     }
 
     template <typename Real>
@@ -508,9 +472,6 @@ PCGMPMSolver<Real>::PCGMPMSolver(
     cudaMalloc(&m_data.dev_grid_diag_B, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_diag_B, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
-    cudaMallocManaged(&m_data.u_energy, sizeof(Real));
-    cudaMallocManaged(&m_data.u_residual, sizeof(Real));
-
     m_data.m_time_step = TIME_STEP;
     m_data.m_under_relaxation = UNDER_RELAXATION;
     m_data.m_ground_stiffness = GROUND_COLLISION_STIFFNESS;
@@ -549,9 +510,6 @@ PCGMPMSolver<Real>::~PCGMPMSolver()
     cudaFree(m_data.dev_grid_velocity_next);
     cudaFree(m_data.dev_grid_diag_K);
     cudaFree(m_data.dev_grid_diag_B);
-
-    cudaFree(m_data.u_energy);
-    cudaFree(m_data.u_residual);
 
     cudaFree(m_data.dev_gravity);
 
@@ -598,22 +556,12 @@ void PCGMPMSolver<Real>::ChebyshevSolver()
         PCGMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGMPMSolverKernel::grid_op<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        if (m_verbose)
-        {
-            cudaDeviceSynchronize();
-            *m_data.u_residual = 0;
-        }
         PCGMPMSolverKernel::jacobi_iteration<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         cudaPhysics::array_axpby(m_data.dev_grid_velocity_next, (Real)1, m_data.dev_grid_velocity, (Real)1, m_data.dev_grid_velocity_delta, 3 * m_data.m_num_grid);
         PCGMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         UpdateChebyshevOmega(omega, iter);
         PCGMPMSolverKernel::Chebyshev<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, omega);
         SwapAnswerBuffers();
-    }
-    if (m_verbose)
-    {
-        cudaDeviceSynchronize();
-        printf("Final residual: %f\n", *m_data.u_residual / m_data.m_num_grid);
     }
 }
 
