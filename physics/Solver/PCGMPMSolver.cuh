@@ -13,11 +13,6 @@ const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 60.0f;
 const unsigned int MAX_ITERATIONS = 200;
 
-// Chebyshev hyperparameters
-const unsigned int CHEBYSHEV_DELAY_ITER = 10;
-const float CHEBYSHEV_RHO = 0.9f;
-const float UNDER_RELAXATION = 0.7f;
-
 // Line search hyperparameters
 const unsigned int LINE_SEARCH_ITER = 8;
 const float RESIDUAL_TOLERANCE = 1e-2f;
@@ -38,6 +33,7 @@ struct PCGMPMSolverData
     Real *dev_particle_temp_J;
     Real *dev_particle_F;                  // deformation gradient
     unsigned int *dev_particle_to_grid_id; // order: x y z
+    Real *dev_particle_temp; // for temporary G2P when calculate Ap in PCG
 
     unsigned int m_num_grid;
     Real m_grid_spacing;
@@ -50,14 +46,12 @@ struct PCGMPMSolverData
     Real *dev_grid_force;
     Real *dev_grid_velocity;
     Real *dev_grid_velocity_hat;
-    Real *dev_grid_velocity_prev;
-    Real *dev_grid_velocity_delta;
-    Real *dev_grid_velocity_next;
-    Real *dev_grid_diag_K;
-    Real *dev_grid_diag_B;
+    Real *dev_grid_diag_B_const;
+    Real *dev_grid_diag_B_mutable;
+    Real *dev_grid_p; // the search direction in PCG
+    Real *dev_grid_temp; // used for various temporary storage(beta, alpha, Ap, etc.)
 
     Real m_time_step;
-    Real m_under_relaxation;
     Real m_ground_stiffness;
     Real m_lame_mu;
     Real m_lame_lambda;
@@ -81,10 +75,7 @@ public:
 protected:
     PCGMPMSolverData<Real> *m_dev_data;
 
-    void ChebyshevSolver();
-
-    void UpdateChebyshevOmega(Real &omega, unsigned iter);
-    void SwapAnswerBuffers();
+    void PCGSolver();
 };
 
 extern template struct PCGMPMSolverData<float>;
