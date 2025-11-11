@@ -676,9 +676,8 @@ void PCGMPMSolver<Real>::PCGSolver()
     Real prev_z_dot_r = 0; // for calculate beta in PCG
     for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
     {
-        // cudaCheck(cudaDeviceSynchronize());
-        // printf("PCG iteration %u\n", iter);
-        // fflush(stdout);
+        if (m_verbose)
+            printf("PCG iteration %u\n", iter);
 
         cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
         cudaMemset(m_data.dev_grid_diag_B_mutable, 0, sizeof(Real) * m_data.m_num_grid * 3);
@@ -689,9 +688,9 @@ void PCGMPMSolver<Real>::PCGSolver()
         PCGMPMSolverKernel::grid_r_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         Real residual = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
                                        thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3)) / m_data.m_num_grid;
-        // printf("residual: %f\n", residual);
-        // fflush(stdout);
-        if (residual < 0.01)
+        if (m_verbose)
+            printf("  residual = %e\n", residual);
+        if (residual < RESIDUAL_TOLERANCE)
             break;
         
         Real beta = 0;

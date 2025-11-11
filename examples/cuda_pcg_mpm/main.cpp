@@ -62,7 +62,7 @@ int main()
 
     auto solver = std::make_shared<PCGMPMSolver<Real>>(scene->m_positions, scene->m_particle_types, scene->m_particle_masses, scene->m_particle_volumes,
                                                     bbox, dist, boundary_thickness);
-    // solver->m_verbose = true;
+    solver->m_verbose = true;
     scene->SetSolver(solver);
     // scene->SetStepPerFrame(2);
     scene->SetupConnectors();

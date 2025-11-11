@@ -10,15 +10,11 @@ const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
 const float GROUND_COLLISION_STIFFNESS = 100000.0f;
 const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 60.0f;
-const unsigned int MAX_ITERATIONS = 400;
+const float TIME_STEP = 1.0f / 200.0f;
 
-// Line search hyperparameters
-const unsigned int LINE_SEARCH_ITER = 8;
-const float RESIDUAL_TOLERANCE = 1e-2f;
-const float INITIAL_ALPHA = 1.0f;
-const float MIN_ALPHA = 1e-5f;
-const float ALPHA_DECAY = 0.5f;
+// PCG parameters
+const unsigned int MAX_ITERATIONS = 200;
+const float RESIDUAL_TOLERANCE = 1e-4f;
 
 template <typename Real>
 struct PCGMPMSolverData
