@@ -268,6 +268,25 @@ namespace PCGMPMSolverKernel
     }
 
     template <typename Real>
+    __global__ void grid_r_dot_r(const PCGMPMSolverData<Real> *data)
+    {
+        unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= data->m_num_grid)
+            return;
+        for (unsigned int j = 0; j < 3; ++j)
+        {
+            Real r = data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j] - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_force[i * 3 + j];
+            data->dev_grid_temp[i * 3 + j] = r * r;
+        }
+        if (data->dev_grid_mass[i] <= 0)
+        {
+            data->dev_grid_temp[i * 3 + 0] = 0;
+            data->dev_grid_temp[i * 3 + 1] = 0;
+            data->dev_grid_temp[i * 3 + 2] = 0;
+        }
+    }
+
+    template <typename Real>
     __global__ void grid_z_dot_r(const PCGMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -295,7 +314,8 @@ namespace PCGMPMSolverKernel
         for (unsigned int j = 0; j < 3; ++j)
         {
             Real r = data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j] - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_force[i * 3 + j];
-            data->dev_grid_p[i * 3 + j] = -r + beta * data->dev_grid_p[i * 3 + j];
+            data->dev_grid_p[i * 3 + j] = - r / (data->dev_grid_diag_B_const[i * 3 + j] + data->dev_grid_diag_B_mutable[i * 3 + j])
+                                          + beta * data->dev_grid_p[i * 3 + j];
         }
         if (data->dev_grid_mass[i] <= 0)
         {
@@ -378,8 +398,7 @@ namespace PCGMPMSolverKernel
         // elastic force part
         cudaPhysics::vecMul3(Ap_non_diag, coef, &data->dev_grid_temp[i * 3]);
         // boundary force part
-        cudaPhysics::vecMul3(Ap_diag, coef, &data->dev_grid_diag_B_mutable[i * 3]);
-        cudaPhysics::vecMul3(Ap_diag, Ap_diag, &data->dev_grid_p[i * 3]);
+        cudaPhysics::vecMul3(Ap_diag, &data->dev_grid_diag_B_mutable[i * 3], &data->dev_grid_p[i * 3]);
         // total Ap
         cudaPhysics::axpbypcz(&data->dev_grid_temp[i * 3], (Real)1, &data->dev_grid_p[i * 3], (Real)1, Ap_non_diag, (Real)1, Ap_diag, 3);
         // pAp
@@ -403,10 +422,16 @@ namespace PCGMPMSolverKernel
             Real r = data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j] - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_force[i * 3 + j];
             data->dev_grid_temp[i * 3 + j] = data->dev_grid_p[i * 3 + j] * r;
         }
+        if (data->dev_grid_mass[i] <= 0)
+        {
+            data->dev_grid_temp[i * 3 + 0] = 0;
+            data->dev_grid_temp[i * 3 + 1] = 0;
+            data->dev_grid_temp[i * 3 + 2] = 0;
+        }
     }
 
     template <typename Real>
-    __global__ void grids_boundary_conditions(const PCGMPMSolverData<Real> *data)
+    __global__ void grids_boundary_conditions(PCGMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -414,18 +439,20 @@ namespace PCGMPMSolverKernel
         unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
         unsigned int z = i % data->dev_grid_size[2];
-        if (x <= data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 0] = max(0., data->dev_grid_velocity[i * 3 + 0]);
-        if (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 0] = min(0., data->dev_grid_velocity[i * 3 + 0]);
-        if (y <= data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 1] = max(0., data->dev_grid_velocity[i * 3 + 1]);
-        if (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 1] = min(0., data->dev_grid_velocity[i * 3 + 1]);
-        if (z <= data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 2] = max(0., data->dev_grid_velocity[i * 3 + 2]);
-        if (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 2] = min(0., data->dev_grid_velocity[i * 3 + 2]);
+        Real grid_pos[3];
+        unsigned int grid_id = x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z;
+        get_grid_position(grid_pos, grid_id, data);
+        for (unsigned int j = 0; j < 3; j++)
+        {
+            if (grid_pos[j] + data->dev_grid_velocity[i * 3 + j] * data->m_time_step < data->dev_inner_bbox[j])
+            {
+                data->dev_grid_velocity[i * 3 + j] = (data->dev_inner_bbox[j] - grid_pos[j]) / data->m_time_step;
+            }
+            if (grid_pos[j] + data->dev_grid_velocity[i * 3 + j] * data->m_time_step > data->dev_inner_bbox[j + 3])
+            {
+                data->dev_grid_velocity[i * 3 + j] = (data->dev_inner_bbox[j + 3] - grid_pos[j]) / data->m_time_step;
+            }
+        }
     }
 
     template <typename Real>
@@ -649,21 +676,31 @@ void PCGMPMSolver<Real>::PCGSolver()
     Real prev_z_dot_r = 0; // for calculate beta in PCG
     for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
     {
+        // cudaCheck(cudaDeviceSynchronize());
+        // printf("PCG iteration %u\n", iter);
+        // fflush(stdout);
+
         cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
         cudaMemset(m_data.dev_grid_diag_B_mutable, 0, sizeof(Real) * m_data.m_num_grid * 3);
         PCGMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGMPMSolverKernel::grid_boundary_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
+        PCGMPMSolverKernel::grid_r_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        Real residual = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+                                       thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3)) / m_data.m_num_grid;
+        // printf("residual: %f\n", residual);
+        // fflush(stdout);
+        if (residual < 0.01)
+            break;
+        
         Real beta = 0;
+        PCGMPMSolverKernel::grid_z_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        Real z_dot_r = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+                                      thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
         if (iter > 0)
-        {
-            PCGMPMSolverKernel::grid_z_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-            Real z_dot_r = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
-                                          thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
             beta = z_dot_r / prev_z_dot_r;
-            prev_z_dot_r = z_dot_r;
-        }
+        prev_z_dot_r = z_dot_r;
         PCGMPMSolverKernel::grid_search_direction<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
     
         PCGMPMSolverKernel::G2P_calc_Ap_step1<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -681,8 +718,8 @@ void PCGMPMSolver<Real>::PCGSolver()
                           thrust::device_pointer_cast(m_data.dev_grid_p),
                           thrust::device_pointer_cast(m_data.dev_grid_velocity),
                           thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
-        PCGMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     }
+    PCGMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template class PCGMPMSolver<float>;

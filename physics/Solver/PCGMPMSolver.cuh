@@ -8,10 +8,10 @@
 
 const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
-const float GROUND_COLLISION_STIFFNESS = 10000.0f;
+const float GROUND_COLLISION_STIFFNESS = 100000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 60.0f;
-const unsigned int MAX_ITERATIONS = 200;
+const unsigned int MAX_ITERATIONS = 400;
 
 // Line search hyperparameters
 const unsigned int LINE_SEARCH_ITER = 8;
