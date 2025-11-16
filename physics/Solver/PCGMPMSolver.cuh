@@ -7,6 +7,7 @@
 #define MPM_FLUID 2
 
 const float FLUID_LAMBDA = 1000000.0f;
+const float FLUID_VISCOSITY = 0.001f; // 1000.0f;
 const float GROUND_COLLISION_STIFFNESS = 100000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 200.0f;
@@ -25,7 +26,7 @@ struct PCGMPMSolverData
     Real *dev_particle_volume;
     unsigned int *dev_particle_type; // 0: static, 1: elastic, 2: fluid
     Real *dev_particle_C;
-    Real *dev_particle_temp_J;
+    Real *dev_particle_temp_C;
     Real *dev_particle_F;                  // deformation gradient
     unsigned int *dev_particle_to_grid_id; // order: x y z
     Real *dev_particle_temp; // for temporary G2P when calculate Ap in PCG
@@ -49,6 +50,7 @@ struct PCGMPMSolverData
     Real m_time_step;
     Real m_ground_stiffness;
     Real m_fluid_lambda;
+    Real m_fluid_viscosity;
     Real *dev_gravity;
 };
 

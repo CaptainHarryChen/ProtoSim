@@ -172,12 +172,12 @@ namespace PCGMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void G2P_calc_particle_temp_F(const PCGMPMSolverData<Real> *data)
+    __global__ void G2P_calc_particle_temp_C(const PCGMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
             return;
-        Real temp_sum = 0;
+        Real temp_sum[9] = {0};
         const Real *particle_position = &data->dev_particle_position[i * 3];
         unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
         unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
@@ -192,12 +192,12 @@ namespace PCGMPMSolverKernel
                     get_grid_position(grid_position, grid_id, data);
                     Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
 
-                    Real delta_position[3];
-                    const Real *vel = &data->dev_grid_velocity[grid_id * 3];
+                    Real delta_position[3], temp_vecvec[9];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    temp_sum += weight * cudaPhysics::dot3(vel, delta_position);
+                    cudaPhysics::vecvecT(temp_vecvec, &data->dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
+                    cudaPhysics::axpby(temp_sum, (Real)1, temp_sum, weight, temp_vecvec, 9);
                 }
-        data->dev_particle_temp_J[i] = (1 + data->m_time_step * 4 / (data->m_grid_spacing * data->m_grid_spacing) * temp_sum) * data->dev_particle_F[i * 9];
+        cudaPhysics::vecMul(&data->dev_particle_temp_C[i * 9], 4 / (data->m_grid_spacing * data->m_grid_spacing), temp_sum, 9);
     }
 
     template <typename Real>
@@ -208,6 +208,20 @@ namespace PCGMPMSolverKernel
             return;
         const Real *particle_position = &data->dev_particle_position[i * 3];
         const Real *particle_velocity = &data->dev_particle_velocity[i * 3];
+        Real tr_C = data->dev_particle_temp_C[i * 9] + data->dev_particle_temp_C[i * 9 + 4] + data->dev_particle_temp_C[i * 9 + 8];
+        Real temp_J = data->dev_particle_F[i * 9] * (1 + data->m_time_step * tr_C);
+        Real elastic_force_coef = - data->dev_particle_volume[i] 
+                                  * data->m_fluid_lambda * (temp_J - 1)
+                                  * data->dev_particle_F[i * 9]
+                                  * 4 / (data->m_grid_spacing * data->m_grid_spacing);
+        Real viscosity_force_coef[9] = {0};
+        viscosity_force_coef[0] = viscosity_force_coef[4] = viscosity_force_coef[8] = - 0.66666667f * tr_C;
+        cudaPhysics::axpby(viscosity_force_coef, (Real)1, viscosity_force_coef, (Real)2, &data->dev_particle_temp_C[i * 9], 9);
+        cudaPhysics::vecMul(viscosity_force_coef, 
+                            - data->m_fluid_viscosity * data->dev_particle_volume[i] * data->dev_particle_F[i * 9] * 4 / (data->m_grid_spacing * data->m_grid_spacing), 
+                            viscosity_force_coef, 
+                            9);
+        
         unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
         unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
         unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
@@ -222,17 +236,13 @@ namespace PCGMPMSolverKernel
                     Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    Real temp = -data->dev_particle_volume[i] 
-                            * data->m_fluid_lambda 
-                            * (data->dev_particle_temp_J[i] - 1)
-                            * data->dev_particle_F[i * 9]
-                            * 4 / (data->m_grid_spacing * data->m_grid_spacing)
-                            * weight;
-                    Real force[3];
-                    cudaPhysics::vecMul3(force, temp, delta_position);
-                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 0], force[0]);
-                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 1], force[1]);
-                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 2], force[2]);
+                    Real elastic_force[3], viscosity_force[3];
+                    cudaPhysics::vecMul3(elastic_force, elastic_force_coef * weight, delta_position);
+                    cudaPhysics::matVec3(viscosity_force, viscosity_force_coef, delta_position);
+                    cudaPhysics::vecMul3(viscosity_force, weight, viscosity_force);
+                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 0], elastic_force[0] + viscosity_force[0]);
+                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 1], elastic_force[1] + viscosity_force[1]);
+                    atomicAdd(&data->dev_grid_force[grid_id * 3 + 2], elastic_force[2] + viscosity_force[2]);
                 }
     }
 
@@ -358,6 +368,19 @@ namespace PCGMPMSolverKernel
         unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
         if (p >= data->m_num_particle)
             return;
+        // elastic
+        Real coef = - data->m_fluid_lambda 
+                    * data->m_time_step
+                    * 16 / (data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing)
+                    * data->dev_particle_volume[p]
+                    * (data->dev_particle_F[p * 9] * data->dev_particle_F[p * 9])
+                    * data->dev_particle_temp[p];
+        // viscosity
+        coef += - data->m_fluid_viscosity
+                 * 64 / (3 * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing)
+                 * data->dev_particle_volume[p] * data->dev_particle_F[p * 9]
+                 * data->dev_particle_temp[p];
+        
         const Real *particle_position = &data->dev_particle_position[p * 3];
         unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[p];
         unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
@@ -374,15 +397,9 @@ namespace PCGMPMSolverKernel
 
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    Real coef = - data->m_fluid_lambda 
-                                * data->m_time_step
-                                * 16 / (data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing)
-                                * data->dev_particle_volume[p]
-                                * weight
-                                * data->dev_particle_temp[p];
-                    atomicAdd(&data->dev_grid_temp[grid_id * 3 + 0], coef * delta_position[0]);
-                    atomicAdd(&data->dev_grid_temp[grid_id * 3 + 1], coef * delta_position[1]);
-                    atomicAdd(&data->dev_grid_temp[grid_id * 3 + 2], coef * delta_position[2]);
+                    atomicAdd(&data->dev_grid_temp[grid_id * 3 + 0], coef * weight * delta_position[0]);
+                    atomicAdd(&data->dev_grid_temp[grid_id * 3 + 1], coef * weight * delta_position[1]);
+                    atomicAdd(&data->dev_grid_temp[grid_id * 3 + 2], coef * weight * delta_position[2]);
                 }
     }
 
@@ -542,7 +559,7 @@ PCGMPMSolver<Real>::PCGMPMSolver(
     cudaMemcpy(m_data.dev_particle_type, particle_type.data(), sizeof(unsigned int) * m_data.m_num_particle, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_particle_C, sizeof(Real) * m_data.m_num_particle * 9);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
-    cudaMalloc(&m_data.dev_particle_temp_J, sizeof(Real) * m_data.m_num_particle * 9);
+    cudaMalloc(&m_data.dev_particle_temp_C, sizeof(Real) * m_data.m_num_particle * 9);
     cudaMalloc(&m_data.dev_particle_F, sizeof(Real) * m_data.m_num_particle * 9);
     cudaPhysics::fill_identity_matrix(m_data.dev_particle_F, m_data.m_num_particle, 3);
     cudaMalloc(&m_data.dev_particle_to_grid_id, sizeof(unsigned int) * m_data.m_num_particle);
@@ -598,6 +615,7 @@ PCGMPMSolver<Real>::PCGMPMSolver(
     m_data.m_time_step = TIME_STEP;
     m_data.m_ground_stiffness = GROUND_COLLISION_STIFFNESS;
     m_data.m_fluid_lambda = FLUID_LAMBDA;
+    m_data.m_fluid_viscosity = FLUID_VISCOSITY;
     cudaMalloc(&m_data.dev_gravity, sizeof(Real) * 3);
     std::vector<Real> gravity = {0., -GRAVITY, 0.};
     cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
@@ -615,7 +633,7 @@ PCGMPMSolver<Real>::~PCGMPMSolver()
     cudaFree(m_data.dev_particle_volume);
     cudaFree(m_data.dev_particle_type);
     cudaFree(m_data.dev_particle_C);
-    cudaFree(m_data.dev_particle_temp_J);
+    cudaFree(m_data.dev_particle_temp_C);
     cudaFree(m_data.dev_particle_F);
     cudaFree(m_data.dev_particle_to_grid_id);
     cudaFree(m_data.dev_particle_temp);
@@ -677,7 +695,7 @@ void PCGMPMSolver<Real>::PCGSolver()
 
         cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
         cudaMemset(m_data.dev_grid_diag_B_mutable, 0, sizeof(Real) * m_data.m_num_grid * 3);
-        PCGMPMSolverKernel::G2P_calc_particle_temp_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        PCGMPMSolverKernel::G2P_calc_particle_temp_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGMPMSolverKernel::grid_boundary_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
