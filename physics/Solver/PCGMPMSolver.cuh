@@ -6,8 +6,7 @@
 #define MPM_ELASTIC 1
 #define MPM_FLUID 2
 
-const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
-const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
+const float FLUID_LAMBDA = 1000000.0f;
 const float GROUND_COLLISION_STIFFNESS = 100000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 200.0f;
@@ -49,8 +48,7 @@ struct PCGMPMSolverData
 
     Real m_time_step;
     Real m_ground_stiffness;
-    Real m_lame_mu;
-    Real m_lame_lambda;
+    Real m_fluid_lambda;
     Real *dev_gravity;
 };
 

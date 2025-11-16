@@ -117,7 +117,7 @@ namespace PCGMPMSolverKernel
                     Real diag_K[3];
                     cudaPhysics::vecMul3(diag_K, delta_position, delta_position);
                     cudaPhysics::vecMul3(diag_K, -data->dev_particle_volume[i] 
-                                                * data->m_lame_lambda 
+                                                * data->m_fluid_lambda 
                                                 * data->dev_particle_F[i * 9] * data->dev_particle_F[i * 9] 
                                                 * 16 * weight * weight
                                                 / (data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing));
@@ -177,8 +177,7 @@ namespace PCGMPMSolverKernel
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
             return;
-        Real &temp_J = data->dev_particle_temp_J[i];
-        temp_J = 0;
+        Real temp_sum = 0;
         const Real *particle_position = &data->dev_particle_position[i * 3];
         unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
         unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
@@ -196,9 +195,9 @@ namespace PCGMPMSolverKernel
                     Real delta_position[3];
                     const Real *vel = &data->dev_grid_velocity[grid_id * 3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    temp_J += weight * cudaPhysics::dot3(vel, delta_position);
+                    temp_sum += weight * cudaPhysics::dot3(vel, delta_position);
                 }
-        temp_J = (1 + data->m_time_step * 4 / (data->m_grid_spacing * data->m_grid_spacing) * temp_J) * data->dev_particle_F[i * 9];
+        data->dev_particle_temp_J[i] = (1 + data->m_time_step * 4 / (data->m_grid_spacing * data->m_grid_spacing) * temp_sum) * data->dev_particle_F[i * 9];
     }
 
     template <typename Real>
@@ -224,7 +223,7 @@ namespace PCGMPMSolverKernel
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
                     Real temp = -data->dev_particle_volume[i] 
-                            * data->m_lame_lambda 
+                            * data->m_fluid_lambda 
                             * (data->dev_particle_temp_J[i] - 1)
                             * data->dev_particle_F[i * 9]
                             * 4 / (data->m_grid_spacing * data->m_grid_spacing)
@@ -375,7 +374,7 @@ namespace PCGMPMSolverKernel
 
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    Real coef = - data->m_lame_lambda 
+                    Real coef = - data->m_fluid_lambda 
                                 * data->m_time_step
                                 * 16 / (data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing * data->m_grid_spacing)
                                 * data->dev_particle_volume[p]
@@ -460,8 +459,6 @@ namespace PCGMPMSolverKernel
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
-            return;
-        if (data->dev_particle_type[i] == MPM_STATIC)
             return;
         const Real *particle_position = &data->dev_particle_position[i * 3];
         unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
@@ -600,8 +597,7 @@ PCGMPMSolver<Real>::PCGMPMSolver(
 
     m_data.m_time_step = TIME_STEP;
     m_data.m_ground_stiffness = GROUND_COLLISION_STIFFNESS;
-    m_data.m_lame_mu = LAME_MU;
-    m_data.m_lame_lambda = LAME_LAMBDA;
+    m_data.m_fluid_lambda = FLUID_LAMBDA;
     cudaMalloc(&m_data.dev_gravity, sizeof(Real) * 3);
     std::vector<Real> gravity = {0., -GRAVITY, 0.};
     cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
