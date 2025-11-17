@@ -59,9 +59,10 @@ int main()
     std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
     unsigned int boundary_thickness = 1;
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    std::vector<Real> bbox_real(bbox.begin(), bbox.end());
 
     auto solver = std::make_shared<PCGMPMSolver<Real>>(scene->m_positions, scene->m_particle_types, scene->m_particle_masses, scene->m_particle_volumes,
-                                                    bbox, dist, boundary_thickness);
+                                                    bbox_real, dist, boundary_thickness);
     solver->m_verbose = true;
     scene->SetSolver(solver);
     // scene->SetStepPerFrame(2);

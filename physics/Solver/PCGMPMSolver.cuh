@@ -7,14 +7,14 @@
 #define MPM_FLUID 2
 
 const float FLUID_LAMBDA = 1000000.0f;
-const float FLUID_VISCOSITY = 0.001f; // 1000.0f;
+const float FLUID_VISCOSITY = 10.0f; // 1000.0f;
 const float GROUND_COLLISION_STIFFNESS = 100000.0f;
 const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 200.0f;
 
 // PCG parameters
-const unsigned int MAX_ITERATIONS = 200;
-const float RESIDUAL_TOLERANCE = 1e-4f;
+const unsigned int MAX_ITERATIONS = 100000;
+const float RESIDUAL_TOLERANCE = 1e-6f;
 
 template <typename Real>
 struct PCGMPMSolverData
