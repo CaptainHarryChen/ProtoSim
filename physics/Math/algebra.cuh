@@ -324,7 +324,7 @@ namespace cudaPhysics
         inv_X[7] = -X[0] * X[7] + X[1] * X[6];
         inv_X[8] = X[0] * X[4] - X[1] * X[3];
         T J = X[0] * inv_X[0] + X[3] * inv_X[1] + X[6] * inv_X[2];
-        T inv_J = 1.0 / J;
+        T inv_J = 1.0f / J;
         for (int i = 0; i < 9; i++)
             inv_X[i] *= inv_J;
     }
