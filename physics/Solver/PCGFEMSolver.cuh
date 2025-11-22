@@ -10,7 +10,7 @@ const float TIME_STEP = 1.0f / 100.0f;
 
 // PCG parameters
 const unsigned int MAX_ITERATIONS = 100000;
-const float RESIDUAL_TOLERANCE = 1e-6f;
+const float RESIDUAL_TOLERANCE = 1e-2f;
 
 template <typename Real>
 struct PCGFEMSolverData
@@ -24,8 +24,8 @@ struct PCGFEMSolverData
     Real *dev_vert_velocity_hat;
     Real *dev_vert_mass;
     Real *dev_vert_force;
-    Real *dev_vert_diag_B_const;
-    Real *dev_vert_diag_B_mutable;
+    Real *dev_vert_diag_B;
+    Real *dev_vert_box_collision_A;
     Real *dev_vert_p;
     Real *dev_vert_temp; // used for various temporary storage (beta, alpha, Ap, etc.)
 

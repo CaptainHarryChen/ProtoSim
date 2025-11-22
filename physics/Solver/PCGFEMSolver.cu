@@ -29,6 +29,16 @@ namespace PCGFEMSolverKernel
     }
 
     template <typename Real>
+    __global__ void initial_guess(const PCGFEMSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->m_num_vert)
+            return;
+        cudaPhysics::axpby(&data->dev_vert_velocity[3 * v], (Real)1.0, &data->dev_vert_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
+        cudaPhysics::axpby(&data->dev_vert_position_next[3 * v], (Real)1.0, &data->dev_vert_position[3 * v], data->m_time_step, &data->dev_vert_velocity[3 * v], 3);
+    }
+
+    template <typename Real>
     __global__ void tet_stiffness_matrix_diag(const PCGFEMSolverData<Real> *data)
     {
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
@@ -40,10 +50,10 @@ namespace PCGFEMSolverKernel
         Real K[12];
         cudaPhysics::calc_neohookean_force_diff<Real>(
             K,
-            &data->dev_vert_position[ind[0]],
-            &data->dev_vert_position[ind[1]],
-            &data->dev_vert_position[ind[2]],
-            &data->dev_vert_position[ind[3]],
+            &data->dev_vert_position_next[ind[0]],
+            &data->dev_vert_position_next[ind[1]],
+            &data->dev_vert_position_next[ind[2]],
+            &data->dev_vert_position_next[ind[3]],
             &data->dev_invDm[t * 9],
             data->dev_tet_volume[t],
             data->m_lame_mu,
@@ -52,32 +62,22 @@ namespace PCGFEMSolverKernel
         {
             for (unsigned int j = 0; j < 3; ++j)
             {
-                // dev_vert_diag_B_const stores (K=partial f / partial x) instead of B for now
-                atomicAdd(&data->dev_vert_diag_B_const[data->dev_tetrahedron[t * 4 + i] * 3 + j], K[i * 3 + j]);
+                // dev_vert_diag_B stores (K=partial f / partial x) instead of B for now
+                atomicAdd(&data->dev_vert_diag_B[data->dev_tetrahedron[t * 4 + i] * 3 + j], K[i * 3 + j]);
             }
         }
     }
 
     template <typename Real>
-    __global__ void calc_vert_diag_B_const(const PCGFEMSolverData<Real> *data)
+    __global__ void calc_vert_diag_B(const PCGFEMSolverData<Real> *data)
     {
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
             return;
-        for (unsigned int i = 0; i < 3; ++i)
+        for (unsigned int j = 0; j < 3; ++j)
         {
-            data->dev_vert_diag_B_const[3 * v + i] = data->dev_vert_mass[v] * data->m_time_step_inv - data->dev_vert_diag_B_const[3 * v + i] * data->m_time_step;
+            data->dev_vert_diag_B[v * 3 + j] = data->dev_vert_mass[v] * data->m_time_step_inv - data->dev_vert_diag_B[v * 3 + j];
         }
-    }
-
-    template <typename Real>
-    __global__ void initial_guess(const PCGFEMSolverData<Real> *data)
-    {
-        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
-        if (v >= data->m_num_vert)
-            return;
-        cudaPhysics::axpby(&data->dev_vert_velocity[3 * v], (Real)1.0, &data->dev_vert_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
-        cudaPhysics::axpby(&data->dev_vert_position_next[3 * v], (Real)1.0, &data->dev_vert_position[3 * v], data->m_time_step, &data->dev_vert_velocity[3 * v], 3);
     }
 
     template <typename Real>
@@ -121,7 +121,8 @@ namespace PCGFEMSolverKernel
         if (data->dev_vert_position_next[3 * v + 1] < 0.0f)
         {
             data->dev_vert_force[3 * v + 1] += -data->m_ground_collision_stiffness * data->dev_vert_position_next[3 * v + 1] * data->dev_vert_mass[v];
-            data->dev_vert_diag_B_mutable[3 * v + 1] += data->m_ground_collision_stiffness * data->dev_vert_mass[v] * data->m_time_step;
+            data->dev_vert_diag_B[3 * v + 1] += data->m_ground_collision_stiffness * data->dev_vert_mass[v] * data->m_time_step;
+            data->dev_vert_box_collision_A[3 * v + 1] += data->m_ground_collision_stiffness * data->dev_vert_mass[v] * data->m_time_step;
         }
     }
 
@@ -147,7 +148,7 @@ namespace PCGFEMSolverKernel
         for (unsigned int j = 0; j < 3; ++j)
         {
             Real r = data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j];
-            data->dev_vert_temp[3 * v + j] = r * r / (data->dev_vert_diag_B_const[3 * v + j] + data->dev_vert_diag_B_mutable[3 * v + j]);
+            data->dev_vert_temp[3 * v + j] = r * r / data->dev_vert_diag_B[3 * v + j];
         }
     }
 
@@ -160,7 +161,7 @@ namespace PCGFEMSolverKernel
         for (unsigned int j = 0; j < 3; ++j)
         {
             Real r = data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j];
-            data->dev_vert_p[v * 3 + j] = - r / (data->dev_vert_diag_B_const[v * 3 + j] + data->dev_vert_diag_B_mutable[v * 3 + j])
+            data->dev_vert_p[v * 3 + j] = - r / data->dev_vert_diag_B[3 * v + j]
                                           + beta * data->dev_vert_p[v * 3 + j];
         }
     }
@@ -230,7 +231,7 @@ namespace PCGFEMSolverKernel
         {
             Real Ap =   data->dev_vert_mass[v] * data->m_time_step_inv * data->dev_vert_p[3 * v + j] 
                       - data->dev_vert_temp[3 * v + j] // elastic force part stored in dev_vert_temp
-                      + data->dev_vert_diag_B_mutable[3 * v + j] * data->dev_vert_p[3 * v + j]; // ground collision part
+                      + data->dev_vert_box_collision_A[3 * v + j] * data->dev_vert_p[3 * v + j]; // ground collision part
             data->dev_vert_temp[3 * v + j] = data->dev_vert_p[3 * v + j] * Ap;
         }
     }
@@ -266,9 +267,8 @@ PCGFEMSolver<Real>::PCGFEMSolver(const std::vector<Real> &position, const std::v
     cudaMalloc((void **)&m_data.dev_vert_mass, sizeof(Real) * m_data.m_num_vert);
     cudaMemset(m_data.dev_vert_mass, 0, sizeof(Real) * m_data.m_num_vert);
     cudaMalloc((void **)&m_data.dev_vert_force, sizeof(Real) * m_data.m_num_vert * 3);
-    cudaMalloc((void **)&m_data.dev_vert_diag_B_const, sizeof(Real) * m_data.m_num_vert * 3);
-    cudaMemset(m_data.dev_vert_diag_B_const, 0, sizeof(Real) * m_data.m_num_vert * 3);
-    cudaMalloc((void **)&m_data.dev_vert_diag_B_mutable, sizeof(Real) * m_data.m_num_vert * 3);
+    cudaMalloc((void **)&m_data.dev_vert_diag_B, sizeof(Real) * m_data.m_num_vert * 3);
+    cudaMalloc((void **)&m_data.dev_vert_box_collision_A, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_vert_p, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_vert_temp, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMemset(m_data.dev_vert_temp, 0, sizeof(Real) * m_data.m_num_vert * 3);
@@ -294,8 +294,6 @@ PCGFEMSolver<Real>::PCGFEMSolver(const std::vector<Real> &position, const std::v
     cudaMemcpy(m_dev_data, &m_data, sizeof(PCGFEMSolverData<Real>), cudaMemcpyHostToDevice);
 
     PCGFEMSolverKernel::tetrahedron_initialize<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PCGFEMSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PCGFEMSolverKernel::calc_vert_diag_B_const<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaCheck(cudaDeviceSynchronize());
     printf("PCGFEMSolver initialized.\n");
 }
@@ -309,8 +307,8 @@ PCGFEMSolver<Real>::~PCGFEMSolver()
     cudaFree(m_data.dev_vert_velocity_hat);
     cudaFree(m_data.dev_vert_mass);
     cudaFree(m_data.dev_vert_force);
-    cudaFree(m_data.dev_vert_diag_B_const);
-    cudaFree(m_data.dev_vert_diag_B_mutable);
+    cudaFree(m_data.dev_vert_diag_B);
+    cudaFree(m_data.dev_vert_box_collision_A);
     cudaFree(m_data.dev_vert_p);
     cudaFree(m_data.dev_vert_temp);
 
@@ -337,7 +335,10 @@ void PCGFEMSolver<Real>::Step()
             printf("PCG iteration %u\n", iter);
 
         cudaMemset(m_data.dev_vert_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
-        cudaMemset(m_data.dev_vert_diag_B_mutable, 0, sizeof(Real) * m_data.m_num_vert * 3);
+        cudaMemset(m_data.dev_vert_diag_B, 0, sizeof(Real) * m_data.m_num_vert * 3);
+        cudaMemset(m_data.dev_vert_box_collision_A, 0, sizeof(Real) * m_data.m_num_vert * 3);
+        PCGFEMSolverKernel::tet_stiffness_matrix_diag<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        PCGFEMSolverKernel::calc_vert_diag_B<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGFEMSolverKernel::calc_tetrahedron_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
         PCGFEMSolverKernel::calc_ground_collision_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
