@@ -76,7 +76,7 @@ namespace PCGFEMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            // A = m / dt + (partial f / partial x) * dt
+            // A = m / dt - (partial f / partial x) * dt
             data->dev_vert_diag_B[v * 3 + j] = data->dev_vert_mass[v] * data->m_time_step_inv - data->dev_vert_diag_B[v * 3 + j] * data->m_time_step;
         }
     }
@@ -102,14 +102,15 @@ namespace PCGFEMSolverKernel
         cudaPhysics::matmatTMul3(H, P, InvDm);
         cudaPhysics::vecMul(H, -data->dev_tet_volume[t], H, 9);
         for (unsigned int i = 0; i < 3; ++i)
-            cudaPhysics::vecSubs3(f0, f0, &H[i * 3]);
+            for (unsigned int j = 0; j < 3; ++j)
+                f0[i] -= H[i * 3 + j];
         
         for (unsigned int j = 0; j < 3; ++j)
             atomicAdd(&data->dev_vert_force[ind[0] + j], f0[j]);
         for (unsigned int i = 1; i < 4; ++i)
         {
             for (unsigned int j = 0; j < 3; ++j)
-                atomicAdd(&data->dev_vert_force[ind[i] + j], H[(i - 1) * 3 + j]);
+                atomicAdd(&data->dev_vert_force[ind[i] + j], H[j * 3 + i - 1]);
         }
     }
 
@@ -346,9 +347,11 @@ void PCGFEMSolver<Real>::Step()
 
         PCGFEMSolverKernel::vert_r_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
         Real residual = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
-                                       thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3)) / m_data.m_num_vert;
+                                       thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3));
+        residual = sqrt(residual / (m_data.m_num_vert * 3));
         if (m_verbose)
             printf("  residual = %e\n", residual);
+        assert(!std::isnan(residual));
         if (residual < RESIDUAL_TOLERANCE)
             break;
         
@@ -361,17 +364,17 @@ void PCGFEMSolver<Real>::Step()
         prev_z_dot_r = z_dot_r;
         PCGFEMSolverKernel::vert_search_direction<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
 
-        thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
-                          thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
-                          thrust::device_pointer_cast(m_data.dev_vert_temp),
-                          thrust::placeholders::_1 * thrust::placeholders::_1);
-        Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
-                                      thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3));
-        thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
-                          thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
-                          thrust::device_pointer_cast(m_data.dev_vert_temp),
-                          thrust::placeholders::_1 / sqrt(p_dot_p));
-        cudaMemcpy(m_data.dev_vert_p, m_data.dev_vert_temp, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+        // thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
+        //                   thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
+        //                   thrust::device_pointer_cast(m_data.dev_vert_temp),
+        //                   thrust::placeholders::_1 * thrust::placeholders::_1);
+        // Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
+        //                               thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3));
+        // thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
+        //                   thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
+        //                   thrust::device_pointer_cast(m_data.dev_vert_temp),
+        //                   thrust::placeholders::_1 / sqrt(p_dot_p));
+        // cudaMemcpy(m_data.dev_vert_p, m_data.dev_vert_temp, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
     
         cudaMemset(m_data.dev_vert_temp, 0, sizeof(Real) * m_data.m_num_vert * 3);
         PCGFEMSolverKernel::calc_tet_Ap<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
@@ -387,8 +390,8 @@ void PCGFEMSolver<Real>::Step()
                           thrust::device_pointer_cast(m_data.dev_vert_p),
                           thrust::device_pointer_cast(m_data.dev_vert_velocity),
                           thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
-        thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_position_next),
-                          thrust::device_pointer_cast(m_data.dev_vert_position_next + m_data.m_num_vert * 3),
+        thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_position),
+                          thrust::device_pointer_cast(m_data.dev_vert_position + m_data.m_num_vert * 3),
                           thrust::device_pointer_cast(m_data.dev_vert_velocity),
                           thrust::device_pointer_cast(m_data.dev_vert_position_next),
                           thrust::placeholders::_1 + m_data.m_time_step * thrust::placeholders::_2);
