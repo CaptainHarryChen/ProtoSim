@@ -4,13 +4,13 @@
 
 const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
 const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
-const float GROUND_COLLISION_STIFFNESS = 100000.0f;
+const float GROUND_COLLISION_STIFFNESS = 10000000.0f;
 const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 100.0f;
+const float TIME_STEP = 1.0f / 1000.0f;
 
 // PCG parameters
-const unsigned int MAX_ITERATIONS = 100000;
-const float RESIDUAL_TOLERANCE = 1e-4f;
+const unsigned int MAX_ITERATIONS = 1000;
+const float RESIDUAL_TOLERANCE = 1e-2f;
 
 template <typename Real>
 struct PCGFEMSolverData

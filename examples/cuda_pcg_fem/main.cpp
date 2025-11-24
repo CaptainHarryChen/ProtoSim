@@ -59,10 +59,19 @@ int main()
     app->AddObject(scene);
 
     scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1000.0f,
-                           10.0f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+                           15.0f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                            {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
     // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/armadillo10K", 1000.0f,
-    //                        0.02f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                        0.1f, glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
+    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 1000.0f,
+    //                        1.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
+    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/cube/cube1.5k", 1000.0f,
+    //                        1.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
+    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/cube/cube6k", 1000.0f,
+    //                        1.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
     //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
 
     auto solver = std::make_shared<PCGFEMSolver<Real>>(scene->m_positions, scene->m_tetrahedras, scene->m_tetrahedras_densities);
