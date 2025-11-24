@@ -7,7 +7,7 @@ set VENV_DIR=%~dp0venv
 
 if not exist "%VENV_DIR%\Scripts\python.exe" (
   echo [INFO] Creating virtual environment: %VENV_DIR%
-  py -3 -m venv "%VENV_DIR%"
+  python -m venv "%VENV_DIR%"
 ) else (
   echo [INFO] Virtual environment already exists: %VENV_DIR%
 )

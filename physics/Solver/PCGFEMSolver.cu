@@ -62,7 +62,7 @@ namespace PCGFEMSolverKernel
         {
             for (unsigned int j = 0; j < 3; ++j)
             {
-                // dev_vert_diag_B stores (K=partial f / partial x) instead of B for now
+                // dev_vert_diag_B stores (K = partial f / partial x) instead of B for now
                 atomicAdd(&data->dev_vert_diag_B[data->dev_tetrahedron[t * 4 + i] * 3 + j], K[i * 3 + j]);
             }
         }
@@ -76,7 +76,8 @@ namespace PCGFEMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            data->dev_vert_diag_B[v * 3 + j] = data->dev_vert_mass[v] * data->m_time_step_inv - data->dev_vert_diag_B[v * 3 + j];
+            // A = m / dt + (partial f / partial x) * dt
+            data->dev_vert_diag_B[v * 3 + j] = data->dev_vert_mass[v] * data->m_time_step_inv - data->dev_vert_diag_B[v * 3 + j] * data->m_time_step;
         }
     }
 
@@ -134,7 +135,7 @@ namespace PCGFEMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j];
+            Real r = - (data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j]);
             data->dev_vert_temp[3 * v + j] = r * r;
         }
     }
@@ -147,7 +148,7 @@ namespace PCGFEMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j];
+            Real r = - (data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j]);
             data->dev_vert_temp[3 * v + j] = r * r / data->dev_vert_diag_B[3 * v + j];
         }
     }
@@ -160,8 +161,8 @@ namespace PCGFEMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j];
-            data->dev_vert_p[v * 3 + j] = - r / data->dev_vert_diag_B[3 * v + j]
+            Real r = - (data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j]);
+            data->dev_vert_p[v * 3 + j] = r / data->dev_vert_diag_B[3 * v + j]
                                           + beta * data->dev_vert_p[v * 3 + j];
         }
     }
@@ -195,7 +196,7 @@ namespace PCGFEMSolverKernel
         cudaPhysics::vecMul(P1, data->m_lame_mu, partial_F, 9);
 
         cudaPhysics::matMul3(F_inv_mul_partial_F, F_inv, partial_F);
-        cudaPhysics::matmatTMul3(P2_T, F_inv_mul_partial_F, F_inv);
+        cudaPhysics::matMul3(P2_T, F_inv_mul_partial_F, F_inv);
         cudaPhysics::matTrans3(P2, P2_T);
         cudaPhysics::vecMul(P2, data->m_lame_mu - data->m_lame_lambda * log(J), P2, 9);
 
@@ -210,14 +211,15 @@ namespace PCGFEMSolverKernel
 
         Real partial_f0[3] = {0};
         for (unsigned int i = 0; i < 3; ++i)
-            cudaPhysics::vecSubs3(partial_f0, partial_f0, &partial_H[i * 3]);
+            for (unsigned int j = 0; j < 3; ++j)
+                partial_f0[i] -= partial_H[i * 3 + j];
 
         for (unsigned int j = 0; j < 3; ++j)
             atomicAdd(&data->dev_vert_temp[ind[0] + j], partial_f0[j]);
         for (unsigned int i = 1; i < 4; ++i)
         {
             for (unsigned int j = 0; j < 3; ++j)
-                atomicAdd(&data->dev_vert_temp[ind[i] + j], partial_H[(i - 1) * 3 + j]);
+                atomicAdd(&data->dev_vert_temp[ind[i] + j], partial_H[j * 3 + i - 1]);
         }
     }
     
@@ -244,7 +246,7 @@ namespace PCGFEMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j];
+            Real r = - (data->dev_vert_mass[v] * data->m_time_step_inv * (data->dev_vert_velocity[3 * v + j] - data->dev_vert_velocity_hat[3 * v + j]) - data->dev_vert_force[3 * v + j]);
             data->dev_vert_temp[3 * v + j] = data->dev_vert_p[3 * v + j] * r;
         }
     }
@@ -377,8 +379,8 @@ void PCGFEMSolver<Real>::Step()
         Real pAp = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
                                   thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3));
         PCGFEMSolverKernel::vert_p_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        Real alpha = - thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
-                                      thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3)) / pAp;
+        Real alpha = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
+                                    thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3)) / pAp;
 
         thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_velocity),
                           thrust::device_pointer_cast(m_data.dev_vert_velocity + m_data.m_num_vert * 3),

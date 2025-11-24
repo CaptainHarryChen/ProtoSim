@@ -10,7 +10,7 @@ const float TIME_STEP = 1.0f / 100.0f;
 
 // PCG parameters
 const unsigned int MAX_ITERATIONS = 100000;
-const float RESIDUAL_TOLERANCE = 1e-2f;
+const float RESIDUAL_TOLERANCE = 1e-4f;
 
 template <typename Real>
 struct PCGFEMSolverData

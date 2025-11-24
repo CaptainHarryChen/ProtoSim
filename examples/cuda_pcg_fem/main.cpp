@@ -50,7 +50,7 @@ public:
 
 int main()
 {
-    using Real = float;
+    using Real = double;
 
     auto app = GLFWApp::GetInstance("PCG FEM Solver Example", 1600, 900);
 
