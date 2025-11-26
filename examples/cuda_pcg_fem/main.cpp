@@ -50,7 +50,9 @@ public:
 
 int main()
 {
-    using Real = double;
+    // Corotated Linear Model can use float precision
+    // Neohookean Model requires double precision for better stability
+    using Real = float;
 
     auto app = GLFWApp::GetInstance("PCG FEM Solver Example", 1600, 900);
 

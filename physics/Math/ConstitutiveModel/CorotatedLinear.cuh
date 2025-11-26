@@ -8,12 +8,37 @@ namespace cudaPhysics
      * P = mu * (F - R)
      */
     template <typename Real>
-	__host__ __device__ void calc_corotated_linear_P(Real *P, const Real *F, Real mu, Real lambda)
+	__host__ __device__ void calc_corotated_linear_P(Real *P, const Real *F, Real mu)
 	{
         Real R[9];
 		polar_decomposition_R(R, F);
         axpby(P, 2 * mu, F, -2 * mu, R, 9);
 	}
+
+    /**
+     * @brief Calculate K * u for the Corotated Linear force. K = (partial f / partial x). u is a vector to replace (delta x)
+     * @details See SIGGRAPH 2012 Course "FEM Simulation of 3D Deformable Solids ...." Chapter 4.3 for more details.
+     * (delta K) can be derived as some formulas with (delta x).
+     * To get K * u, we can replace (delta x) with u in the formulas.
+     * @param Ku The output K * u (length 12)
+     * @param partial_Ds The partial Ds matrix derived from (delta x) replaced by u (length 9)
+     */
+    template <typename Real>
+    __host__ __device__ void calc_corotated_linear_K_mul_u(
+        Real *Ku,
+        const Real *partial_Ds,
+        const Real *InvDm,
+        Real W,
+        Real mu)
+    {
+        Real partial_H[9], tmp[9];
+        matmatTMul3(tmp, InvDm, InvDm);
+        matMul3(partial_H, partial_Ds, tmp);
+        vecMul(partial_H, -2 * W * mu, partial_H, 9);
+        matTrans3(&Ku[3], partial_H);
+        for (unsigned int i = 0; i < 3; ++i)
+            Ku[i] = -(partial_H[i * 3 + 0] + partial_H[i * 3 + 1] + partial_H[i * 3 + 2]);
+    }
 
     /**
      * @brief Calculate the K = (partial f / partial x) of the Corotated Linear force
@@ -27,8 +52,7 @@ namespace cudaPhysics
         Real *K,
         const Real *InvDm,
         Real W,
-        Real mu,
-        Real lambda)
+        Real mu)
     {
         Real delta_f[9]; // delta_f = -2 * V0 * stiffness * invDm * invDm^T * (delta Ds^T)
         matmatTMul3(delta_f, InvDm, InvDm);

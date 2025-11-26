@@ -1,6 +1,7 @@
 #include "PCGFEMSolver.cuh"
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
+#include <Math/ConstitutiveModel/CorotatedLinear.cuh>
 #include <Math/ConstitutiveModel/Neohookean.cuh>
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
@@ -44,6 +45,8 @@ namespace PCGFEMSolverKernel
         unsigned int t = blockDim.x * blockIdx.x + threadIdx.x;
         if (t >= data->m_num_tet)
             return;
+        
+        #ifdef NEWHOOKEAN_MODEL
         unsigned int ind[4];
         for (unsigned int i = 0; i < 4; ++i)
             ind[i] = data->dev_tetrahedron[t * 4 + i] * 3;
@@ -63,9 +66,26 @@ namespace PCGFEMSolverKernel
             for (unsigned int j = 0; j < 3; ++j)
             {
                 // dev_vert_diag_B stores (K = partial f / partial x) instead of B for now
-                atomicAdd(&data->dev_vert_diag_B[data->dev_tetrahedron[t * 4 + i] * 3 + j], K[i * 3 + j]);
+                atomicAdd(&data->dev_vert_diag_B[ind[i] + j], K[i * 3 + j]);
             }
         }
+        #endif
+        #ifdef COROTATED_LINEAR_MODEL
+        Real K[4];
+        cudaPhysics::calc_corotated_linear_K_diag<Real>(
+            K,
+            &data->dev_invDm[t * 9],
+            data->dev_tet_volume[t],
+            data->m_lame_mu);
+        for (unsigned int i = 0; i < 4; ++i)
+        {
+            for (unsigned int j = 0; j < 3; ++j)
+            {
+                // dev_vert_diag_B stores (K = partial f / partial x) instead of B for now
+                atomicAdd(&data->dev_vert_diag_B[data->dev_tetrahedron[t * 4 + i] * 3 + j], K[i]);
+            }
+        }
+        #endif
     }
 
     template <typename Real>
@@ -98,7 +118,12 @@ namespace PCGFEMSolverKernel
         const Real *InvDm = &data->dev_invDm[t * 9];
         Real F[9], P[9], H[9], f0[3] = {0};
         cudaPhysics::matMul3(F, Ds, InvDm);
+        #ifdef NEWHOOKEAN_MODEL
         cudaPhysics::calc_neohookean_P<Real>(P, F, data->m_lame_mu, data->m_lame_lambda);
+        #endif
+        #ifdef COROTATED_LINEAR_MODEL
+        cudaPhysics::calc_corotated_linear_P<Real>(P, F, data->m_lame_mu);
+        #endif
         cudaPhysics::matmatTMul3(H, P, InvDm);
         cudaPhysics::vecMul(H, -data->dev_tet_volume[t], H, 9);
         for (unsigned int i = 0; i < 3; ++i)
@@ -177,17 +202,18 @@ namespace PCGFEMSolverKernel
         unsigned int ind[4];
         for (unsigned int i = 0; i < 4; ++i)
             ind[i] = data->dev_tetrahedron[t * 4 + i] * 3;
-
-        Real Ds[9], partial_Ds[9];
         const Real *InvDm = &data->dev_invDm[t * 9];
-        for (unsigned int i = 0; i < 3; ++i)
-            for (unsigned int j = 0; j < 3; ++j)
-                Ds[i * 3 + j] = data->dev_vert_position_next[ind[j + 1] + i] - data->dev_vert_position_next[ind[0] + i];
+        Real partial_Ds[9];
         for (unsigned int i = 0; i < 3; ++i)
             for (unsigned int j = 0; j < 3; ++j)
                 partial_Ds[i * 3 + j] = (data->dev_vert_p[ind[j + 1] + i] - data->dev_vert_p[ind[0] + i]) * data->m_time_step;
         
         Real Ku[12];
+        #ifdef NEWHOOKEAN_MODEL
+        Real Ds[9];
+        for (unsigned int i = 0; i < 3; ++i)
+            for (unsigned int j = 0; j < 3; ++j)
+                Ds[i * 3 + j] = data->dev_vert_position_next[ind[j + 1] + i] - data->dev_vert_position_next[ind[0] + i];
         cudaPhysics::calc_neohookean_K_mul_u<Real>(
             Ku,
             Ds,
@@ -196,6 +222,15 @@ namespace PCGFEMSolverKernel
             data->dev_tet_volume[t],
             data->m_lame_mu,
             data->m_lame_lambda);
+        #endif
+        #ifdef COROTATED_LINEAR_MODEL
+        cudaPhysics::calc_corotated_linear_K_mul_u<Real>(
+            Ku,
+            partial_Ds,
+            InvDm,
+            data->dev_tet_volume[t],
+            data->m_lame_mu);
+        #endif
         for (unsigned int i = 0; i < 4; ++i)
             for (unsigned int j = 0; j < 3; ++j)
                 atomicAdd(&data->dev_vert_temp[ind[i] + j], Ku[i * 3 + j]);

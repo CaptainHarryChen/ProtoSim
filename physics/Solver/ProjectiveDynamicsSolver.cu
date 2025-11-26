@@ -40,7 +40,7 @@ namespace ProjectiveDynamicsSolverKernel
         unsigned int *v = &data->dev_tetrahedron[4 * t];
         Real *invDm = &data->dev_invDm[9 * t];
         Real K_diag[4];
-        cudaPhysics::calc_corotated_linear_K_diag<Real>(K_diag, invDm, data->dev_tet_volume[t], data->m_lame_mu, data->m_lame_lambda);
+        cudaPhysics::calc_corotated_linear_K_diag<Real>(K_diag, invDm, data->dev_tet_volume[t], data->m_lame_mu);
         for (unsigned int i = 0; i < 4; ++i)
             atomicAdd(&data->dev_stiffness_matrix_diag[v[i]], K_diag[i]);
     }
@@ -80,7 +80,7 @@ namespace ProjectiveDynamicsSolverKernel
         Ds[8] = data->dev_position[ind[3] + 2] - data->dev_position[ind[0] + 2];
         Real F[9], P[9], H[9];
         cudaPhysics::matMul3(F, Ds, idm);
-        cudaPhysics::calc_corotated_linear_P<Real>(P, F, data->m_lame_mu, data->m_lame_lambda);
+        cudaPhysics::calc_corotated_linear_P<Real>(P, F, data->m_lame_mu);
         cudaPhysics::matmatTMul3(H, P, idm);
         cudaPhysics::vecMul(H, -data->dev_tet_volume[t], H, 9);
         Real f[12];
