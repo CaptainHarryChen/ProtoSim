@@ -5,7 +5,7 @@
 #include <thrust/reduce.h>
 #include <thrust/transform.h>
 #include <Math/algebra.cuh>
-#include <Math/elastic_model.cuh>
+#include <Math/ConstitutiveModel/Neohookean.cuh>
 
 namespace PCGMPMSolverKernel
 {

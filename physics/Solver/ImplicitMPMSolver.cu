@@ -2,7 +2,7 @@
 #include <cuda_utils/error.cuh>
 #include <cuda_utils/array.cuh>
 #include <Math/algebra.cuh>
-#include <Math/elastic_model.cuh>
+#include <Math/ConstitutiveModel/Neohookean.cuh>
 
 namespace ImplicitMPMSolverKernel
 {

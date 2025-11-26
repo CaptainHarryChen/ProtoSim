@@ -1,7 +1,7 @@
 #include "ProjectiveDynamicsSolver.cuh"
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
-#include <Math/elastic_model.cuh>
+#include <Math/ConstitutiveModel/CorotatedLinear.cuh>
 
 namespace ProjectiveDynamicsSolverKernel
 {
@@ -39,16 +39,8 @@ namespace ProjectiveDynamicsSolverKernel
             return;
         unsigned int *v = &data->dev_tetrahedron[4 * t];
         Real *invDm = &data->dev_invDm[9 * t];
-        Real delta_f[9]; // delta_f = -2 * V0 * stiffness * invDm * invDm^T * (delta Ds^T)
-        cudaPhysics::matmatTMul3(delta_f, invDm, invDm);
-        cudaPhysics::vecMul(delta_f, -2 * data->dev_tet_volume[t] * data->m_lame_mu, delta_f, 9);
-        // stiffness matrix K are 12x12, which has 12 diagonal elements. But every 3 elements are the same. So we only need 4 elements.
         Real K_diag[4];
-        K_diag[1] = delta_f[0]; //(delta Ds^T)[0][0:3] = 1
-        K_diag[2] = delta_f[4]; //(delta Ds^T)[1][0:3] = 1
-        K_diag[3] = delta_f[8]; //(delta Ds^T)[2][0:3] = 1
-        // (delta Ds^T)[:,:] = -1 and f[0] = - f[1] - f[2] - f[3] which means delta_f[0] need a sum
-        K_diag[0] = delta_f[0] + delta_f[1] + delta_f[2] + delta_f[3] + delta_f[4] + delta_f[5] + delta_f[6] + delta_f[7] + delta_f[8];
+        cudaPhysics::calc_corotated_linear_force_diff<Real>(K_diag, invDm, data->dev_tet_volume[t], data->m_lame_mu, data->m_lame_lambda);
         for (unsigned int i = 0; i < 4; ++i)
             atomicAdd(&data->dev_stiffness_matrix_diag[v[i]], K_diag[i]);
     }
@@ -86,17 +78,16 @@ namespace ProjectiveDynamicsSolverKernel
         Ds[2] = data->dev_position[ind[3] + 0] - data->dev_position[ind[0] + 0];
         Ds[5] = data->dev_position[ind[3] + 1] - data->dev_position[ind[0] + 1];
         Ds[8] = data->dev_position[ind[3] + 2] - data->dev_position[ind[0] + 2];
-        Real F[9], R[9];
+        Real F[9], P[9], H[9];
         cudaPhysics::matMul3(F, Ds, idm);
-        cudaPhysics::polar_decomposition_R(R, F);
-
-        Real f[9]; // f = -2 * V0 * stiffness * invDm * (F - R)^T
-        Real FSubR[9];
-        cudaPhysics::vecSubs(FSubR, F, R, 9);
-        cudaPhysics::matmatTMul3(f, idm, FSubR);
-        cudaPhysics::vecMul(f, -2 * data->dev_tet_volume[t] * data->m_lame_mu, f, 9);
-        cudaPhysics::vecCopy(&data->dev_tet_force[12 * t + 3], f, 9);
-        cudaPhysics::axpbypcz(&data->dev_tet_force[12 * t], (Real)-1.0, &f[0], (Real)-1.0, &f[3], (Real)-1.0, &f[6], 3);
+        cudaPhysics::calc_corotated_linear_P<Real>(P, F, data->m_lame_mu, data->m_lame_lambda);
+        cudaPhysics::matmatTMul3(H, P, idm);
+        cudaPhysics::vecMul(H, -data->dev_tet_volume[t], H, 9);
+        Real f[12];
+        cudaPhysics::matTrans3(&f[3], H);
+        for (unsigned int j = 0; j < 3; ++j)
+            f[j] = -(f[j + 3] + f[j + 6] + f[j + 9]);
+        cudaPhysics::vecCopy(&data->dev_tet_force[12 * t], f, 12);
     }
 
     template <typename Real>

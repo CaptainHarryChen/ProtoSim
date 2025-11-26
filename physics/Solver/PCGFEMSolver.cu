@@ -1,7 +1,7 @@
 #include "PCGFEMSolver.cuh"
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
-#include <Math/elastic_model.cuh>
+#include <Math/ConstitutiveModel/Neohookean.cuh>
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
 #include <thrust/transform.h>

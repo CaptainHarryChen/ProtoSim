@@ -3,7 +3,7 @@
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
 #include <Math/geometry.cuh>
-#include <Math/elastic_model.cuh>
+#include <Math/ConstitutiveModel/Neohookean.cuh>
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
 
