@@ -48,7 +48,7 @@ namespace PCGFEMSolverKernel
         for (unsigned int i = 0; i < 4; ++i)
             ind[i] = data->dev_tetrahedron[t * 4 + i] * 3;
         Real K[12];
-        cudaPhysics::calc_neohookean_force_diff<Real>(
+        cudaPhysics::calc_neohookean_K_diag<Real>(
             K,
             &data->dev_vert_position_next[ind[0]],
             &data->dev_vert_position_next[ind[1]],
@@ -187,41 +187,18 @@ namespace PCGFEMSolverKernel
             for (unsigned int j = 0; j < 3; ++j)
                 partial_Ds[i * 3 + j] = (data->dev_vert_p[ind[j + 1] + i] - data->dev_vert_p[ind[0] + i]) * data->m_time_step;
         
-        Real F[9], partial_F[9], F_inv[9], J;
-        cudaPhysics::matMul3(F, Ds, InvDm);
-        cudaPhysics::matMul3(partial_F, partial_Ds, InvDm);
-        cudaPhysics::matInv3(F_inv, F);
-        J = cudaPhysics::det3(F);
-
-        Real P1[9], P2[9], P2_T[9], F_inv_mul_partial_F[9], P3[9], P3_T[9];
-        cudaPhysics::vecMul(P1, data->m_lame_mu, partial_F, 9);
-
-        cudaPhysics::matMul3(F_inv_mul_partial_F, F_inv, partial_F);
-        cudaPhysics::matMul3(P2_T, F_inv_mul_partial_F, F_inv);
-        cudaPhysics::matTrans3(P2, P2_T);
-        cudaPhysics::vecMul(P2, data->m_lame_mu - data->m_lame_lambda * log(J), P2, 9);
-
-        Real trace = F_inv_mul_partial_F[0] + F_inv_mul_partial_F[4] + F_inv_mul_partial_F[8];
-        cudaPhysics::vecMul(P3_T, data->m_lame_lambda * trace, F_inv, 9);
-        cudaPhysics::matTrans3(P3, P3_T);
-
-        Real partial_P[9], partial_H[9];
-        cudaPhysics::axpbypcz(partial_P, (Real)1.0, P1, (Real)1.0, P2, (Real)1.0, P3, 9);
-        cudaPhysics::matmatTMul3(partial_H, partial_P, InvDm);
-        cudaPhysics::vecMul(partial_H, -data->dev_tet_volume[t], partial_H, 9);
-
-        Real partial_f0[3] = {0};
-        for (unsigned int i = 0; i < 3; ++i)
+        Real Ku[12];
+        cudaPhysics::calc_neohookean_K_mul_u<Real>(
+            Ku,
+            Ds,
+            partial_Ds,
+            InvDm,
+            data->dev_tet_volume[t],
+            data->m_lame_mu,
+            data->m_lame_lambda);
+        for (unsigned int i = 0; i < 4; ++i)
             for (unsigned int j = 0; j < 3; ++j)
-                partial_f0[i] -= partial_H[i * 3 + j];
-
-        for (unsigned int j = 0; j < 3; ++j)
-            atomicAdd(&data->dev_vert_temp[ind[0] + j], partial_f0[j]);
-        for (unsigned int i = 1; i < 4; ++i)
-        {
-            for (unsigned int j = 0; j < 3; ++j)
-                atomicAdd(&data->dev_vert_temp[ind[i] + j], partial_H[j * 3 + i - 1]);
-        }
+                atomicAdd(&data->dev_vert_temp[ind[i] + j], Ku[i * 3 + j]);
     }
     
     template <typename Real>

@@ -18,6 +18,54 @@ namespace cudaPhysics
 		matMul3(temp2, lambda * log(J), invFT);
 		vecAdd(P, temp1, temp2, 9);
 	}
+
+    /**
+     * @brief Calculate K * u for the Neohookean force. K = (partial f / partial x). u is a vector to replace (delta x)
+     * @details See SIGGRAPH 2012 Course "FEM Simulation of 3D Deformable Solids ...." Chapter 4.3 for more details.
+     * (delta K) can be derived as some formulas with (delta x).
+     * To get K * u, we can replace (delta x) with u in the formulas.
+     * @param Ku The output K * u (length 12)
+     * @param Ds The Ds matrix of the tetrahedron (length 9)
+     * @param partial_Ds The partial Ds matrix derived from (delta x) replaced by u (length 9)
+     */
+    template <typename Real>
+    __host__ __device__ void calc_neohookean_K_mul_u(
+        Real *Ku,
+        const Real *Ds,
+        const Real *partial_Ds,
+        const Real *InvDm,
+        Real W,
+        Real mu,
+        Real lambda
+    )
+    {
+        Real F[9], partial_F[9], F_inv[9], J;
+        matMul3(F, Ds, InvDm);
+        matMul3(partial_F, partial_Ds, InvDm);
+        matInv3(F_inv, F);
+        J = det3(F);
+
+        Real P1[9], P2[9], P2_T[9], F_inv_mul_partial_F[9], P3[9], P3_T[9];
+        vecMul(P1, mu, partial_F, 9);
+
+        matMul3(F_inv_mul_partial_F, F_inv, partial_F);
+        matMul3(P2_T, F_inv_mul_partial_F, F_inv);
+        matTrans3(P2, P2_T);
+        vecMul(P2, mu - lambda * log(J), P2, 9);
+
+        Real trace = F_inv_mul_partial_F[0] + F_inv_mul_partial_F[4] + F_inv_mul_partial_F[8];
+        vecMul(P3_T, lambda * trace, F_inv, 9);
+        matTrans3(P3, P3_T);
+
+        Real partial_P[9], partial_H[9];
+        axpbypcz(partial_P, (Real)1.0, P1, (Real)1.0, P2, (Real)1.0, P3, 9);
+        matmatTMul3(partial_H, partial_P, InvDm);
+        vecMul(partial_H, -W, partial_H, 9);
+
+        cudaPhysics::matTrans3(&Ku[3], partial_H);
+        for (unsigned int j = 0; j < 3; ++j)
+            Ku[j] = -(Ku[j + 3] + Ku[j + 6] + Ku[j + 9]);
+    }
     
     /**
      * @brief Calculate the K = (partial f / partial x) of the Neohookean force
@@ -27,7 +75,7 @@ namespace cudaPhysics
      * each 3 entries correspond to one vertex of the tetrahedron
      */
     template <typename Real>
-    __host__ __device__ void calc_neohookean_force_diff(
+    __host__ __device__ void calc_neohookean_K_diag(
         Real *K,
         const Real *x0,
         const Real *x1,

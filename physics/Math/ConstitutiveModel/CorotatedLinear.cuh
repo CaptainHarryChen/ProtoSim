@@ -23,7 +23,7 @@ namespace cudaPhysics
      * each entry correspond to one vertex of the tetrahedron
      */
     template <typename Real>
-    __host__ __device__ void calc_corotated_linear_force_diff(
+    __host__ __device__ void calc_corotated_linear_K_diag(
         Real *K,
         const Real *InvDm,
         Real W,
