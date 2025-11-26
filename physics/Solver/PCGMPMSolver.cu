@@ -707,7 +707,8 @@ void PCGMPMSolver<Real>::PCGSolver()
 
         PCGMPMSolverKernel::grid_r_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
         Real residual = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
-                                       thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3)) / m_data.m_num_grid;
+                                       thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
+        residual = sqrt(residual / (Real)(m_data.m_num_grid * 3));
         if (m_verbose)
             printf("  residual = %e\n", residual);
         if (residual < RESIDUAL_TOLERANCE)

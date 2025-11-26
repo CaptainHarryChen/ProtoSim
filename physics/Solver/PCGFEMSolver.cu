@@ -376,17 +376,17 @@ void PCGFEMSolver<Real>::Step()
         prev_z_dot_r = z_dot_r;
         PCGFEMSolverKernel::vert_search_direction<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
 
-        // thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
-        //                   thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
-        //                   thrust::device_pointer_cast(m_data.dev_vert_temp),
-        //                   thrust::placeholders::_1 * thrust::placeholders::_1);
-        // Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
-        //                               thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3));
-        // thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
-        //                   thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
-        //                   thrust::device_pointer_cast(m_data.dev_vert_temp),
-        //                   thrust::placeholders::_1 / sqrt(p_dot_p));
-        // cudaMemcpy(m_data.dev_vert_p, m_data.dev_vert_temp, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+        thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
+                          thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
+                          thrust::device_pointer_cast(m_data.dev_vert_temp),
+                          thrust::placeholders::_1 * thrust::placeholders::_1);
+        Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp),
+                                      thrust::device_pointer_cast(m_data.dev_vert_temp + m_data.m_num_vert * 3));
+        thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_p),
+                          thrust::device_pointer_cast(m_data.dev_vert_p + m_data.m_num_vert * 3),
+                          thrust::device_pointer_cast(m_data.dev_vert_temp),
+                          thrust::placeholders::_1 / sqrt(p_dot_p));
+        cudaMemcpy(m_data.dev_vert_p, m_data.dev_vert_temp, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
     
         cudaMemset(m_data.dev_vert_temp, 0, sizeof(Real) * m_data.m_num_vert * 3);
         PCGFEMSolverKernel::calc_tet_Ap<Real><<<CUDA_GRID_SIZE(m_data.m_num_tet), CUDA_BLOCK_SIZE>>>(m_dev_data);
