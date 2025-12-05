@@ -65,13 +65,22 @@ public:
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
 
+    void PCG_Preparation();
+    void MaterialForceAndPreconditioner();
+    void BoxConstraintForceAndPreconditioner();
+    Real ResidualNorm();
+    void SearchDirection(Real &prev_z_dot_r);
+    void NormalizeSearchDirection();
+    void Calc_pAp_Material();
+    void Calc_pAp_BoxConstraint();
+    void UpdateSolution();
+    void PCG_After();
+
     bool m_verbose = false;
 
     PCGMPMSolverData<Real> m_data;
 protected:
     PCGMPMSolverData<Real> *m_dev_data;
-
-    void PCGSolver();
 };
 
 extern template struct PCGMPMSolverData<float>;

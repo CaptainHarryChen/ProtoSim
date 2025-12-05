@@ -664,24 +664,32 @@ PCGMPMSolver<Real>::~PCGMPMSolver()
 template <typename Real>
 void PCGMPMSolver<Real>::Step()
 {
-    // P2G
-    cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
-    cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
-    cudaMemset(m_data.dev_grid_diag_B_const, 0, sizeof(Real) * m_data.m_num_grid * 3);
-    PCGMPMSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PCGMPMSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PCGMPMSolverKernel::P2G_momentum_and_mass_and_B_const<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PCGMPMSolverKernel::grid_preprocess<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    cudaMemcpy(m_data.dev_grid_velocity_hat, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+    PCG_Preparation();
 
-    PCGSolver();
+    Real prev_z_dot_r = 0; // for calculate beta in PCG
+    for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
+    {
+        if (m_verbose)
+            printf("PCG iteration %u\n", iter);
 
-    cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
-    cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
-    PCGMPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PCGMPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    PCGMPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    // PCGMPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
+        cudaMemset(m_data.dev_grid_diag_B_mutable, 0, sizeof(Real) * m_data.m_num_grid * 3);
+        MaterialForceAndPreconditioner();
+        BoxConstraintForceAndPreconditioner();
+        
+        Real residual = ResidualNorm();
+        if (m_verbose)
+            printf("  residual = %e\n", residual);
+        if (residual < RESIDUAL_TOLERANCE)
+            break;
+        SearchDirection(prev_z_dot_r);
+        NormalizeSearchDirection();
+    
+        Calc_pAp_Material();
+        Calc_pAp_BoxConstraint();
+        UpdateSolution();
+    }
+    PCG_After();
 }
 
 template <typename Real>
@@ -691,67 +699,112 @@ Real *PCGMPMSolver<Real>::GetDevicePositions()
 }
 
 template <typename Real>
-void PCGMPMSolver<Real>::PCGSolver()
+void PCGMPMSolver<Real>::PCG_Preparation()
 {
-    Real prev_z_dot_r = 0; // for calculate beta in PCG
-    for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
-    {
-        if (m_verbose)
-            printf("PCG iteration %u\n", iter);
+    // P2G
+    cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_diag_B_const, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    PCGMPMSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PCGMPMSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PCGMPMSolverKernel::P2G_momentum_and_mass_and_B_const<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PCGMPMSolverKernel::grid_preprocess<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemcpy(m_data.dev_grid_velocity_hat, m_data.dev_grid_velocity, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+}
 
-        cudaMemset(m_data.dev_grid_force, 0, sizeof(Real) * m_data.m_num_grid * 3);
-        cudaMemset(m_data.dev_grid_diag_B_mutable, 0, sizeof(Real) * m_data.m_num_grid * 3);
-        PCGMPMSolverKernel::G2P_calc_particle_temp_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::grid_boundary_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+template <typename Real>
+void PCGMPMSolver<Real>::MaterialForceAndPreconditioner()
+{
+    PCGMPMSolverKernel::G2P_calc_particle_temp_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PCGMPMSolverKernel::P2G_calc_grid_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+}
 
-        PCGMPMSolverKernel::grid_r_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        Real residual = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
-                                       thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
-        residual = sqrt(residual / (Real)(m_data.m_num_grid * 3));
-        if (m_verbose)
-            printf("  residual = %e\n", residual);
-        if (residual < RESIDUAL_TOLERANCE)
-            break;
-        
-        Real beta = 0;
-        PCGMPMSolverKernel::grid_z_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        Real z_dot_r = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
-                                      thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
-        if (iter > 0)
-            beta = z_dot_r / prev_z_dot_r;
-        prev_z_dot_r = z_dot_r;
-        PCGMPMSolverKernel::grid_search_direction<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
+template <typename Real>
+void PCGMPMSolver<Real>::BoxConstraintForceAndPreconditioner()
+{
+    PCGMPMSolverKernel::grid_boundary_force<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+}
 
-        thrust::transform(thrust::device_pointer_cast(m_data.dev_grid_p),
-                          thrust::device_pointer_cast(m_data.dev_grid_p + m_data.m_num_grid * 3),
-                          thrust::device_pointer_cast(m_data.dev_grid_temp),
-                          thrust::placeholders::_1 * thrust::placeholders::_1);
-        Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
-                                      thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
-        thrust::transform(thrust::device_pointer_cast(m_data.dev_grid_p),
-                          thrust::device_pointer_cast(m_data.dev_grid_p + m_data.m_num_grid * 3),
-                          thrust::device_pointer_cast(m_data.dev_grid_temp),
-                          thrust::placeholders::_1 / sqrt(p_dot_p));
-        cudaMemcpy(m_data.dev_grid_p, m_data.dev_grid_temp, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
-    
-        PCGMPMSolverKernel::G2P_calc_Ap_step1<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        cudaMemset(m_data.dev_grid_temp, 0, sizeof(Real) * m_data.m_num_grid * 3);
-        PCGMPMSolverKernel::P2G_calc_Ap_step2<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        PCGMPMSolverKernel::grid_calc_pAp_step3<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        Real pAp = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+template <typename Real>
+Real PCGMPMSolver<Real>::ResidualNorm()
+{
+    PCGMPMSolverKernel::grid_r_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    Real residual = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+                                   thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
+    residual = sqrt(residual / (Real)(m_data.m_num_grid * 3));
+    return residual;
+}
+
+template <typename Real>
+void PCGMPMSolver<Real>::SearchDirection(Real &prev_z_dot_r)
+{
+    Real beta = 0;
+    PCGMPMSolverKernel::grid_z_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    Real z_dot_r = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
                                   thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
-        PCGMPMSolverKernel::grid_p_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-        Real alpha = - thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
-                                      thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3)) / pAp;
+    if (prev_z_dot_r != 0) // not first iteration
+        beta = z_dot_r / prev_z_dot_r;
+    prev_z_dot_r = z_dot_r;
+    PCGMPMSolverKernel::grid_search_direction<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
+}
 
-        thrust::transform(thrust::device_pointer_cast(m_data.dev_grid_velocity),
-                          thrust::device_pointer_cast(m_data.dev_grid_velocity + m_data.m_num_grid * 3),
-                          thrust::device_pointer_cast(m_data.dev_grid_p),
-                          thrust::device_pointer_cast(m_data.dev_grid_velocity),
-                          thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
-    }
+template <typename Real>
+void PCGMPMSolver<Real>::NormalizeSearchDirection()
+{
+    thrust::transform(thrust::device_pointer_cast(m_data.dev_grid_p),
+                      thrust::device_pointer_cast(m_data.dev_grid_p + m_data.m_num_grid * 3),
+                      thrust::device_pointer_cast(m_data.dev_grid_temp),
+                      thrust::placeholders::_1 * thrust::placeholders::_1);
+    Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+                                    thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
+    thrust::transform(thrust::device_pointer_cast(m_data.dev_grid_p),
+                      thrust::device_pointer_cast(m_data.dev_grid_p + m_data.m_num_grid * 3),
+                      thrust::device_pointer_cast(m_data.dev_grid_temp),
+                      thrust::placeholders::_1 / sqrt(p_dot_p));
+    cudaMemcpy(m_data.dev_grid_p, m_data.dev_grid_temp, sizeof(Real) * m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+}
+
+template <typename Real>
+void PCGMPMSolver<Real>::Calc_pAp_Material()
+{
+    PCGMPMSolverKernel::G2P_calc_Ap_step1<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemset(m_data.dev_grid_temp, 0, sizeof(Real) * m_data.m_num_grid * 3);
+    PCGMPMSolverKernel::P2G_calc_Ap_step2<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PCGMPMSolverKernel::grid_calc_pAp_step3<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+}
+
+template <typename Real>
+void PCGMPMSolver<Real>::Calc_pAp_BoxConstraint()
+{
+
+}
+
+template <typename Real>
+void PCGMPMSolver<Real>::UpdateSolution()
+{
+    Real pAp = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+                              thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3));
+    PCGMPMSolverKernel::grid_p_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    Real alpha = - thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+                                    thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3)) / pAp;
+    thrust::transform(thrust::device_pointer_cast(m_data.dev_grid_velocity),
+                      thrust::device_pointer_cast(m_data.dev_grid_velocity + m_data.m_num_grid * 3),
+                      thrust::device_pointer_cast(m_data.dev_grid_p),
+                      thrust::device_pointer_cast(m_data.dev_grid_velocity),
+                      thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
+}
+
+template <typename Real>
+void PCGMPMSolver<Real>::PCG_After()
+{
     PCGMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+    cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
+    cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
+    PCGMPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PCGMPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    PCGMPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // PCGMPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template class PCGMPMSolver<float>;
