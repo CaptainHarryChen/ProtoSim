@@ -43,8 +43,10 @@ struct PCGMPMSolverData
     Real *dev_grid_velocity;
     Real *dev_grid_velocity_hat;
     Real *dev_grid_diag_B_const;
-    Real *dev_grid_diag_B_mutable;
+    Real *dev_grid_diag_B;
+    Real *dev_grid_diag_A_box;
     Real *dev_grid_p; // the search direction in PCG
+    Real *dev_grid_pAp;
     Real *dev_grid_temp; // used for various temporary storage(beta, alpha, Ap, etc.)
 
     Real m_time_step;
