@@ -17,7 +17,7 @@ const float TIME_STEP = 1.0f / 60.0f; // Corotated Linear
 // const float TIME_STEP = 1.0f / 1000.0f; // Neohookean
 
 // PCG parameters
-const unsigned int MAX_ITERATIONS = 20; // for Corotated Linear
+const unsigned int MAX_ITERATIONS = 30; // for Corotated Linear
 // const unsigned int MAX_ITERATIONS = 1000; // for Neohookean
 const float RESIDUAL_TOLERANCE = 1e-2f;
 
@@ -36,6 +36,7 @@ struct PCGFEMSolverData
     Real *dev_vert_diag_B;
     Real *dev_vert_box_collision_A;
     Real *dev_vert_p;
+    Real *dev_vert_pAp;
     Real *dev_vert_temp; // used for various temporary storage (beta, alpha, Ap, etc.)
 
     unsigned int *dev_tetrahedron;
@@ -60,6 +61,17 @@ public:
 
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
+
+    void PCG_Preparation();
+    void ElasticForceAndPreconditioner();
+    void GroundConstraintForceAndPreconditioner();
+    Real ResidualNorm();
+    void SearchDirection(Real &prev_z_dot_r);
+    void NormalizeSearchDirection();
+    void Calc_pAp_Elastic();
+    void Calc_pAp_GroundConstraint();
+    void UpdateSolution();
+    void PCG_After();
 
     bool m_verbose = false;
     PCGFEMSolverData<Real> m_data;
