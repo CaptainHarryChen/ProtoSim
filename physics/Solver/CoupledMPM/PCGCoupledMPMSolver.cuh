@@ -16,7 +16,7 @@ const float GRAVITY = 9.81f;
 const float FLUID_BULK_MODULUS = 1000000.0f;
 const float FLUID_VISCOSITY_COEFF = 10.0f;
 
-const float TIME_STEP = 1.0f / 300.0f;
+const float TIME_STEP = 1.0f / 200.0f;
 const unsigned int FEM_PCG_MAX_ITERATIONS = 20;
 const float FEM_RESIDUAL_TOLERANCE = 1e-2f;
 const unsigned int MPM_PCG_MAX_ITERATIONS = 100000;

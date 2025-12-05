@@ -1235,10 +1235,135 @@ PCGCoupledMPMSolver<Real>::~PCGCoupledMPMSolver()
 template <typename Real>
 void PCGCoupledMPMSolver<Real>::Step()
 {
-    RunFemStage(m_data, m_dev_data, m_verbose);
-    if (m_data.sample_count > 0)
-        CoupledSharedKernel::update_sample_positions<Real><<<CUDA_GRID_SIZE(m_data.sample_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    RunMpmStage(m_data, m_dev_data, m_verbose);
+    // FEM preparation
+    CoupledFemKernel::predict_node_states<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaCheck(cudaMemcpy(m_data.dev_fem_node_velocity_hat, m_data.dev_fem_node_velocity, sizeof(Real) * m_data.fem_node_count * 3, cudaMemcpyDeviceToDevice));
+
+    // MPM preparation
+    cudaCheck(cudaMemset(m_data.dev_mpm_grid_momentum, 0, sizeof(Real) * m_data.mpm_grid_count * 3));
+    cudaCheck(cudaMemset(m_data.dev_mpm_grid_mass, 0, sizeof(Real) * m_data.mpm_grid_count));
+    cudaCheck(cudaMemset(m_data.dev_mpm_grid_diag_const, 0, sizeof(Real) * m_data.mpm_grid_count * 3));
+
+    CoupledMpmKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMpmKernel::assign_particle_cells<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMpmKernel::p2g_momentum_mass_diag<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMpmKernel::prepare_grid_values<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaCheck(cudaMemcpy(m_data.dev_mpm_grid_velocity_hat, m_data.dev_mpm_grid_velocity, sizeof(Real) * m_data.mpm_grid_count * 3, cudaMemcpyDeviceToDevice));
+
+    // PCG
+    Real prev_z_dot_r = 0;
+    auto temp_begin = thrust::device_pointer_cast(m_data.dev_mpm_grid_temp);
+    auto search_begin = thrust::device_pointer_cast(m_data.dev_mpm_grid_search);
+    auto scratch_begin = thrust::device_pointer_cast(m_data.dev_fem_scratch);
+    for (unsigned int iter = 0; ; ++iter)
+    {
+        // FEM residual
+        cudaCheck(cudaMemset(m_data.dev_fem_node_force, 0, sizeof(Real) * m_data.fem_node_count * 3));
+        cudaCheck(cudaMemset(m_data.dev_fem_node_diag, 0, sizeof(Real) * m_data.fem_node_count * 3));
+        cudaCheck(cudaMemset(m_data.dev_fem_node_collision_diag, 0, sizeof(Real) * m_data.fem_node_count * 3));
+
+        CoupledFemKernel::assemble_tet_diagonal<Real><<<CUDA_GRID_SIZE(m_data.fem_tetrahedron_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledFemKernel::finalize_diagonal<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledFemKernel::accumulate_tet_force<Real><<<CUDA_GRID_SIZE(m_data.fem_tetrahedron_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledFemKernel::apply_ground_contact<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+        CoupledFemKernel::residual_norm<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        Real fem_residual = thrust::reduce(scratch_begin, scratch_begin + m_data.fem_node_count * 3);
+        fem_residual = sqrt(fem_residual / (Real)(m_data.fem_node_count * 3));
+        if (m_verbose)
+            printf("FEM residual = %e\n", (double)fem_residual);
+        assert(!std::isnan(fem_residual));
+
+        // MPM residual
+        cudaCheck(cudaMemset(m_data.dev_mpm_grid_force, 0, sizeof(Real) * m_data.mpm_grid_count * 3));
+        cudaCheck(cudaMemset(m_data.dev_mpm_grid_diag_mutable, 0, sizeof(Real) * m_data.mpm_grid_count * 3));
+
+        CoupledMpmKernel::compute_particle_temp_C<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledMpmKernel::p2g_grid_force<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledMpmKernel::grid_boundary_force<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+        CoupledMpmKernel::grid_residual_norm<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        Real mpm_residual = thrust::reduce(temp_begin, temp_begin + m_data.mpm_grid_count * 3);
+        mpm_residual = sqrt(mpm_residual / (Real)(m_data.mpm_grid_count * 3));
+        if (m_verbose)
+            printf("MPM residual = %e\n", (double)mpm_residual);
+        assert(!std::isnan(mpm_residual));
+
+        if ((mpm_residual < (Real)MPM_RESIDUAL_TOLERANCE || iter >= MPM_PCG_MAX_ITERATIONS)
+            && (fem_residual < (Real)FEM_RESIDUAL_TOLERANCE || iter >= FEM_PCG_MAX_ITERATIONS))
+            break;
+
+        // PCG search direction update
+        CoupledFemKernel::preconditioned_residual<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledMpmKernel::grid_preconditioned_residual<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        Real z_dot_r = thrust::reduce(scratch_begin, scratch_begin + m_data.fem_node_count * 3)
+                       + thrust::reduce(temp_begin, temp_begin + m_data.mpm_grid_count * 3);
+        Real beta = (iter > 0) ? z_dot_r / prev_z_dot_r : 0;
+        prev_z_dot_r = z_dot_r;
+        CoupledFemKernel::search_direction<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
+        CoupledMpmKernel::grid_search_direction<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
+
+        // Normalize search direction
+        thrust::transform(thrust::device_pointer_cast(m_data.dev_fem_search_direction),
+                          thrust::device_pointer_cast(m_data.dev_fem_search_direction + m_data.fem_node_count * 3),
+                          scratch_begin,
+                          thrust::placeholders::_1 * thrust::placeholders::_1);
+        thrust::transform(search_begin,
+                          search_begin + m_data.mpm_grid_count * 3,
+                          temp_begin,
+                          thrust::placeholders::_1 * thrust::placeholders::_1);
+        Real p_dot_p = thrust::reduce(scratch_begin, scratch_begin + m_data.fem_node_count * 3)
+                         + thrust::reduce(temp_begin, temp_begin + m_data.mpm_grid_count * 3);
+        Real inv_norm = (p_dot_p > 0) ? (Real)(1.0 / sqrt(p_dot_p)) : 0;
+        thrust::transform(thrust::device_pointer_cast(m_data.dev_fem_search_direction),
+                          thrust::device_pointer_cast(m_data.dev_fem_search_direction + m_data.fem_node_count * 3),
+                          scratch_begin,
+                          thrust::placeholders::_1 * inv_norm);
+        thrust::transform(search_begin,
+                          search_begin + m_data.mpm_grid_count * 3,
+                          temp_begin,
+                          thrust::placeholders::_1 * inv_norm);
+        cudaCheck(cudaMemcpy(m_data.dev_fem_search_direction, m_data.dev_fem_scratch, sizeof(Real) * m_data.fem_node_count * 3, cudaMemcpyDeviceToDevice));
+        cudaCheck(cudaMemcpy(m_data.dev_mpm_grid_search, m_data.dev_mpm_grid_temp, sizeof(Real) * m_data.mpm_grid_count * 3, cudaMemcpyDeviceToDevice));
+
+        // Calculate pAp
+        CoupledFemKernel::accumulate_tet_ap<Real><<<CUDA_GRID_SIZE(m_data.fem_tetrahedron_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledFemKernel::finalize_node_pap<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledMpmKernel::g2p_calc_Ap_step1<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        cudaCheck(cudaMemset(m_data.dev_mpm_grid_temp, 0, sizeof(Real) * m_data.mpm_grid_count * 3));
+        CoupledMpmKernel::p2g_calc_Ap_step2<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledMpmKernel::grid_calc_pAp_step3<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        Real pAp = thrust::reduce(scratch_begin, scratch_begin + m_data.fem_node_count * 3)
+                     + thrust::reduce(temp_begin, temp_begin + m_data.mpm_grid_count * 3);
+        
+        // Update solution
+        CoupledFemKernel::search_dot_residual<Real><<<CUDA_GRID_SIZE(m_data.fem_node_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        CoupledMpmKernel::grid_search_dot_residual<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        Real alpha = - (thrust::reduce(scratch_begin, scratch_begin + m_data.fem_node_count * 3)
+                        + thrust::reduce(temp_begin, temp_begin + m_data.mpm_grid_count * 3)) / pAp;
+        thrust::transform(thrust::device_pointer_cast(m_data.dev_fem_node_velocity),
+                          thrust::device_pointer_cast(m_data.dev_fem_node_velocity + m_data.fem_node_count * 3),
+                          thrust::device_pointer_cast(m_data.dev_fem_search_direction),
+                          thrust::device_pointer_cast(m_data.dev_fem_node_velocity),
+                          thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
+        thrust::transform(thrust::device_pointer_cast(m_data.dev_mpm_grid_velocity),
+                          thrust::device_pointer_cast(m_data.dev_mpm_grid_velocity + m_data.mpm_grid_count * 3),
+                          search_begin,
+                          thrust::device_pointer_cast(m_data.dev_mpm_grid_velocity),
+                          thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
+    }
+
+    // update FEM
+    cudaCheck(cudaMemcpy(m_data.dev_fem_node_position, m_data.dev_fem_node_position_next, sizeof(Real) * m_data.fem_node_count * 3, cudaMemcpyDeviceToDevice));
+    CoupledSharedKernel::update_sample_positions<Real><<<CUDA_GRID_SIZE(m_data.sample_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // update MPM
+    CoupledMpmKernel::enforce_grid_boundaries<Real><<<CUDA_GRID_SIZE(m_data.mpm_grid_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaCheck(cudaMemset(m_data.dev_mpm_particle_velocity, 0, sizeof(Real) * m_data.mpm_particle_count * 3));
+    cudaCheck(cudaMemset(m_data.dev_mpm_particle_C, 0, sizeof(Real) * m_data.mpm_particle_count * 9));
+    CoupledMpmKernel::g2p_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMpmKernel::update_particle_F<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMpmKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // CoupledMpmKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.mpm_particle_count), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>

@@ -15,7 +15,7 @@
 #include <Render/RenderSystem.h>
 #include <Connector/MeshConnector.cuh>
 #include <Connector/ParticleConnector.cuh>
-#include <Solver/PCGCoupledMPMSolver.cuh>
+#include <Solver/CoupledMPM/PCGCoupledMPMSolver.cuh>
 #include <proj_config.h>
 
 template <typename Real>
@@ -233,6 +233,7 @@ int main()
 
         bbox, dist, boundary_thickness
     );
+    solver->m_verbose = true;
     scene->SetSolver(solver);
     scene->SetupConnectors();
     scene->SetStepPerFrame(1);
