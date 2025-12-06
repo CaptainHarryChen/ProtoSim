@@ -143,7 +143,7 @@ public:
         assert(solver != nullptr && "Solver must be PCGCoupledMPMSolver");
         for (auto &[mesh, node_offset] : this->m_mesh_offsets)
         {
-            auto position_ptr = solver->GetDeviceNodePositions();
+            auto position_ptr = solver->GetDeviceVertexPositions();
             if (position_ptr)
                 position_ptr = position_ptr + node_offset;
             auto connector = std::make_shared<MeshConnector<Real>>(mesh, position_ptr);
@@ -217,6 +217,21 @@ int main()
     unsigned int boundary_thickness = 1;
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
 
+    Real young_k = 1000000.0f, young_nu = 0.26f;
+    std::unordered_map<std::string, std::any> config {
+        {"lame_mu", (Real)(young_k / (2 * (1 + young_nu)))},
+        {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
+        {"fluid_lambda", (Real)(1000000.0f)},
+        {"fluid_viscosity", (Real)(10.0f)},
+        {"ground_collision_stiffness", (Real)100000.0f},
+        {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
+        {"time_step", (Real)(1.0f / 200.0f)},
+        {"fem_pcg_max_iteration", (unsigned int)30},
+        {"fem_pcg_residual_tolerance", (Real)1e-2f},
+        {"mpm_pcg_max_iteration", (unsigned int)200},
+        {"mpm_pcg_residual_tolerance", (Real)1e-2f}
+    };
+
     auto solver = std::make_shared<PCGCoupledMPMSolver<Real>>(
         scene->m_positions,
         scene->m_surface_triangles,
@@ -231,7 +246,8 @@ int main()
         scene->m_particle_masses,
         scene->m_particle_volumes,
 
-        bbox, dist, boundary_thickness
+        bbox, dist, boundary_thickness,
+        config
     );
     scene->SetSolver(solver);
     scene->SetupConnectors();

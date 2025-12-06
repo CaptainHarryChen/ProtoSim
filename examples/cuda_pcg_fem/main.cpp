@@ -82,7 +82,7 @@ int main()
     std::unordered_map<std::string, std::any> config {
         {"lame_mu", (Real)(young_k / (2 * (1 + young_nu)))},
         {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
-        {"ground_collision_stiffness", (Real)10000000.0f},
+        {"ground_collision_stiffness", (Real)100000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
         {"time_step", (Real)(1.0f / 60.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},

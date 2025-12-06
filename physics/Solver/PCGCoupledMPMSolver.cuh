@@ -1,103 +1,26 @@
 #pragma once
-#include <vector>
 #include <Solver/Solver.cuh>
-
-#define MPM_STATIC 0
-#define MPM_ELASTIC 1
-#define MPM_FLUID 2
-
-const float YOUNG_K = 10000000.0f, YOUNG_NU = 0.26f;
-const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
-const float GRID_BOX_COLLISION_STIFFNESS = 10000000.0f;
-const float SOLID_BOX_COLLISION_STIFFNESS = 10000000.0f;
-const float COUPLE_COLLISION_STIFFNESS = 10000.0f;
-const float GRAVITY = 9.81f;
-
-const float FLUID_BULK_MODULUS = 1000000.0f;
-const float FLUID_VISCOSITY_COEFF = 10.0f;
-
-const float TIME_STEP = 1.0f / 300.0f;
-const unsigned int FEM_PCG_MAX_ITERATIONS = 20;
-const float FEM_RESIDUAL_TOLERANCE = 1e-2f;
-const unsigned int MPM_PCG_MAX_ITERATIONS = 100000;
-const float MPM_RESIDUAL_TOLERANCE = 1e-2f;
-
+#include "PCGMPMSolver.cuh"
+#include "PCGFEMSolver.cuh"
 
 template <typename Real>
 struct PCGCoupledMPMSolverData
 {
-    // FEM data --------------------------------------------------
-    unsigned int fem_node_count = 0;
-    unsigned int fem_tetrahedron_count = 0;
+    Real *dev_fem_vert_position;
 
-    Real *dev_fem_node_position = nullptr;
-    Real *dev_fem_node_position_next = nullptr;
-    Real *dev_fem_node_velocity = nullptr;
-    Real *dev_fem_node_velocity_hat = nullptr;
-    Real *dev_fem_node_mass = nullptr;
-    Real *dev_fem_node_force = nullptr;
-    Real *dev_fem_node_diag = nullptr;
-    Real *dev_fem_node_collision_diag = nullptr;
-    Real *dev_fem_search_direction = nullptr;
-    Real *dev_fem_scratch = nullptr;
+    Real *dev_mpm_particle_position;
 
-    unsigned int *dev_fem_tetrahedron = nullptr;
-    Real *dev_fem_tet_density = nullptr;
-    Real *dev_fem_tet_volume = nullptr;
-    Real *dev_fem_inv_dm = nullptr;
+    unsigned int m_num_triangle;
+    unsigned int *dev_triangle;
 
-    // Surface / sample data -------------------------------------
-    unsigned int surface_triangle_count = 0;
-    unsigned int *dev_surface_triangles = nullptr;
+    unsigned int m_num_sample;
+    Real *dev_sample_position;
+    Real *dev_sample_barycentric;
+    unsigned int *dev_sample_tri_idx;
+    unsigned int *dev_sample_to_grid_id;
 
-    unsigned int sample_count = 0;
-    Real *dev_sample_position = nullptr;
-    Real *dev_sample_barycentric = nullptr;
-    unsigned int *dev_sample_triangle_index = nullptr;
-
-    // MPM particle data ----------------------------------------
-    unsigned int mpm_particle_count = 0;
-    Real *dev_mpm_particle_position = nullptr;
-    Real *dev_mpm_particle_velocity = nullptr;
-    Real *dev_mpm_particle_mass = nullptr;
-    Real *dev_mpm_particle_volume = nullptr;
-    unsigned int *dev_mpm_particle_type = nullptr;
-    Real *dev_mpm_particle_C = nullptr;
-    Real *dev_mpm_particle_temp_C = nullptr;
-    Real *dev_mpm_particle_F = nullptr;
-    unsigned int *dev_mpm_particle_cell = nullptr;
-    Real *dev_mpm_particle_scalar = nullptr;
-
-    // MPM grid data --------------------------------------------
-    unsigned int mpm_grid_count = 0;
-    Real mpm_grid_spacing = 0;
-    unsigned int mpm_boundary_thickness = 0;
-    Real *dev_mpm_inner_bbox = nullptr;
-    Real *dev_mpm_outer_bbox = nullptr;
-    unsigned int *dev_mpm_grid_resolution = nullptr;
-    Real *dev_mpm_grid_momentum = nullptr;
-    Real *dev_mpm_grid_mass = nullptr;
-    Real *dev_mpm_grid_force = nullptr;
-    Real *dev_mpm_grid_velocity = nullptr;
-    Real *dev_mpm_grid_velocity_hat = nullptr;
-    Real *dev_mpm_grid_diag_const = nullptr;
-    Real *dev_mpm_grid_diag_mutable = nullptr;
-    Real *dev_mpm_grid_search = nullptr;
-    Real *dev_mpm_grid_temp = nullptr;
-
-    // Shared simulation constants -------------------------------
-    Real fem_time_step = (Real)TIME_STEP;
-    Real fem_time_step_inv = (Real)(1.0f / TIME_STEP);
-    Real fem_lame_mu = (Real)LAME_MU;
-    Real fem_lame_lambda = (Real)LAME_LAMBDA;
-    Real fem_collision_stiffness = (Real)SOLID_BOX_COLLISION_STIFFNESS;
-
-    Real mpm_time_step = (Real)TIME_STEP;
-    Real mpm_ground_stiffness = (Real)GRID_BOX_COLLISION_STIFFNESS;
-    Real mpm_fluid_lambda = (Real)FLUID_BULK_MODULUS;
-    Real mpm_fluid_viscosity = (Real)FLUID_VISCOSITY_COEFF;
-
-    Real *dev_gravity = nullptr;
+    Real m_time_step;
+    Real m_time_step_inv;
 };
 
 template <typename Real>
@@ -105,7 +28,7 @@ class PCGCoupledMPMSolver : public Solver<Real>
 {
 public:
     PCGCoupledMPMSolver(
-        const std::vector<Real> &node_position,
+        const std::vector<Real> &vert_position,
         const std::vector<unsigned int> &surface_triangle,
         const std::vector<unsigned int> &tetrahedron,
         const std::vector<Real> &tetrahedron_density,
@@ -119,18 +42,22 @@ public:
         const std::vector<Real> &particle_volume,
         std::vector<Real> bbox,
         Real grid_spacing,
-        unsigned int boundary_thickness //
+        unsigned int boundary_thickness,
+        const std::unordered_map<std::string, std::any> &config
     );
     virtual ~PCGCoupledMPMSolver();
 
     virtual void Step() override;
-    Real *GetDeviceNodePositions();
+    Real *GetDeviceVertexPositions();
     Real *GetDeviceSamplePositions();
     Real *GetDeviceParticlePositions();
 
     PCGCoupledMPMSolverData<Real> m_data;
-    PCGCoupledMPMSolverData<Real> *m_dev_data;
     bool m_verbose = false;
+protected:
+    PCGCoupledMPMSolverData<Real> *m_dev_data;
+    PCGMPMSolver<Real> m_mpm_solver;
+    PCGFEMSolver<Real> m_fem_solver;
 };
 
 extern template struct PCGCoupledMPMSolverData<float>;

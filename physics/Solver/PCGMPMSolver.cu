@@ -550,7 +550,7 @@ PCGMPMSolver<Real>::PCGMPMSolver(
 {
     assert(particle_position.size() % 3 == 0);
     m_data.m_num_particle = (unsigned int)particle_position.size() / 3;
-    printf("num_particle = %u\n", m_data.m_num_particle);
+    printf("PCGMPMSolver: num_particle = %u\n", m_data.m_num_particle);
 
     cudaMalloc(&m_data.dev_particle_position, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemcpy(m_data.dev_particle_position, particle_position.data(), sizeof(Real) * m_data.m_num_particle * 3, cudaMemcpyHostToDevice);
@@ -586,11 +586,11 @@ PCGMPMSolver<Real>::PCGMPMSolver(
     grid_size.clear();
     for (unsigned int i = 0; i < 3; ++i)
         grid_size.push_back((unsigned int)(floor((outer_bbox[i + 3] - outer_bbox[i]) / m_data.m_grid_spacing + 0.5)) + 1);
-    printf("grid_size = [%u %u %u]\n", grid_size[0], grid_size[1], grid_size[2]);
+    printf("PCGMPMSolver: grid_size = [%u %u %u]\n", grid_size[0], grid_size[1], grid_size[2]);
     for (unsigned int i = 0; i < 3; ++i)
         outer_bbox[i + 3] = outer_bbox[i] + m_data.m_grid_spacing * grid_size[i];
     m_data.m_num_grid = grid_size[0] * grid_size[1] * grid_size[2];
-    printf("num_grid = %u\n", m_data.m_num_grid);
+    printf("PCGMPMSolver: num_grid = %u\n", m_data.m_num_grid);
 
     cudaMalloc(&m_data.dev_inner_bbox, sizeof(Real) * 6);
     cudaMemcpy(m_data.dev_inner_bbox, inner_bbox.data(), sizeof(Real) * 6, cudaMemcpyHostToDevice);
@@ -640,6 +640,9 @@ PCGMPMSolver<Real>::PCGMPMSolver(
 
     cudaMalloc(&m_dev_data, sizeof(PCGMPMSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(PCGMPMSolverData<Real>), cudaMemcpyHostToDevice);
+
+    cudaCheck(cudaDeviceSynchronize());
+    printf("PCGMPMSolver initialized.\n");
 }
 
 template <typename Real>
