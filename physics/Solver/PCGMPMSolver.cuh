@@ -1,20 +1,13 @@
 #pragma once
+#include <any>
+#include <string>
+#include <unordered_map>
 #include <vector>
 #include <Solver/Solver.cuh>
 
 #define MPM_STATIC 0
 #define MPM_ELASTIC 1
 #define MPM_FLUID 2
-
-const float FLUID_LAMBDA = 1000000.0f;
-const float FLUID_VISCOSITY = 10.0f; // 1000.0f;
-const float GROUND_COLLISION_STIFFNESS = 100000.0f;
-const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 200.0f;
-
-// PCG parameters
-const unsigned int MAX_ITERATIONS = 50;
-const float RESIDUAL_TOLERANCE = 0.1f;
 
 template <typename Real>
 struct PCGMPMSolverData
@@ -61,8 +54,16 @@ template <typename Real>
 class PCGMPMSolver : public Solver<Real>
 {
 public:
-    PCGMPMSolver(const std::vector<Real> &particle_position, const std::vector<unsigned int> &particle_type, const std::vector<Real> &particle_mass, const std::vector<Real> &particle_volume,
-              std::vector<Real> bbox, Real grid_spacing, unsigned int boundary_thickness);
+    PCGMPMSolver(
+        const std::vector<Real> &particle_position,
+        const std::vector<unsigned int> &particle_type,
+        const std::vector<Real> &particle_mass,
+        const std::vector<Real> &particle_volume,
+        std::vector<Real> bbox,
+        Real grid_spacing,
+        unsigned int boundary_thickness,
+        const std::unordered_map<std::string, std::any> &config
+    );
     virtual ~PCGMPMSolver();
 
     virtual void Step() override;
@@ -84,6 +85,8 @@ public:
     PCGMPMSolverData<Real> m_data;
 protected:
     PCGMPMSolverData<Real> *m_dev_data;
+    unsigned int m_pcg_max_iteration;
+    Real m_pcg_residual_tolerance;
 };
 
 extern template struct PCGMPMSolverData<float>;

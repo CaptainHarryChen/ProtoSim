@@ -538,8 +538,15 @@ namespace PCGMPMSolverKernel
 
 template <typename Real>
 PCGMPMSolver<Real>::PCGMPMSolver(
-    const std::vector<Real> &particle_position, const std::vector<unsigned int> &particle_type, const std::vector<Real> &particle_mass, const std::vector<Real> &particle_volume,
-    std::vector<Real> bbox, Real grid_spacing, unsigned int boundary_thickness)
+    const std::vector<Real> &particle_position,
+    const std::vector<unsigned int> &particle_type,
+    const std::vector<Real> &particle_mass,
+    const std::vector<Real> &particle_volume,
+    std::vector<Real> bbox,
+    Real grid_spacing,
+    unsigned int boundary_thickness,
+    const std::unordered_map<std::string, std::any> &config
+)
 {
     assert(particle_position.size() % 3 == 0);
     m_data.m_num_particle = (unsigned int)particle_position.size() / 3;
@@ -612,13 +619,23 @@ PCGMPMSolver<Real>::PCGMPMSolver(
     cudaMalloc(&m_data.dev_grid_temp, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_temp, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
-    m_data.m_time_step = TIME_STEP;
-    m_data.m_time_step_inv = (Real)1.0 / TIME_STEP;
-    m_data.m_ground_stiffness = GROUND_COLLISION_STIFFNESS;
-    m_data.m_fluid_lambda = FLUID_LAMBDA;
-    m_data.m_fluid_viscosity = FLUID_VISCOSITY;
-    cudaMalloc(&m_data.dev_gravity, sizeof(Real) * 3);
-    std::vector<Real> gravity = {0., -GRAVITY, 0.};
+    assert(config.find("time_step") != config.end());
+    m_data.m_time_step = std::any_cast<Real>(config.at("time_step"));
+    m_data.m_time_step_inv = (Real)1.0 / m_data.m_time_step;
+    assert(config.find("ground_collision_stiffness") != config.end());
+    m_data.m_ground_stiffness = std::any_cast<Real>(config.at("ground_collision_stiffness"));
+    assert(config.find("fluid_lambda") != config.end());
+    m_data.m_fluid_lambda = std::any_cast<Real>(config.at("fluid_lambda"));
+    assert(config.find("fluid_viscosity") != config.end());
+    m_data.m_fluid_viscosity = std::any_cast<Real>(config.at("fluid_viscosity"));
+    assert(config.find("mpm_pcg_max_iteration") != config.end());
+    m_pcg_max_iteration = std::any_cast<unsigned int>(config.at("mpm_pcg_max_iteration"));
+    assert(config.find("mpm_pcg_residual_tolerance") != config.end());
+    m_pcg_residual_tolerance = std::any_cast<Real>(config.at("mpm_pcg_residual_tolerance"));
+    assert(config.find("gravity") != config.end());
+    std::vector<Real> gravity = std::any_cast<std::vector<Real>>(config.at("gravity"));
+    assert(gravity.size() == 3);
+    cudaMalloc((void **)&m_data.dev_gravity, sizeof(Real) * 3);
     cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
 
     cudaMalloc(&m_dev_data, sizeof(PCGMPMSolverData<Real>));
@@ -664,7 +681,7 @@ void PCGMPMSolver<Real>::Step()
     PCG_Preparation();
 
     Real prev_z_dot_r = 0; // for calculate beta in PCG
-    for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
+    for (unsigned int iter = 0; iter < m_pcg_max_iteration; ++iter)
     {
         if (m_verbose)
             printf("PCG iteration %u\n", iter);
@@ -678,7 +695,7 @@ void PCGMPMSolver<Real>::Step()
         assert(!std::isnan(residual));
         if (m_verbose)
             printf("  residual = %e\n", residual);
-        if (residual < RESIDUAL_TOLERANCE)
+        if (residual < m_pcg_residual_tolerance)
             break;
         SearchDirection(prev_z_dot_r);
         NormalizeSearchDirection();

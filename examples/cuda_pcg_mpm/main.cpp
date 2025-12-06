@@ -61,8 +61,26 @@ int main()
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
     std::vector<Real> bbox_real(bbox.begin(), bbox.end());
 
-    auto solver = std::make_shared<PCGMPMSolver<Real>>(scene->m_positions, scene->m_particle_types, scene->m_particle_masses, scene->m_particle_volumes,
-                                                    bbox_real, dist, boundary_thickness);
+    std::unordered_map<std::string, std::any> config {
+        {"fluid_lambda", (Real)(1000000.0f)},
+        {"fluid_viscosity", (Real)(10.0f)},
+        {"ground_collision_stiffness", (Real)100000.0f},
+        {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
+        {"time_step", (Real)(1.0f / 200.0f)},
+        {"mpm_pcg_max_iteration", (unsigned int)200},
+        {"mpm_pcg_residual_tolerance", (Real)0.01f}
+    };
+
+    auto solver = std::make_shared<PCGMPMSolver<Real>>(
+        scene->m_positions,
+        scene->m_particle_types,
+        scene->m_particle_masses,
+        scene->m_particle_volumes,
+        bbox_real,
+        dist,
+        boundary_thickness,
+        config
+    );
     solver->m_verbose = true;
     scene->SetSolver(solver);
     // scene->SetStepPerFrame(2);

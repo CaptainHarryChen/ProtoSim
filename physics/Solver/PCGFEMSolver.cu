@@ -274,7 +274,12 @@ namespace PCGFEMSolverKernel
 }
 
 template <typename Real>
-PCGFEMSolver<Real>::PCGFEMSolver(const std::vector<Real> &position, const std::vector<unsigned int> &tetrahedron, const std::vector<Real> &tetrahedron_density)
+PCGFEMSolver<Real>::PCGFEMSolver(
+    const std::vector<Real> &position,
+    const std::vector<unsigned int> &tetrahedron,
+    const std::vector<Real> &tetrahedron_density,
+    const std::unordered_map<std::string, std::any> &config
+)
 {
     m_data.m_num_vert = (unsigned int)position.size() / 3;
     m_data.m_num_tet = (unsigned int)tetrahedron.size() / 4;
@@ -304,13 +309,23 @@ PCGFEMSolver<Real>::PCGFEMSolver(const std::vector<Real> &position, const std::v
     cudaMemset(m_data.dev_tet_volume, 0, sizeof(Real) * m_data.m_num_tet);
     cudaMalloc((void **)&m_data.dev_invDm, sizeof(Real) * m_data.m_num_tet * 9);
 
-    m_data.m_time_step = TIME_STEP;
+    assert(config.find("time_step") != config.end());
+    m_data.m_time_step = std::any_cast<Real>(config.at("time_step"));
     m_data.m_time_step_inv = 1.0f / m_data.m_time_step;
-    m_data.m_lame_mu = LAME_MU;
-    m_data.m_lame_lambda = LAME_LAMBDA;
-    m_data.m_ground_collision_stiffness = GROUND_COLLISION_STIFFNESS;
-    cudaMalloc(&m_data.dev_gravity, sizeof(Real) * 3);
-    std::vector<Real> gravity = {0.0f, -GRAVITY, 0.0f};
+    assert(config.find("lame_mu") != config.end());
+    m_data.m_lame_mu = std::any_cast<Real>(config.at("lame_mu"));
+    assert(config.find("lame_lambda") != config.end());
+    m_data.m_lame_lambda = std::any_cast<Real>(config.at("lame_lambda"));
+    assert(config.find("ground_collision_stiffness") != config.end());
+    m_data.m_ground_collision_stiffness = std::any_cast<Real>(config.at("ground_collision_stiffness"));
+    assert(config.find("fem_pcg_max_iteration") != config.end());
+    m_pcg_max_iteration = std::any_cast<unsigned int>(config.at("fem_pcg_max_iteration"));
+    assert(config.find("fem_pcg_residual_tolerance") != config.end());
+    m_pcg_residual_tolerance = std::any_cast<Real>(config.at("fem_pcg_residual_tolerance"));
+    assert(config.find("gravity") != config.end());
+    std::vector<Real> gravity = std::any_cast<std::vector<Real>>(config.at("gravity"));
+    assert(gravity.size() == 3);
+    cudaMalloc((void **)&m_data.dev_gravity, sizeof(Real) * 3);
     cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
 
     cudaMalloc(&m_dev_data, sizeof(PCGFEMSolverData<Real>));
@@ -352,7 +367,7 @@ void PCGFEMSolver<Real>::Step()
     PCG_Preparation();
 
     Real prev_z_dot_r = 0; // for calculate beta in PCG
-    for (unsigned int iter = 0; iter < MAX_ITERATIONS; ++iter)
+    for (unsigned int iter = 0; iter < m_pcg_max_iteration; ++iter)
     {
         if (m_verbose)
             printf("PCG iteration %u\n", iter);
@@ -366,7 +381,7 @@ void PCGFEMSolver<Real>::Step()
         if (m_verbose)
             printf("  residual = %e\n", residual);
         assert(!std::isnan(residual));
-        if (residual < RESIDUAL_TOLERANCE)
+        if (residual < m_pcg_residual_tolerance)
             break;
         
         SearchDirection(prev_z_dot_r);

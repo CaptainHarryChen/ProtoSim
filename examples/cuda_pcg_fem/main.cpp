@@ -1,4 +1,6 @@
+#include <any>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <memory>
 #include <GLFWApp.h>
@@ -76,7 +78,23 @@ int main()
     //                        1.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
     //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
 
-    auto solver = std::make_shared<PCGFEMSolver<Real>>(scene->m_positions, scene->m_tetrahedras, scene->m_tetrahedras_densities);
+    Real young_k = 1000000.0f, young_nu = 0.26f;
+    std::unordered_map<std::string, std::any> config {
+        {"lame_mu", (Real)(young_k / (2 * (1 + young_nu)))},
+        {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
+        {"ground_collision_stiffness", (Real)10000000.0f},
+        {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
+        {"time_step", (Real)(1.0f / 60.0f)},
+        {"fem_pcg_max_iteration", (unsigned int)30},
+        {"fem_pcg_residual_tolerance", (Real)1e-2f}
+    };
+
+    auto solver = std::make_shared<PCGFEMSolver<Real>>(
+        scene->m_positions,
+        scene->m_tetrahedras,
+        scene->m_tetrahedras_densities,
+        config
+    );
     solver->m_verbose = true;
     scene->SetSolver(solver);
     scene->SetupConnectors();

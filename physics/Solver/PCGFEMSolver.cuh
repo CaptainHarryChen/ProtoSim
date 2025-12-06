@@ -1,4 +1,7 @@
 #pragma once
+#include <any>
+#include <string>
+#include <unordered_map>
 #include <vector>
 #include <Solver/Solver.cuh>
 
@@ -8,18 +11,6 @@
 #if (defined(NEWHOOKEAN_MODEL) && defined(COROTATED_LINEAR_MODEL)) || (!defined(NEWHOOKEAN_MODEL) && !defined(COROTATED_LINEAR_MODEL))
 #error "Only one constitutive model can be defined at a time."
 #endif
-
-const float YOUNG_K = 1000000.0f, YOUNG_NU = 0.26f;
-const float LAME_MU = YOUNG_K / (2 * (1 + YOUNG_NU)), LAME_LAMBDA = YOUNG_K * YOUNG_NU / ((1 + YOUNG_NU) * (1 - 2 * YOUNG_NU));
-const float GROUND_COLLISION_STIFFNESS = 10000000.0f;
-const float GRAVITY = 9.81f;
-const float TIME_STEP = 1.0f / 60.0f; // Corotated Linear
-// const float TIME_STEP = 1.0f / 1000.0f; // Neohookean
-
-// PCG parameters
-const unsigned int MAX_ITERATIONS = 30; // for Corotated Linear
-// const unsigned int MAX_ITERATIONS = 1000; // for Neohookean
-const float RESIDUAL_TOLERANCE = 1e-2f;
 
 template <typename Real>
 struct PCGFEMSolverData
@@ -56,7 +47,12 @@ template <typename Real>
 class PCGFEMSolver : public Solver<Real>
 {
 public:
-    PCGFEMSolver(const std::vector<Real> &position, const std::vector<unsigned int> &tetrahedron, const std::vector<Real> &tetrahedron_density);
+    PCGFEMSolver(
+        const std::vector<Real> &position,
+        const std::vector<unsigned int> &tetrahedron,
+        const std::vector<Real> &tetrahedron_density,
+        const std::unordered_map<std::string, std::any> &config
+    );
     virtual ~PCGFEMSolver();
 
     virtual void Step() override;
@@ -78,6 +74,8 @@ public:
 
 protected:
     PCGFEMSolverData<Real> *m_dev_data;
+    unsigned int m_pcg_max_iteration;
+    Real m_pcg_residual_tolerance;
 };
 
 extern template struct PCGFEMSolverData<float>;
