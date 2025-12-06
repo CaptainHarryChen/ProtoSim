@@ -145,7 +145,7 @@ namespace PCGMPMSolverKernel
             cudaPhysics::vecMul3(&data->dev_grid_velocity[i * 3], (Real)(1. / data->dev_grid_mass[i]), &data->dev_grid_momentum[i * 3]);
             // calculate the const term (identity and elastic) of preconditioner diag_B
             for (unsigned int j = 0; j < 3; ++j)
-                data->dev_grid_diag_B_const[i * 3 + j] = 1 - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_diag_B_const[i * 3 + j];
+                data->dev_grid_diag_B_const[i * 3 + j] = data->m_time_step_inv * data->dev_grid_mass[i] - data->dev_grid_diag_B_const[i * 3 + j];
         }
         else
         {
@@ -272,14 +272,14 @@ namespace PCGMPMSolverKernel
         {
             if (grid_pos[j] <= data->dev_inner_bbox[j])
             {
-                diag_B[j] += data->m_ground_stiffness * data->m_time_step * data->m_time_step;
-                diag_A[j] += data->m_ground_stiffness * data->m_time_step * data->m_time_step;
+                diag_B[j] += data->m_ground_stiffness * data->m_time_step * data->dev_grid_mass[i];
+                diag_A[j] += data->m_ground_stiffness * data->m_time_step * data->dev_grid_mass[i];
                 grid_force[j] += data->dev_grid_mass[i] * data->m_ground_stiffness * (data->dev_inner_bbox[j] - grid_pos[j]);
             }
             if (grid_pos[j] >= data->dev_inner_bbox[j + 3])
             {
-                diag_B[j] += data->m_ground_stiffness * data->m_time_step * data->m_time_step;
-                diag_A[j] += data->m_ground_stiffness * data->m_time_step * data->m_time_step;
+                diag_B[j] += data->m_ground_stiffness * data->m_time_step * data->dev_grid_mass[i];
+                diag_A[j] += data->m_ground_stiffness * data->m_time_step * data->dev_grid_mass[i];
                 grid_force[j] += data->dev_grid_mass[i] * data->m_ground_stiffness * (data->dev_inner_bbox[j + 3] - grid_pos[j]);
             }
         }
@@ -293,14 +293,8 @@ namespace PCGMPMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j] - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_force[i * 3 + j];
+            Real r = - (data->m_time_step_inv * data->dev_grid_mass[i] * (data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j]) - data->dev_grid_force[i * 3 + j]);
             data->dev_grid_temp[i * 3 + j] = r * r;
-        }
-        if (data->dev_grid_mass[i] <= 0)
-        {
-            data->dev_grid_temp[i * 3 + 0] = 0;
-            data->dev_grid_temp[i * 3 + 1] = 0;
-            data->dev_grid_temp[i * 3 + 2] = 0;
         }
     }
 
@@ -312,7 +306,7 @@ namespace PCGMPMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j] - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_force[i * 3 + j];
+            Real r = - (data->m_time_step_inv * data->dev_grid_mass[i] * (data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j]) - data->dev_grid_force[i * 3 + j]);
             data->dev_grid_temp[i * 3 + j] = r * r / data->dev_grid_diag_B[i * 3 + j];
         }
         if (data->dev_grid_mass[i] <= 0)
@@ -331,8 +325,8 @@ namespace PCGMPMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j] - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_force[i * 3 + j];
-            data->dev_grid_p[i * 3 + j] = - r / data->dev_grid_diag_B[i * 3 + j]
+            Real r = - (data->m_time_step_inv * data->dev_grid_mass[i] * (data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j]) - data->dev_grid_force[i * 3 + j]);
+            data->dev_grid_p[i * 3 + j] = r / data->dev_grid_diag_B[i * 3 + j]
                                           + beta * data->dev_grid_p[i * 3 + j];
         }
         if (data->dev_grid_mass[i] <= 0)
@@ -418,20 +412,9 @@ namespace PCGMPMSolverKernel
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
             return;
-        Real coef = -data->m_time_step / data->dev_grid_mass[i];
-        Real Ap_non_diag[3], Ap_total[3], pAp[3];
-        // elastic force part
-        cudaPhysics::vecMul3(Ap_non_diag, coef, &data->dev_grid_temp[i * 3]);
-        // total Ap
-        cudaPhysics::vecAdd3(Ap_total, &data->dev_grid_p[i * 3], Ap_non_diag);
-        // pAp
-        cudaPhysics::vecMul3(pAp, &data->dev_grid_p[i * 3], Ap_total);
-        if (data->dev_grid_mass[i] <= 0)
-        {
-            pAp[0] = 0;
-            pAp[1] = 0;
-            pAp[2] = 0;
-        }
+        Real pAp[3];
+        cudaPhysics::axpby(pAp, data->m_time_step_inv * data->dev_grid_mass[i], &data->dev_grid_p[i * 3], (Real)-1, &data->dev_grid_temp[i * 3], 3);
+        cudaPhysics::vecMul3(pAp, &data->dev_grid_p[i * 3], pAp);
         cudaPhysics::vecAdd3(&data->dev_grid_pAp[i * 3], &data->dev_grid_pAp[i * 3], pAp);
     }
 
@@ -456,14 +439,8 @@ namespace PCGMPMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            Real r = data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j] - data->m_time_step / data->dev_grid_mass[i] * data->dev_grid_force[i * 3 + j];
+            Real r = - (data->m_time_step_inv * data->dev_grid_mass[i] * (data->dev_grid_velocity[i * 3 + j] - data->dev_grid_velocity_hat[i * 3 + j]) - data->dev_grid_force[i * 3 + j]);
             data->dev_grid_temp[i * 3 + j] = data->dev_grid_p[i * 3 + j] * r;
-        }
-        if (data->dev_grid_mass[i] <= 0)
-        {
-            data->dev_grid_temp[i * 3 + 0] = 0;
-            data->dev_grid_temp[i * 3 + 1] = 0;
-            data->dev_grid_temp[i * 3 + 2] = 0;
         }
     }
 
@@ -636,6 +613,7 @@ PCGMPMSolver<Real>::PCGMPMSolver(
     cudaMemset(m_data.dev_grid_temp, 0, sizeof(Real) * m_data.m_num_grid * 3);
 
     m_data.m_time_step = TIME_STEP;
+    m_data.m_time_step_inv = (Real)1.0 / TIME_STEP;
     m_data.m_ground_stiffness = GROUND_COLLISION_STIFFNESS;
     m_data.m_fluid_lambda = FLUID_LAMBDA;
     m_data.m_fluid_viscosity = FLUID_VISCOSITY;
@@ -807,8 +785,8 @@ void PCGMPMSolver<Real>::UpdateSolution()
     Real pAp = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_pAp),
                               thrust::device_pointer_cast(m_data.dev_grid_pAp + m_data.m_num_grid * 3));
     PCGMPMSolverKernel::grid_p_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    Real alpha = - thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
-                                    thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3)) / pAp;
+    Real alpha = thrust::reduce(thrust::device_pointer_cast(m_data.dev_grid_temp),
+                                thrust::device_pointer_cast(m_data.dev_grid_temp + m_data.m_num_grid * 3)) / pAp;
     thrust::transform(thrust::device_pointer_cast(m_data.dev_grid_velocity),
                       thrust::device_pointer_cast(m_data.dev_grid_velocity + m_data.m_num_grid * 3),
                       thrust::device_pointer_cast(m_data.dev_grid_p),

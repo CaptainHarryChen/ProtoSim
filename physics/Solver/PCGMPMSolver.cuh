@@ -13,8 +13,8 @@ const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 200.0f;
 
 // PCG parameters
-const unsigned int MAX_ITERATIONS = 100000;
-const float RESIDUAL_TOLERANCE = 1e-2f;
+const unsigned int MAX_ITERATIONS = 50;
+const float RESIDUAL_TOLERANCE = 0.1f;
 
 template <typename Real>
 struct PCGMPMSolverData
@@ -50,6 +50,7 @@ struct PCGMPMSolverData
     Real *dev_grid_temp; // used for various temporary storage(beta, alpha, Ap, etc.)
 
     Real m_time_step;
+    Real m_time_step_inv;
     Real m_ground_stiffness;
     Real m_fluid_lambda;
     Real m_fluid_viscosity;
