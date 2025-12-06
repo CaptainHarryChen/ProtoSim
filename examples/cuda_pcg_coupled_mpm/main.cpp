@@ -249,6 +249,7 @@ int main()
         bbox, dist, boundary_thickness,
         config
     );
+    solver->m_verbose = true;
     scene->SetSolver(solver);
     scene->SetupConnectors();
     scene->SetStepPerFrame(1);

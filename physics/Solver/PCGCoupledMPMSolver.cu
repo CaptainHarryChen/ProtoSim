@@ -94,8 +94,51 @@ PCGCoupledMPMSolver<Real>::~PCGCoupledMPMSolver()
 template <typename Real>
 void PCGCoupledMPMSolver<Real>::Step()
 {
-    m_mpm_solver.Step();
-    m_fem_solver.Step();
+    m_fem_solver.PCG_Preparation();
+    m_mpm_solver.PCG_Preparation();
+    Real fem_prev_z_dot_r = 0;
+    Real mpm_prev_z_dot_r = 0;
+    for (unsigned int iter = 0;; ++iter)
+    {
+        if (m_verbose)
+            printf("PCG iteration %u\n", iter);
+
+        cudaMemset(m_fem_solver.m_data.dev_vert_force, 0, sizeof(Real) * m_fem_solver.m_data.m_num_vert * 3);
+        cudaMemset(m_fem_solver.m_data.dev_vert_diag_B, 0, sizeof(Real) * m_fem_solver.m_data.m_num_vert * 3);
+        cudaMemset(m_mpm_solver.m_data.dev_grid_force, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
+        cudaMemcpy(m_mpm_solver.m_data.dev_grid_diag_B, m_mpm_solver.m_data.dev_grid_diag_B_const, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
+        m_fem_solver.ElasticForceAndPreconditioner();
+        m_fem_solver.GroundConstraintForceAndPreconditioner();
+        m_mpm_solver.MaterialForceAndPreconditioner();
+        m_mpm_solver.BoxConstraintForceAndPreconditioner();
+        
+        Real fem_residual = m_fem_solver.ResidualNorm();
+        assert(!std::isnan(fem_residual));
+        Real mpm_residual = m_mpm_solver.ResidualNorm();
+        assert(!std::isnan(mpm_residual));
+        if (m_verbose)
+            printf("  fem_residual = %e, mpm_residual = %e\n", fem_residual, mpm_residual);
+        if ((fem_residual < m_fem_solver.m_pcg_residual_tolerance || iter >= m_fem_solver.m_pcg_max_iteration )
+            && (mpm_residual < m_mpm_solver.m_pcg_residual_tolerance || iter >= m_mpm_solver.m_pcg_max_iteration))
+            break;
+        m_fem_solver.SearchDirection(fem_prev_z_dot_r);
+        m_fem_solver.NormalizeSearchDirection();
+        m_mpm_solver.SearchDirection(mpm_prev_z_dot_r);
+        m_mpm_solver.NormalizeSearchDirection();
+    
+        cudaMemset(m_fem_solver.m_data.dev_vert_pAp, 0, sizeof(Real) * m_fem_solver.m_data.m_num_vert * 3);
+        cudaMemset(m_mpm_solver.m_data.dev_grid_pAp, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
+        m_fem_solver.Calc_pAp_Elastic();
+        m_fem_solver.Calc_pAp_GroundConstraint();
+        m_mpm_solver.Calc_pAp_Material();
+        m_mpm_solver.Calc_pAp_BoxConstraint();
+
+        m_fem_solver.UpdateSolution();
+        m_mpm_solver.UpdateSolution();
+    }
+    m_fem_solver.PCG_After();
+    m_mpm_solver.PCG_After();
+
     CoupledMPMSolverKernel::update_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 

@@ -70,12 +70,12 @@ public:
     void PCG_After();
 
     bool m_verbose = false;
+    unsigned int m_pcg_max_iteration;
+    Real m_pcg_residual_tolerance;
     PCGFEMSolverData<Real> m_data;
 
 protected:
     PCGFEMSolverData<Real> *m_dev_data;
-    unsigned int m_pcg_max_iteration;
-    Real m_pcg_residual_tolerance;
 };
 
 extern template struct PCGFEMSolverData<float>;
