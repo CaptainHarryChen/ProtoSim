@@ -5,7 +5,7 @@
 namespace CoupledMPMSolverKernel
 {
     template <typename Real>
-    __global__ void update_sample_position(PCGCoupledMPMSolverData<Real> *data)
+    __global__ void update_sample_position(const PCGCoupledMPMSolverData<Real> *data)
     {
         unsigned int s = blockDim.x * blockIdx.x + threadIdx.x;
         if (s >= data->m_num_sample)
@@ -16,9 +16,47 @@ namespace CoupledMPMSolverKernel
         {
             unsigned int vert_idx = data->dev_triangle[tri_idx * 3 + v];
             Real weight = data->dev_sample_barycentric[s * 3 + v];
-            cudaPhysics::axpby(pos, (Real)1, pos, weight, &data->dev_fem_vert_position[vert_idx * 3], 3);
+            cudaPhysics::axpby(pos, (Real)1, pos, weight, &data->dev_fem_data->dev_vert_position[vert_idx * 3], 3);
         }
         cudaPhysics::vecCopy(&data->dev_sample_position[s * 3], pos, 3);
+    }
+
+    template <typename Real>
+    __global__ void calc_fem_box_constraint(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
+        if (v >= data->dev_fem_data->m_num_vert)
+            return;
+        for (unsigned int j = 0; j < 3; ++j)
+        {
+            if (data->dev_fem_data->dev_vert_position_next[3 * v + j] < data->dev_mpm_data->dev_inner_bbox[j])
+            {
+                data->dev_fem_data->dev_vert_force[3 * v + j] += 
+                    data->dev_fem_data->m_ground_collision_stiffness 
+                    * (data->dev_mpm_data->dev_inner_bbox[j] - data->dev_fem_data->dev_vert_position_next[3 * v + j]) 
+                    * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+            }
+            if (data->dev_fem_data->dev_vert_position_next[3 * v + j] > data->dev_mpm_data->dev_inner_bbox[j + 3])
+            {
+                data->dev_fem_data->dev_vert_force[3 * v + j] += 
+                    data->dev_fem_data->m_ground_collision_stiffness 
+                    * (data->dev_mpm_data->dev_inner_bbox[j + 3] - data->dev_fem_data->dev_vert_position_next[3 * v + j]) 
+                    * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+            }
+        }
+    }
+
+    template <typename Real>
+    __global__ void calc_fem_box_constraint_pAp(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int j = blockDim.x * blockIdx.x + threadIdx.x;
+        if (j >= data->dev_fem_data->m_num_vert * 3)
+            return;
+        data->dev_fem_data->dev_vert_pAp[j] += data->dev_fem_data->dev_vert_box_collision_A[j] * data->dev_fem_data->dev_vert_p[j] * data->dev_fem_data->dev_vert_p[j];
     }
 }
 
@@ -56,8 +94,8 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
             tetrahedron_density,
             config)
 {
-    m_data.dev_fem_vert_position = m_fem_solver.m_data.dev_vert_position;
-    m_data.dev_mpm_particle_position = m_mpm_solver.m_data.dev_particle_position;
+    m_data.dev_fem_data = m_fem_solver.m_dev_data;
+    m_data.dev_mpm_data = m_mpm_solver.m_dev_data;
 
     m_data.m_num_triangle = static_cast<unsigned int>(surface_triangle.size() / 3);
     m_data.m_num_sample = static_cast<unsigned int>(sample_triangle_idx.size());
@@ -72,6 +110,10 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
     cudaMalloc((void **)&m_data.dev_sample_tri_idx, sizeof(unsigned int) * m_data.m_num_sample);
     cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * m_data.m_num_sample, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_to_grid_id, sizeof(unsigned int) * m_data.m_num_sample);
+
+    assert(config.find("time_step") != config.end());
+    m_data.m_time_step = std::any_cast<Real>(config.at("time_step"));
+    m_data.m_time_step_inv = static_cast<Real>(1) / m_data.m_time_step;
 
     cudaMalloc(&m_dev_data, sizeof(PCGCoupledMPMSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(PCGCoupledMPMSolverData<Real>), cudaMemcpyHostToDevice);
@@ -108,9 +150,8 @@ void PCGCoupledMPMSolver<Real>::Step()
         cudaMemset(m_mpm_solver.m_data.dev_grid_force, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
         cudaMemcpy(m_mpm_solver.m_data.dev_grid_diag_B, m_mpm_solver.m_data.dev_grid_diag_B_const, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3, cudaMemcpyDeviceToDevice);
         m_fem_solver.ElasticForceAndPreconditioner();
-        m_fem_solver.GroundConstraintForceAndPreconditioner();
         m_mpm_solver.MaterialForceAndPreconditioner();
-        m_mpm_solver.BoxConstraintForceAndPreconditioner();
+        BoxConstraintForceAndPreconditioner();
         
         Real fem_residual = m_fem_solver.ResidualNorm();
         assert(!std::isnan(fem_residual));
@@ -129,9 +170,8 @@ void PCGCoupledMPMSolver<Real>::Step()
         cudaMemset(m_fem_solver.m_data.dev_vert_pAp, 0, sizeof(Real) * m_fem_solver.m_data.m_num_vert * 3);
         cudaMemset(m_mpm_solver.m_data.dev_grid_pAp, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
         m_fem_solver.Calc_pAp_Elastic();
-        m_fem_solver.Calc_pAp_GroundConstraint();
         m_mpm_solver.Calc_pAp_Material();
-        m_mpm_solver.Calc_pAp_BoxConstraint();
+        Calc_pAp_BoxConstraint();
 
         m_fem_solver.UpdateSolution();
         m_mpm_solver.UpdateSolution();
@@ -145,7 +185,7 @@ void PCGCoupledMPMSolver<Real>::Step()
 template <typename Real>
 Real *PCGCoupledMPMSolver<Real>::GetDeviceVertexPositions()
 {
-    return m_data.dev_fem_vert_position;
+    return m_fem_solver.m_data.dev_vert_position;
 }
 
 template <typename Real>
@@ -157,7 +197,22 @@ Real *PCGCoupledMPMSolver<Real>::GetDeviceSamplePositions()
 template <typename Real>
 Real *PCGCoupledMPMSolver<Real>::GetDeviceParticlePositions()
 {
-    return m_data.dev_mpm_particle_position;
+    return m_mpm_solver.m_data.dev_particle_position;
+}
+
+template <typename Real>
+void PCGCoupledMPMSolver<Real>::BoxConstraintForceAndPreconditioner()
+{
+    cudaMemset(m_fem_solver.m_data.dev_vert_box_collision_A, 0, sizeof(Real) * m_fem_solver.m_data.m_num_vert * 3);
+    CoupledMPMSolverKernel::calc_fem_box_constraint<Real><<<CUDA_GRID_SIZE(m_fem_solver.m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    m_mpm_solver.BoxConstraintForceAndPreconditioner();
+}
+
+template <typename Real>
+void PCGCoupledMPMSolver<Real>::Calc_pAp_BoxConstraint()
+{
+    CoupledMPMSolverKernel::calc_fem_box_constraint_pAp<Real><<<CUDA_GRID_SIZE(m_fem_solver.m_data.m_num_vert * 3), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    m_mpm_solver.Calc_pAp_BoxConstraint();
 }
 
 template class PCGCoupledMPMSolver<float>;

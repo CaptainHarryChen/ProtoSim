@@ -6,18 +6,23 @@
 template <typename Real>
 struct PCGCoupledMPMSolverData
 {
-    Real *dev_fem_vert_position;
+    const PCGFEMSolverData<Real> *dev_fem_data;
+    const PCGMPMSolverData<Real> *dev_mpm_data;
 
-    Real *dev_mpm_particle_position;
-
+    // surface triangle mesh for coupling
     unsigned int m_num_triangle;
     unsigned int *dev_triangle;
-
+    // sampled particles on the surface mesh for coupling
     unsigned int m_num_sample;
     Real *dev_sample_position;
     Real *dev_sample_barycentric;
     unsigned int *dev_sample_tri_idx;
+
+    // coupling data
     unsigned int *dev_sample_to_grid_id;
+    Real *dev_particle_temp_position; // for coupling force
+    Real *dev_particle_dis;
+    Real *dev_particle_normal;
 
     Real m_time_step;
     Real m_time_step_inv;
@@ -51,6 +56,9 @@ public:
     Real *GetDeviceVertexPositions();
     Real *GetDeviceSamplePositions();
     Real *GetDeviceParticlePositions();
+
+    void BoxConstraintForceAndPreconditioner();
+    void Calc_pAp_BoxConstraint();
 
     PCGCoupledMPMSolverData<Real> m_data;
     bool m_verbose = false;

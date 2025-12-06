@@ -84,8 +84,6 @@ public:
     unsigned int m_pcg_max_iteration;
     Real m_pcg_residual_tolerance;
     PCGMPMSolverData<Real> m_data;
-    
-protected:
     PCGMPMSolverData<Real> *m_dev_data;
 };
 
