@@ -204,10 +204,10 @@ int main()
     //                                     0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     scene->AddMPMCubeParticleBatch(glm::vec3(-1.0f, 5.1f, -1.0f), glm::vec3(1.0f, 6.1f, 1.0f), 0.08f,
-                                   MPM_FLUID, 1000.0f,
+                                   MPM_FLUID, 100.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
-                                        15.0f, glm::vec3(0.0f, 0.5f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+                                        15.0f, glm::vec3(0.0f, 2.5f, 2.0f), glm::vec3(glm::radians(-90.0f), 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
@@ -224,11 +224,12 @@ int main()
         {"fluid_lambda", (Real)(1000000.0f)},
         {"fluid_viscosity", (Real)(1.0f)},
         {"ground_collision_stiffness", (Real)100000.0f},
+        {"contact_stiffness", (Real)100000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
-        {"time_step", (Real)(1.0f / 200.0f)},
+        {"time_step", (Real)(1.0f / 1000.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},
         {"fem_pcg_residual_tolerance", (Real)1e-2f},
-        {"mpm_pcg_max_iteration", (unsigned int)200},
+        {"mpm_pcg_max_iteration", (unsigned int)300},
         {"mpm_pcg_residual_tolerance", (Real)1e-2f}
     };
 

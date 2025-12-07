@@ -18,8 +18,8 @@ struct PCGFEMSolverData
     unsigned int m_num_vert;
     unsigned int m_num_tet;
 
+    Real *dev_vert_position_prev;
     Real *dev_vert_position;
-    Real *dev_vert_position_next;
     Real *dev_vert_velocity;
     Real *dev_vert_velocity_hat;
     Real *dev_vert_mass;
@@ -28,7 +28,7 @@ struct PCGFEMSolverData
     Real *dev_vert_box_collision_A;
     Real *dev_vert_p;
     Real *dev_vert_pAp;
-    Real *dev_vert_temp; // used for various temporary storage (beta, alpha, Ap, etc.)
+    Real *dev_vert_temp3; // used for various temporary storage (beta, alpha, Ap, etc.)
 
     unsigned int *dev_tetrahedron;
     Real *dev_tet_density;

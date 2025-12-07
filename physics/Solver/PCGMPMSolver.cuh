@@ -22,7 +22,7 @@ struct PCGMPMSolverData
     Real *dev_particle_temp_C;
     Real *dev_particle_F;                  // deformation gradient
     unsigned int *dev_particle_to_grid_id; // order: x y z
-    Real *dev_particle_temp; // for temporary G2P when calculate Ap in PCG
+    Real *dev_particle_temp1; // for temporary G2P when calculate Ap in PCG
 
     unsigned int m_num_grid;
     Real m_grid_spacing;
@@ -40,7 +40,7 @@ struct PCGMPMSolverData
     Real *dev_grid_diag_A_box;
     Real *dev_grid_p; // the search direction in PCG
     Real *dev_grid_pAp;
-    Real *dev_grid_temp; // used for various temporary storage(beta, alpha, Ap, etc.)
+    Real *dev_grid_temp3; // used for various temporary storage(beta, alpha, Ap, etc.)
 
     Real m_time_step;
     Real m_time_step_inv;

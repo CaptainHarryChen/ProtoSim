@@ -17,15 +17,19 @@ struct PCGCoupledMPMSolverData
     Real *dev_sample_position;
     Real *dev_sample_barycentric;
     unsigned int *dev_sample_tri_idx;
-
-    // coupling data
     unsigned int *dev_sample_to_grid_id;
+
     Real *dev_particle_temp_position; // for coupling force
+    unsigned int *dev_temp_particle_to_grid_id; // for coupling force
     Real *dev_particle_dis;
     Real *dev_particle_normal;
+    Real *dev_particle_temp3; // for coupling force Ap calculation
+
+    uint64_t *dev_grid_tri_info; // for contact constraint
 
     Real m_time_step;
     Real m_time_step_inv;
+    Real m_contact_stiffness;
 };
 
 template <typename Real>
@@ -58,11 +62,12 @@ public:
     Real *GetDeviceParticlePositions();
 
     void BoxConstraintForceAndPreconditioner();
+    void ContactConstraintForceAndPreconditioner();
     void Calc_pAp_BoxConstraint();
+    void Calc_pAp_ContactConstraint();
 
-    PCGCoupledMPMSolverData<Real> m_data;
     bool m_verbose = false;
-protected:
+    PCGCoupledMPMSolverData<Real> m_data;
     PCGCoupledMPMSolverData<Real> *m_dev_data;
     PCGMPMSolver<Real> m_mpm_solver;
     PCGFEMSolver<Real> m_fem_solver;

@@ -1,6 +1,8 @@
 #include "PCGCoupledMPMSolver.cuh"
+#include "CPICTools.cuh"
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
+#include <Math/geometry.cuh>
 
 namespace CoupledMPMSolverKernel
 {
@@ -29,20 +31,20 @@ namespace CoupledMPMSolverKernel
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            if (data->dev_fem_data->dev_vert_position_next[3 * v + j] < data->dev_mpm_data->dev_inner_bbox[j])
+            if (data->dev_fem_data->dev_vert_position[3 * v + j] < data->dev_mpm_data->dev_inner_bbox[j])
             {
                 data->dev_fem_data->dev_vert_force[3 * v + j] += 
                     data->dev_fem_data->m_ground_collision_stiffness 
-                    * (data->dev_mpm_data->dev_inner_bbox[j] - data->dev_fem_data->dev_vert_position_next[3 * v + j]) 
+                    * (data->dev_mpm_data->dev_inner_bbox[j] - data->dev_fem_data->dev_vert_position[3 * v + j]) 
                     * data->dev_fem_data->dev_vert_mass[v];
                 data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
                 data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
             }
-            if (data->dev_fem_data->dev_vert_position_next[3 * v + j] > data->dev_mpm_data->dev_inner_bbox[j + 3])
+            if (data->dev_fem_data->dev_vert_position[3 * v + j] > data->dev_mpm_data->dev_inner_bbox[j + 3])
             {
                 data->dev_fem_data->dev_vert_force[3 * v + j] += 
                     data->dev_fem_data->m_ground_collision_stiffness 
-                    * (data->dev_mpm_data->dev_inner_bbox[j + 3] - data->dev_fem_data->dev_vert_position_next[3 * v + j]) 
+                    * (data->dev_mpm_data->dev_inner_bbox[j + 3] - data->dev_fem_data->dev_vert_position[3 * v + j]) 
                     * data->dev_fem_data->dev_vert_mass[v];
                 data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
                 data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
@@ -57,6 +59,293 @@ namespace CoupledMPMSolverKernel
         if (j >= data->dev_fem_data->m_num_vert * 3)
             return;
         data->dev_fem_data->dev_vert_pAp[j] += data->dev_fem_data->dev_vert_box_collision_A[j] * data->dev_fem_data->dev_vert_p[j] * data->dev_fem_data->dev_vert_p[j];
+    }
+
+    template <typename Real>
+    __global__ void calc_sample_to_leftbottom_grid_id(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int s = blockIdx.x * blockDim.x + threadIdx.x;
+        if (s >= data->m_num_sample)
+            return;
+        auto mpm = data->dev_mpm_data;
+        // find the nearest grid, so plus 0.5 and floor
+        int x = floor((data->dev_sample_position[s * 3 + 0] - mpm->dev_outer_bbox[0]) / mpm->m_grid_spacing + 0.5);
+        int y = floor((data->dev_sample_position[s * 3 + 1] - mpm->dev_outer_bbox[1]) / mpm->m_grid_spacing + 0.5);
+        int z = floor((data->dev_sample_position[s * 3 + 2] - mpm->dev_outer_bbox[2]) / mpm->m_grid_spacing + 0.5);
+        // get the left bottom grid id
+        x--;
+        y--;
+        z--;
+        if (x < 0 || y < 0 || z < 0 || x >= mpm->dev_grid_size[0] - 2 || y >= mpm->dev_grid_size[1] - 2 || z >= mpm->dev_grid_size[2] - 2)
+        {
+            x = max(0, min(x, (int)mpm->dev_grid_size[0] - 3));
+            y = max(0, min(y, (int)mpm->dev_grid_size[1] - 3));
+            z = max(0, min(z, (int)mpm->dev_grid_size[2] - 3));
+            printf("Warning: sample %d is out of grid, set to %d %d %d [Sample position] %.10f %.10f %.10f\n", s, x, y, z, data->dev_sample_position[s * 3 + 0], data->dev_sample_position[s * 3 + 1], data->dev_sample_position[s * 3 + 2]);
+        }
+        data->dev_sample_to_grid_id[s] = x * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + y * mpm->dev_grid_size[2] + z;
+    }
+
+    template <typename Real>
+    __global__ void sample_to_grid(PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int s = blockIdx.x * blockDim.x + threadIdx.x;
+        if (s >= data->m_num_sample)
+            return;
+        auto fem = data->dev_fem_data;
+        auto mpm = data->dev_mpm_data;
+        unsigned int tri_idx = data->dev_sample_tri_idx[s];
+        const unsigned int *tri = &data->dev_triangle[tri_idx * 3];
+        const Real *tri_a_pos = &fem->dev_vert_position[tri[0] * 3];
+        const Real *tri_b_pos = &fem->dev_vert_position[tri[1] * 3];
+        const Real *tri_c_pos = &fem->dev_vert_position[tri[2] * 3];
+        unsigned int leftbottom_grid_id = data->dev_sample_to_grid_id[s];
+        unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % mpm->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
+                    if (cudaPhysics::is_point_in_triangle(grid_position, tri_a_pos, tri_b_pos, tri_c_pos))
+                    {
+                        float distance = (float)cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
+                        bool inside = distance < 0;
+                        distance = inside ? -distance : distance;
+                        uint64_t packed_info = CPICTools::pack_tri_info(distance, inside, tri_idx);
+                        atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
+                    }
+                }
+    }
+
+    template <typename Real>
+    __global__ void G2P_particle_temp_position(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (p >= mpm->m_num_particle)
+            return;
+        const Real *particle_position = &mpm->dev_particle_position[p * 3];
+        Real *particle_temp_position = &data->dev_particle_temp_position[p * 3];
+        Real sum_velocity[3] = {0, 0, 0};
+        unsigned int leftbottom_grid_id = mpm->dev_particle_to_grid_id[p];
+        unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % mpm->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
+                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, mpm->m_grid_spacing);
+                    cudaPhysics::axpby(sum_velocity, (Real)1, sum_velocity, weight, &mpm->dev_grid_velocity[grid_id * 3], 3);
+                }
+        cudaPhysics::axpby(particle_temp_position, (Real)1, particle_position, data->m_time_step, sum_velocity, 3);
+    }
+
+    template <typename Real>
+    __global__ void calc_temp_particle_to_leftbottom_grid_id(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (p >= mpm->m_num_particle)
+            return;
+        // find the nearest grid, so plus 0.5 and floor
+        int x = floor((data->dev_particle_temp_position[p * 3 + 0] - mpm->dev_outer_bbox[0]) / mpm->m_grid_spacing + 0.5);
+        int y = floor((data->dev_particle_temp_position[p * 3 + 1] - mpm->dev_outer_bbox[1]) / mpm->m_grid_spacing + 0.5);
+        int z = floor((data->dev_particle_temp_position[p * 3 + 2] - mpm->dev_outer_bbox[2]) / mpm->m_grid_spacing + 0.5);
+        // get the left bottom grid id
+        x--;
+        y--;
+        z--;
+        if (x < 0 || y < 0 || z < 0 || x >= mpm->dev_grid_size[0] - 2 || y >= mpm->dev_grid_size[1] - 2 || z >= mpm->dev_grid_size[2] - 2)
+        {
+            x = max(0, min(x, (int)mpm->dev_grid_size[0] - 3));
+            y = max(0, min(y, (int)mpm->dev_grid_size[1] - 3));
+            z = max(0, min(z, (int)mpm->dev_grid_size[2] - 3));
+        }
+        data->dev_temp_particle_to_grid_id[p] = x * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + y * mpm->dev_grid_size[2] + z;
+    }
+
+    template <typename Real>
+    __global__ void G2P_particle_sdf_and_normal(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (p >= mpm->m_num_particle)
+            return;
+        Real M[16] = {0}, Qu[4] = {0};
+        M[0] = M[5] = M[10] = M[15] = mpm->m_grid_spacing / 1e6f; // to avoid singular matrix
+        const Real *particle_position = &data->dev_particle_temp_position[p * 3];
+        unsigned int leftbottom_grid_id = data->dev_temp_particle_to_grid_id[p]; // use temp position to calculate sdf and normal
+        unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % mpm->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
+                    if (data->dev_grid_tri_info[grid_id] != 0xFFFFFFFFFFFFFFFFllu)
+                    {
+                        float di;
+                        bool inside;
+                        unsigned int tri_idx;
+                        CPICTools::unpack_tri_info(data->dev_grid_tri_info[grid_id], di, inside, tri_idx);
+                        Real grid_position[3], delta_position[3];
+                        CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
+                        cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
+                        Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, mpm->m_grid_spacing);
+                        di = inside ? -di : di;
+                        M[0] += weight;
+                        Qu[0] += weight * di;
+                        for (int j = 0; j < 3; ++j)
+                        {
+                            M[j + 1] += weight * delta_position[j];
+                            Qu[j + 1] += weight * di * delta_position[j];
+                            for (int k = j; k < 3; ++k)
+                                M[(j + 1) * 4 + (k + 1)] += weight * delta_position[j] * delta_position[k];
+                        }
+                    }
+                }
+        if (M[0] > mpm->m_grid_spacing / 1e6f)
+        {
+            for (int j = 0; j < 3; ++j)
+                for (int k = j + 1; k < 3; ++k)
+                    M[k * 4 + j] = M[j * 4 + k]; // make symmetric
+            Real M_inv[16];
+            cudaPhysics::matInv4(M_inv, M);
+            Real result[4];
+            cudaPhysics::matVecMul(result, M_inv, Qu, 4, 4);
+            data->dev_particle_dis[p] = result[0];
+            cudaPhysics::norm3(&data->dev_particle_normal[p * 3], &result[1]);
+        }
+        else
+        {
+            data->dev_particle_dis[p] = 1e10f;
+            data->dev_particle_normal[p * 3 + 0] = 0;
+            data->dev_particle_normal[p * 3 + 1] = 0;
+            data->dev_particle_normal[p * 3 + 2] = 0;
+        }
+    }
+
+    template <typename Real>
+    __global__ void P2G_contact_force_and_preconditioner(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (p >= mpm->m_num_particle || data->dev_particle_dis[p] >= 0.0f)
+            return;
+        Real coef = data->m_contact_stiffness * (-data->dev_particle_dis[p])
+                    * mpm->dev_particle_volume[p] * mpm->dev_particle_F[p * 9]
+                    * 4 / (mpm->m_grid_spacing * mpm->m_grid_spacing);
+        Real B_coef = data->m_contact_stiffness
+                      * mpm->dev_particle_volume[p] * mpm->dev_particle_F[p * 9]
+                      * 4 / (mpm->m_grid_spacing * mpm->m_grid_spacing)
+                      * data->m_time_step;
+        const Real *particle_position = &mpm->dev_particle_position[p * 3];
+        const Real *particle_normal = &data->dev_particle_normal[p * 3];
+        unsigned int leftbottom_grid_id = mpm->dev_particle_to_grid_id[p];
+        unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % mpm->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
+                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, mpm->m_grid_spacing);
+                    Real delta_position[3], dot_product, force[3], diag_B[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
+                    dot_product = cudaPhysics::dot3(delta_position, particle_normal);
+                    cudaPhysics::vecMul3(force, coef * weight * dot_product, particle_normal);
+                    atomicAdd(&mpm->dev_grid_force[grid_id * 3 + 0], force[0]);
+                    atomicAdd(&mpm->dev_grid_force[grid_id * 3 + 1], force[1]);
+                    atomicAdd(&mpm->dev_grid_force[grid_id * 3 + 2], force[2]);
+                    cudaPhysics::vecMul3(diag_B, particle_normal, particle_normal);
+                    cudaPhysics::vecMul3(diag_B, B_coef * weight * weight * dot_product, diag_B);
+                    atomicAdd(&mpm->dev_grid_diag_B[grid_id * 3 + 0], diag_B[0]);
+                    atomicAdd(&mpm->dev_grid_diag_B[grid_id * 3 + 1], diag_B[1]);
+                    atomicAdd(&mpm->dev_grid_diag_B[grid_id * 3 + 2], diag_B[2]);
+                }
+    }
+
+    template <typename Real>
+    __global__ void G2P_contact_Ap_step1(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (p >= mpm->m_num_particle)
+            return;
+        Real res[3] = {0};
+        const Real *particle_position = &mpm->dev_particle_position[p * 3];
+        unsigned int leftbottom_grid_id = mpm->dev_particle_to_grid_id[p];
+        unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % mpm->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
+                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, mpm->m_grid_spacing);
+                    cudaPhysics::axpby(res, (Real)1, res, weight, &mpm->dev_grid_p[grid_id * 3], 3);
+                }
+        cudaPhysics::vecCopy(&data->dev_particle_temp3[p * 3], res, 3);
+    }
+
+    template <typename Real>
+    __global__ void P2G_contact_Ap_step2(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (p >= mpm->m_num_particle)
+            return;
+        Real coef = data->m_contact_stiffness
+                    * mpm->dev_particle_volume[p] * mpm->dev_particle_F[p * 9]
+                    * 4 / (mpm->m_grid_spacing * mpm->m_grid_spacing);
+        const Real *particle_position = &mpm->dev_particle_position[p * 3];
+        const Real *particle_normal = &data->dev_particle_normal[p * 3];
+        unsigned int leftbottom_grid_id = mpm->dev_particle_to_grid_id[p];
+        unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
+        unsigned int z = leftbottom_grid_id % mpm->dev_grid_size[2];
+        for (unsigned int dx = 0; dx < 3; ++dx)
+            for (unsigned int dy = 0; dy < 3; ++dy)
+                for (unsigned int dz = 0; dz < 3; ++dz)
+                {
+                    unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
+                    Real grid_position[3];
+                    CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
+                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, mpm->m_grid_spacing);
+                    Real delta_position[3], dot_product, normal_dot_p, Kv[3];
+                    cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
+                    dot_product = cudaPhysics::dot3(delta_position, particle_normal);
+                    normal_dot_p = cudaPhysics::dot3(particle_normal, &data->dev_particle_temp3[p * 3]);
+                    cudaPhysics::vecMul3(Kv, coef * weight * dot_product * normal_dot_p, particle_normal);
+                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 0], Kv[0]);
+                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 1], Kv[1]);
+                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 2], Kv[2]);
+                }
+    }
+
+    template <typename Real>
+    __global__ void grid_contact_pAp_step3(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int j = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (j >= mpm->m_num_grid * 3)
+            return;
+        mpm->dev_grid_pAp[j] += mpm->dev_grid_temp3[j] * mpm->dev_grid_p[j];
     }
 }
 
@@ -111,9 +400,20 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
     cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * m_data.m_num_sample, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_to_grid_id, sizeof(unsigned int) * m_data.m_num_sample);
 
+    cudaMalloc((void **)&m_data.dev_particle_temp_position, sizeof(Real) * m_mpm_solver.m_data.m_num_particle * 3);
+    cudaMalloc((void **)&m_data.dev_temp_particle_to_grid_id, sizeof(unsigned int) * m_mpm_solver.m_data.m_num_particle);
+    cudaMalloc((void **)&m_data.dev_particle_dis, sizeof(Real) * m_mpm_solver.m_data.m_num_particle);
+    cudaMalloc((void **)&m_data.dev_particle_normal, sizeof(Real) * m_mpm_solver.m_data.m_num_particle * 3);
+    cudaMalloc((void **)&m_data.dev_particle_temp3, sizeof(Real) * m_mpm_solver.m_data.m_num_particle * 3);
+
+    cudaMalloc((void **)&m_data.dev_grid_tri_info, sizeof(uint64_t) * m_mpm_solver.m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_mpm_solver.m_data.m_num_grid);
+
     assert(config.find("time_step") != config.end());
     m_data.m_time_step = std::any_cast<Real>(config.at("time_step"));
     m_data.m_time_step_inv = static_cast<Real>(1) / m_data.m_time_step;
+    assert(config.find("contact_stiffness") != config.end());
+    m_data.m_contact_stiffness = std::any_cast<Real>(config.at("contact_stiffness"));
 
     cudaMalloc(&m_dev_data, sizeof(PCGCoupledMPMSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(PCGCoupledMPMSolverData<Real>), cudaMemcpyHostToDevice);
@@ -127,10 +427,21 @@ template <typename Real>
 PCGCoupledMPMSolver<Real>::~PCGCoupledMPMSolver()
 {
     cudaFree(m_data.dev_triangle);
+
     cudaFree(m_data.dev_sample_position);
     cudaFree(m_data.dev_sample_barycentric);
     cudaFree(m_data.dev_sample_tri_idx);
     cudaFree(m_data.dev_sample_to_grid_id);
+
+    cudaFree(m_data.dev_particle_temp_position);
+    cudaFree(m_data.dev_temp_particle_to_grid_id);
+    cudaFree(m_data.dev_particle_dis);
+    cudaFree(m_data.dev_particle_normal);
+    cudaFree(m_data.dev_particle_temp3);
+
+    cudaFree(m_data.dev_grid_tri_info);
+
+    cudaFree(m_dev_data);
 }
 
 template <typename Real>
@@ -152,6 +463,7 @@ void PCGCoupledMPMSolver<Real>::Step()
         m_fem_solver.ElasticForceAndPreconditioner();
         m_mpm_solver.MaterialForceAndPreconditioner();
         BoxConstraintForceAndPreconditioner();
+        ContactConstraintForceAndPreconditioner();
         
         Real fem_residual = m_fem_solver.ResidualNorm();
         assert(!std::isnan(fem_residual));
@@ -172,6 +484,7 @@ void PCGCoupledMPMSolver<Real>::Step()
         m_fem_solver.Calc_pAp_Elastic();
         m_mpm_solver.Calc_pAp_Material();
         Calc_pAp_BoxConstraint();
+        Calc_pAp_ContactConstraint();
 
         m_fem_solver.UpdateSolution();
         m_mpm_solver.UpdateSolution();
@@ -209,10 +522,36 @@ void PCGCoupledMPMSolver<Real>::BoxConstraintForceAndPreconditioner()
 }
 
 template <typename Real>
+void PCGCoupledMPMSolver<Real>::ContactConstraintForceAndPreconditioner()
+{
+    // FEM not implemented yet
+    // MPM contact
+    CoupledMPMSolverKernel::calc_sample_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_mpm_solver.m_data.m_num_grid);
+    CoupledMPMSolverKernel::sample_to_grid<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMPMSolverKernel::G2P_particle_temp_position<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMPMSolverKernel::calc_temp_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMPMSolverKernel::G2P_particle_sdf_and_normal<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMPMSolverKernel::P2G_contact_force_and_preconditioner<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+}
+
+template <typename Real>
 void PCGCoupledMPMSolver<Real>::Calc_pAp_BoxConstraint()
 {
     CoupledMPMSolverKernel::calc_fem_box_constraint_pAp<Real><<<CUDA_GRID_SIZE(m_fem_solver.m_data.m_num_vert * 3), CUDA_BLOCK_SIZE>>>(m_dev_data);
     m_mpm_solver.Calc_pAp_BoxConstraint();
+}
+
+template <typename Real>
+void PCGCoupledMPMSolver<Real>::Calc_pAp_ContactConstraint()
+{
+    // FEM not implemented yet
+    // MPM contact
+    cudaMemset(m_data.dev_particle_temp3, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_particle * 3);
+    CoupledMPMSolverKernel::G2P_contact_Ap_step1<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    cudaMemset(m_mpm_solver.m_data.dev_grid_temp3, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
+    CoupledMPMSolverKernel::P2G_contact_Ap_step2<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMPMSolverKernel::grid_contact_pAp_step3<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_grid * 3), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template class PCGCoupledMPMSolver<float>;
