@@ -110,14 +110,15 @@ namespace CoupledMPMSolverKernel
                     unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
                     CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
+                    float distance = (float)cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);;
+                    bool inside = distance < 0;
                     if (cudaPhysics::is_point_in_triangle(grid_position, tri_a_pos, tri_b_pos, tri_c_pos))
-                    {
-                        float distance = (float)cudaPhysics::point_to_triangle_sign_distance(grid_position, tri_a_pos, tri_b_pos, tri_c_pos);
-                        bool inside = distance < 0;
                         distance = inside ? -distance : distance;
-                        uint64_t packed_info = CPICTools::pack_tri_info(distance, inside, tri_idx);
-                        atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
-                    }
+                    else
+                        distance = (float)cudaPhysics::dist3(&data->dev_sample_position[s * 3], grid_position);
+                    assert(distance >= 0);
+                    uint64_t packed_info = CPICTools::pack_tri_info(distance, inside, tri_idx);
+                    atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
                 }
     }
 
@@ -215,11 +216,19 @@ namespace CoupledMPMSolverKernel
                 }
         if (M[0] > mpm->m_grid_spacing / 1e6f)
         {
-            for (int j = 0; j < 3; ++j)
-                for (int k = j + 1; k < 3; ++k)
+            for (int j = 0; j < 4; ++j)
+                for (int k = j + 1; k < 4; ++k)
                     M[k * 4 + j] = M[j * 4 + k]; // make symmetric
+            // use double precision to do matrix inverse
+            double d_M[16];
+            for (int ii = 0; ii < 16; ++ii)
+                d_M[ii] = (double)M[ii];
+            double d_M_inv[16];
+            cudaPhysics::matInv4(d_M_inv, d_M);
             Real M_inv[16];
-            cudaPhysics::matInv4(M_inv, M);
+            for (int ii = 0; ii < 16; ++ii)
+                M_inv[ii] = (Real)d_M_inv[ii];
+            
             Real result[4];
             cudaPhysics::matVecMul(result, M_inv, Qu, 4, 4);
             data->dev_particle_dis[p] = result[0];
@@ -347,6 +356,44 @@ namespace CoupledMPMSolverKernel
             return;
         mpm->dev_grid_pAp[j] += mpm->dev_grid_temp3[j] * mpm->dev_grid_p[j];
     }
+
+    template <typename Real>
+    __global__ void update_particle_color(const PCGCoupledMPMSolverData<Real> *data)
+    {
+        unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
+        auto mpm = data->dev_mpm_data;
+        if (p >= mpm->m_num_particle)
+            return;
+        Real dis = data->dev_particle_dis[p];
+        Real color[3];
+        Real inside_limit = -0.1f;
+        Real outside_limit = 0.5f;
+        if (dis < inside_limit)
+        {
+            color[0] = 1.0f;
+            color[1] = 0.0f;
+            color[2] = 0.0f;
+        }
+        else if (dis < 0.0f)
+        {
+            color[0] = 1.0f;
+            color[1] = 1.0f - dis / inside_limit;
+            color[2] = 1.0f - dis / inside_limit;
+        }
+        else if (dis < outside_limit)
+        {
+            color[0] = 1.0f - dis / outside_limit;
+            color[1] = 1.0f;
+            color[2] = 1.0f - dis / outside_limit;
+        }
+        else
+        {
+            color[0] = 0.0f;
+            color[1] = 1.0f;
+            color[2] = 0.0f;
+        }
+        cudaPhysics::vecCopy(&data->dev_particle_color[p * 3], color, 3);
+    }
 }
 
 template <typename Real>
@@ -400,6 +447,7 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
     cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * m_data.m_num_sample, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_to_grid_id, sizeof(unsigned int) * m_data.m_num_sample);
 
+    cudaMalloc((void **)&m_data.dev_particle_color, sizeof(Real) * m_mpm_solver.m_data.m_num_particle * 3);
     cudaMalloc((void **)&m_data.dev_particle_temp_position, sizeof(Real) * m_mpm_solver.m_data.m_num_particle * 3);
     cudaMalloc((void **)&m_data.dev_temp_particle_to_grid_id, sizeof(unsigned int) * m_mpm_solver.m_data.m_num_particle);
     cudaMalloc((void **)&m_data.dev_particle_dis, sizeof(Real) * m_mpm_solver.m_data.m_num_particle);
@@ -493,6 +541,7 @@ void PCGCoupledMPMSolver<Real>::Step()
     m_mpm_solver.PCG_After();
 
     CoupledMPMSolverKernel::update_sample_position<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    CoupledMPMSolverKernel::update_particle_color<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>

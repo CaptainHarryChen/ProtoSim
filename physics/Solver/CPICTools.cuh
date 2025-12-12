@@ -6,18 +6,18 @@ namespace CPICTools
     {
         uint64_t result = 0;
         uint32_t *result_ptr = (uint32_t *)&result;
-        result_ptr[0] = *((uint32_t *)&closest_distance);
-        result_ptr[1] = tri_idx;
-        result_ptr[1] |= (inside ? 1u << 31 : 0u);
+        result_ptr[1] = *((uint32_t *)&closest_distance);
+        result_ptr[0] = tri_idx;
+        result_ptr[0] |= (inside ? 1u << 31 : 0u);
         return result;
     }
 
     __host__ __device__ __forceinline__ void unpack_tri_info(uint64_t packed_info, float &closest_distance, bool &inside, unsigned int &tri_idx)
     {
         uint32_t *info_ptr = (uint32_t *)&packed_info;
-        closest_distance = *((float *)&info_ptr[0]);
-        tri_idx = info_ptr[1] & 0x7FFFFFFFu; // Clear the inside bit
-        inside = (info_ptr[1] & (1u << 31)) != 0;
+        closest_distance = *((float *)&info_ptr[1]);
+        tri_idx = info_ptr[0] & 0x7FFFFFFFu; // Clear the inside bit
+        inside = (info_ptr[0] & (1u << 31)) != 0;
         if (packed_info == 0xFFFFFFFFFFFFFFFFllu)
             inside = false;
     }

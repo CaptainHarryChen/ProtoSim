@@ -11,12 +11,15 @@
 #include <Mesh/Mesh.h>
 #include <Mesh/PbrRenderer.h>
 #include <Geometry/ParticleBatch.h>
+#include <Geometry/LineSegment.h>
 #include <Geometry/SphereRenderer.h>
+#include <Mesh/SolidColorRenderer.h>
 #include <Render/RenderSystem.h>
 #include <Connector/MeshConnector.cuh>
 #include <Connector/ParticleConnector.cuh>
 #include <Solver/PCGCoupledMPMSolver.cuh>
 #include <proj_config.h>
+#include "GridTriangleDebugConnector.cuh"
 
 template <typename Real>
 class PCGCoupledMPMScene : public SimulationScene<Real>
@@ -58,6 +61,7 @@ public:
         }
         auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
         mesh->AddRenderer(std::make_shared<PbrRenderer>(mesh_render_material));
+        mesh->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(0.0f, 0.0f, 0.0f), true));
         SimulationScene<Real>::AddMesh(mesh);
 
         unsigned int node_offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
@@ -96,8 +100,6 @@ public:
             glm::vec3 v2 = vertices[surface_triangles[tri_idx * 3 + 2]].position;
             particles[i].Position = bary_coords.x * v0 + bary_coords.y * v1 + bary_coords.z * v2;
             particles[i].Color = sample_color;
-            // if (i != 77)
-            //     particles[i].Color = glm::vec3(1.0f, 1.0f, 1.0f);
         }
         m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
         m_sample_batch_offsets.push_back(std::make_pair(m_sample_particle_batch, sample_offset * 3));
@@ -160,9 +162,12 @@ public:
         for (auto &[particle_batch, node_offset] : this->m_particle_batch_offsets)
         {
             auto position_ptr = solver->GetDeviceParticlePositions();
+            auto color_ptr = solver->m_data.dev_particle_color;
             if (position_ptr)
                 position_ptr = position_ptr + node_offset;
-            auto connector = std::make_shared<ParticleConnector<Real>>(particle_batch, position_ptr, nullptr);
+            if (color_ptr)
+                color_ptr = color_ptr + node_offset;
+            auto connector = std::make_shared<ParticleConnector<Real>>(particle_batch, position_ptr, color_ptr);
             this->m_connectors.push_back(connector);
         }
     }
@@ -203,19 +208,22 @@ int main()
     //                                     {glm::vec3(1.0f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)},
     //                                     0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    scene->AddMPMCubeParticleBatch(glm::vec3(-1.0f, 5.1f, -1.0f), glm::vec3(1.0f, 6.1f, 1.0f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(0.0f, 4.1f, -1.0f), glm::vec3(2.0f, 5.1f, 1.0f), 0.08f,
                                    MPM_FLUID, 100.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
-                                        15.0f, glm::vec3(0.0f, 2.5f, 2.0f), glm::vec3(glm::radians(-90.0f), 0.0f, 0.0f),
+                                        15.0f, glm::vec3(0.0f, 0.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
-                                        0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+                                        0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     float dist = 0.2f;
     // std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
     std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
     unsigned int boundary_thickness = 1;
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    std::vector<Real> real_bbox;
+    for (auto b : bbox)
+        real_bbox.push_back((Real)b);
 
     Real young_k = 1000000.0f, young_nu = 0.26f;
     std::unordered_map<std::string, std::any> config {
@@ -224,7 +232,7 @@ int main()
         {"fluid_lambda", (Real)(1000000.0f)},
         {"fluid_viscosity", (Real)(1.0f)},
         {"ground_collision_stiffness", (Real)100000.0f},
-        {"contact_stiffness", (Real)100000.0f},
+        {"contact_stiffness", (Real)1000000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
         {"time_step", (Real)(1.0f / 1000.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},
@@ -247,13 +255,23 @@ int main()
         scene->m_particle_masses,
         scene->m_particle_volumes,
 
-        bbox, dist, boundary_thickness,
+        real_bbox, dist, boundary_thickness,
         config
     );
     solver->m_verbose = true;
     scene->SetSolver(solver);
     scene->SetupConnectors();
     scene->SetStepPerFrame(1);
+
+    unsigned int num_grid = solver->m_mpm_solver.m_data.m_num_grid;
+    auto grid_inside_monitor = std::make_shared<ParticleBatch>(std::vector<Particle>(num_grid));
+    grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.02f));
+    app->GetRenderSystem()->AddRenderObject(grid_inside_monitor);
+    std::vector<LineSeg> line_segs(num_grid);
+    auto grid_dis_monitor = std::make_shared<LineSegment>(line_segs);
+    grid_dis_monitor->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
+    app->GetRenderSystem()->AddRenderObject(grid_dis_monitor);
+    scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, grid_dis_monitor, &solver->m_data, solver->m_dev_data));
 
     app->Run();
 

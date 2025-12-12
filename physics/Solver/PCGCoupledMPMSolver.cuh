@@ -19,6 +19,7 @@ struct PCGCoupledMPMSolverData
     unsigned int *dev_sample_tri_idx;
     unsigned int *dev_sample_to_grid_id;
 
+    Real *dev_particle_color;
     Real *dev_particle_temp_position; // for coupling force
     unsigned int *dev_temp_particle_to_grid_id; // for coupling force
     Real *dev_particle_dis;
