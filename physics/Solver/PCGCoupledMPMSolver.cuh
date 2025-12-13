@@ -18,6 +18,7 @@ struct PCGCoupledMPMSolverData
     Real *dev_sample_barycentric;
     unsigned int *dev_sample_tri_idx;
     unsigned int *dev_sample_to_grid_id;
+    Real *dev_sample_temp3;
 
     Real *dev_particle_color;
     Real *dev_particle_temp_position; // for coupling force
@@ -27,6 +28,8 @@ struct PCGCoupledMPMSolverData
     Real *dev_particle_temp3; // for coupling force Ap calculation
 
     uint64_t *dev_grid_tri_info; // for contact constraint
+    Real *dev_grid_nnT; // 3x3 matrix, for contact constraint: sum_p w_ip * n_p * n_p^T
+    Real *dev_grid_contact_force; // store contact force
 
     Real m_time_step;
     Real m_time_step_inv;

@@ -234,7 +234,7 @@ int main()
         {"ground_collision_stiffness", (Real)100000.0f},
         {"contact_stiffness", (Real)100000000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
-        {"time_step", (Real)(1.0f / 1000.0f)},
+        {"time_step", (Real)(1.0f / 300.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},
         {"fem_pcg_residual_tolerance", (Real)1e-2f},
         {"mpm_pcg_max_iteration", (unsigned int)300},
