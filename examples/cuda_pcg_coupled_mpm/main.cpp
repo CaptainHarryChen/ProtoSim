@@ -61,7 +61,7 @@ public:
         }
         auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
         mesh->AddRenderer(std::make_shared<PbrRenderer>(mesh_render_material));
-        mesh->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(0.0f, 0.0f, 0.0f), true));
+        // mesh->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(0.0f, 0.0f, 0.0f), true));
         SimulationScene<Real>::AddMesh(mesh);
 
         unsigned int node_offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
@@ -231,7 +231,7 @@ int main()
         {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
         {"fluid_lambda", (Real)(1000000.0f)},
         {"fluid_viscosity", (Real)(1.0f)},
-        {"ground_collision_stiffness", (Real)100000.0f},
+        {"ground_collision_stiffness", (Real)1000000.0f},
         {"contact_stiffness", (Real)100000000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
         {"time_step", (Real)(1.0f / 300.0f)},
