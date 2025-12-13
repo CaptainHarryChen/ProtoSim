@@ -208,7 +208,7 @@ int main()
     //                                     {glm::vec3(1.0f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)},
     //                                     0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    scene->AddMPMCubeParticleBatch(glm::vec3(0.0f, 4.1f, -1.0f), glm::vec3(2.0f, 5.1f, 1.0f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.1f, -2.0f), glm::vec3(2.0f, 7.1f, 2.0f), 0.08f,
                                    MPM_FLUID, 100.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
@@ -232,7 +232,7 @@ int main()
         {"fluid_lambda", (Real)(1000000.0f)},
         {"fluid_viscosity", (Real)(1.0f)},
         {"ground_collision_stiffness", (Real)100000.0f},
-        {"contact_stiffness", (Real)1000000.0f},
+        {"contact_stiffness", (Real)100000000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
         {"time_step", (Real)(1.0f / 1000.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},
@@ -263,15 +263,15 @@ int main()
     scene->SetupConnectors();
     scene->SetStepPerFrame(1);
 
-    unsigned int num_grid = solver->m_mpm_solver.m_data.m_num_grid;
-    auto grid_inside_monitor = std::make_shared<ParticleBatch>(std::vector<Particle>(num_grid));
-    grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.02f));
-    app->GetRenderSystem()->AddRenderObject(grid_inside_monitor);
-    std::vector<LineSeg> line_segs(num_grid);
-    auto grid_dis_monitor = std::make_shared<LineSegment>(line_segs);
-    grid_dis_monitor->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
-    app->GetRenderSystem()->AddRenderObject(grid_dis_monitor);
-    scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, grid_dis_monitor, &solver->m_data, solver->m_dev_data));
+    // unsigned int num_grid = solver->m_mpm_solver.m_data.m_num_grid;
+    // auto grid_inside_monitor = std::make_shared<ParticleBatch>(std::vector<Particle>(num_grid));
+    // grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.02f));
+    // app->GetRenderSystem()->AddRenderObject(grid_inside_monitor);
+    // std::vector<LineSeg> line_segs(num_grid);
+    // auto grid_dis_monitor = std::make_shared<LineSegment>(line_segs);
+    // grid_dis_monitor->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
+    // app->GetRenderSystem()->AddRenderObject(grid_dis_monitor);
+    // scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, grid_dis_monitor, &solver->m_data, solver->m_dev_data));
 
     app->Run();
 

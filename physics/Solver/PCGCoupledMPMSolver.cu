@@ -250,15 +250,13 @@ namespace CoupledMPMSolverKernel
         auto mpm = data->dev_mpm_data;
         if (p >= mpm->m_num_particle || data->dev_particle_dis[p] >= 0.0f)
             return;
-        Real coef = data->m_contact_stiffness * (-data->dev_particle_dis[p])
-                    * mpm->dev_particle_volume[p] * mpm->dev_particle_F[p * 9]
-                    * 4 / (mpm->m_grid_spacing * mpm->m_grid_spacing);
-        Real B_coef = data->m_contact_stiffness
-                      * mpm->dev_particle_volume[p] * mpm->dev_particle_F[p * 9]
-                      * 4 / (mpm->m_grid_spacing * mpm->m_grid_spacing)
-                      * data->m_time_step;
+        Real coef = - data->m_contact_stiffness * data->dev_particle_dis[p] 
+                    * mpm->dev_particle_volume[p] * mpm->dev_particle_F[p * 9];
+        Real particle_force[3], particle_diag_B[3];
+        cudaPhysics::vecMul3(particle_force, coef, &data->dev_particle_normal[p * 3]);
+        cudaPhysics::vecMul3(particle_diag_B, -coef * data->m_time_step, &data->dev_particle_normal[p * 3]);
+        cudaPhysics::vecMul3(particle_diag_B, particle_diag_B, &data->dev_particle_normal[p * 3]);
         const Real *particle_position = &mpm->dev_particle_position[p * 3];
-        const Real *particle_normal = &data->dev_particle_normal[p * 3];
         unsigned int leftbottom_grid_id = mpm->dev_particle_to_grid_id[p];
         unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
         unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
@@ -271,15 +269,12 @@ namespace CoupledMPMSolverKernel
                     Real grid_position[3];
                     CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
                     Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, mpm->m_grid_spacing);
-                    Real delta_position[3], dot_product, force[3], diag_B[3];
-                    cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    dot_product = cudaPhysics::dot3(delta_position, particle_normal);
-                    cudaPhysics::vecMul3(force, coef * weight * dot_product, particle_normal);
+                    Real force[3], diag_B[3];
+                    cudaPhysics::vecMul3(force, weight, particle_force);
                     atomicAdd(&mpm->dev_grid_force[grid_id * 3 + 0], force[0]);
                     atomicAdd(&mpm->dev_grid_force[grid_id * 3 + 1], force[1]);
                     atomicAdd(&mpm->dev_grid_force[grid_id * 3 + 2], force[2]);
-                    cudaPhysics::vecMul3(diag_B, particle_normal, particle_normal);
-                    cudaPhysics::vecMul3(diag_B, B_coef * weight * weight * dot_product, diag_B);
+                    cudaPhysics::vecMul3(diag_B, weight * weight, particle_diag_B);
                     atomicAdd(&mpm->dev_grid_diag_B[grid_id * 3 + 0], diag_B[0]);
                     atomicAdd(&mpm->dev_grid_diag_B[grid_id * 3 + 1], diag_B[1]);
                     atomicAdd(&mpm->dev_grid_diag_B[grid_id * 3 + 2], diag_B[2]);
@@ -319,11 +314,13 @@ namespace CoupledMPMSolverKernel
         auto mpm = data->dev_mpm_data;
         if (p >= mpm->m_num_particle)
             return;
-        Real coef = data->m_contact_stiffness
+        Real coef = data->m_contact_stiffness * data->dev_particle_dis[p] 
                     * mpm->dev_particle_volume[p] * mpm->dev_particle_F[p * 9]
-                    * 4 / (mpm->m_grid_spacing * mpm->m_grid_spacing);
+                    * data->m_time_step;
+        Real dot_product = cudaPhysics::dot3(&data->dev_particle_normal[p * 3], &data->dev_particle_temp3[p * 3]);
+        Real particle_Ap[3];
+        cudaPhysics::vecMul3(particle_Ap, coef * dot_product, &data->dev_particle_normal[p * 3]);
         const Real *particle_position = &mpm->dev_particle_position[p * 3];
-        const Real *particle_normal = &data->dev_particle_normal[p * 3];
         unsigned int leftbottom_grid_id = mpm->dev_particle_to_grid_id[p];
         unsigned int x = leftbottom_grid_id / mpm->dev_grid_size[1] / mpm->dev_grid_size[2];
         unsigned int y = (leftbottom_grid_id / mpm->dev_grid_size[2]) % mpm->dev_grid_size[1];
@@ -336,14 +333,11 @@ namespace CoupledMPMSolverKernel
                     Real grid_position[3];
                     CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
                     Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, particle_position, mpm->m_grid_spacing);
-                    Real delta_position[3], dot_product, normal_dot_p, Kv[3];
-                    cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
-                    dot_product = cudaPhysics::dot3(delta_position, particle_normal);
-                    normal_dot_p = cudaPhysics::dot3(particle_normal, &data->dev_particle_temp3[p * 3]);
-                    cudaPhysics::vecMul3(Kv, coef * weight * dot_product * normal_dot_p, particle_normal);
-                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 0], Kv[0]);
-                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 1], Kv[1]);
-                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 2], Kv[2]);
+                    Real grid_Ap[3];
+                    cudaPhysics::vecMul3(grid_Ap, weight, particle_Ap);
+                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 0], grid_Ap[0]);
+                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 1], grid_Ap[1]);
+                    atomicAdd(&mpm->dev_grid_temp3[grid_id * 3 + 2], grid_Ap[2]);
                 }
     }
 
@@ -383,14 +377,14 @@ namespace CoupledMPMSolverKernel
         else if (dis < outside_limit)
         {
             color[0] = 1.0f - dis / outside_limit;
-            color[1] = 1.0f;
-            color[2] = 1.0f - dis / outside_limit;
+            color[1] = 1.0f - dis / outside_limit;
+            color[2] = 1.0f;
         }
         else
         {
             color[0] = 0.0f;
-            color[1] = 1.0f;
-            color[2] = 0.0f;
+            color[1] = 0.0f;
+            color[2] = 1.0f;
         }
         cudaPhysics::vecCopy(&data->dev_particle_color[p * 3], color, 3);
     }
