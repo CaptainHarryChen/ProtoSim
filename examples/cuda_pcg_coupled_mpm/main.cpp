@@ -161,8 +161,8 @@ public:
         }
         for (auto &[particle_batch, node_offset] : this->m_particle_batch_offsets)
         {
-            auto position_ptr = solver->GetDeviceParticlePositions();
-            auto color_ptr = solver->m_data.dev_particle_color;
+            Real *position_ptr = solver->GetDeviceParticlePositions();
+            Real *color_ptr = nullptr; //solver->m_data.dev_particle_color;
             if (position_ptr)
                 position_ptr = position_ptr + node_offset;
             if (color_ptr)
@@ -203,16 +203,19 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.1f, -2.0f), glm::vec3(2.0f, 7.1f, 2.0f), 0.08f,
+    //                                MPM_FLUID, 100.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
-    //                                     15.0f, glm::vec3(0.0f, 4.0f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
-    //                                     {glm::vec3(1.0f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)},
-    //                                     0.01f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+    //                                     15.0f, glm::vec3(0.0f, 0.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
+    //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.1f, -2.0f), glm::vec3(2.0f, 7.1f, 2.0f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
                                    MPM_FLUID, 100.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
-                                        15.0f, glm::vec3(0.0f, 0.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 200.0f, 0.039f * 0.039f * 0.039f,
+                                        15.0f, glm::vec3(0.0f, 1.8f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
