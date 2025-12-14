@@ -37,6 +37,7 @@ public:
 
     std::vector<Real> m_sample_barycentric_weights;
     std::vector<unsigned int> m_sample_tri_idx;
+    std::vector<Real> m_sample_area;
     std::shared_ptr<ParticleBatch> m_sample_particle_batch;
     std::vector<std::pair<std::shared_ptr<ParticleBatch>, size_t>> m_sample_batch_offsets;
 
@@ -45,7 +46,7 @@ public:
     std::vector<Real> m_particle_masses;
     std::vector<Real> m_particle_volumes;
 
-    void LoadTetrahedronWithPLYSample(std::string inputfile, Real density, Real per_sample_volume,
+    void LoadTetrahedronWithPLYSample(std::string inputfile, Real density, Real sample_area,
                                       float scale, glm::vec3 translate, glm::vec3 rotate,
                                       std::vector<glm::vec3> mesh_render_material,
                                       float sample_radius, glm::vec3 sample_color, glm::vec2 sample_material)
@@ -93,6 +94,10 @@ public:
         m_sample_barycentric_weights.resize(sample_offset * 3 + sample_barycentric_weights.size());
         for (size_t i = 0; i < sample_barycentric_weights.size(); ++i)
             m_sample_barycentric_weights[i + sample_offset * 3] = sample_barycentric_weights[i];
+        
+        m_sample_area.resize(m_sample_area.size() + sample_tri_idx.size());
+        for (size_t i = 0; i < sample_tri_idx.size(); ++i)
+            m_sample_area[i + sample_offset] = sample_area;
 
         std::vector<Particle> particles(sample_tri_idx.size());
         for (size_t i = 0; i < sample_tri_idx.size(); ++i)
@@ -218,7 +223,7 @@ int main()
     // scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.1f, -2.0f), glm::vec3(2.0f, 7.1f, 2.0f), 0.08f,
     //                                MPM_FLUID, 1000.0f,
     //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 0.039f,
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 3.14159f / 4.0f,
     //                                     15.0f, glm::vec3(0.0f, 0.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
     //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
     //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
@@ -226,15 +231,15 @@ int main()
     // scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 3.1f, -2.0f), glm::vec3(2.0f, 4.1f, 2.0f), 0.08f,
     //                                MPM_FLUID, 1000.0f,
     //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 100.0f, 0.05f * 0.05f * 0.05f,
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 100.0f, 0.05f * 0.05f * 3.14159f / 4.0f,
     //                                     1.0f, glm::vec3(0.0f, 1.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
     //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
     //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
-                                   MPM_FLUID, 800.0f,
+                                   MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 1000.0f, 0.05f * 0.05f * 0.05f,
+    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 200.0f, 0.05f * 0.05f * 3.14159f / 4.0f,
                                         1.0f, glm::vec3(0.0f, 3.8f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
@@ -272,6 +277,7 @@ int main()
 
         scene->m_sample_barycentric_weights,
         scene->m_sample_tri_idx,
+        scene->m_sample_area,
 
         scene->m_particle_positions,
         scene->m_particle_types,

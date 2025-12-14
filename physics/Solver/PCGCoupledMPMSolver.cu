@@ -122,6 +122,9 @@ namespace CoupledMPMSolverKernel
                     assert(distance >= 0);
                     uint64_t packed_info = CPICTools::pack_tri_info(distance, inside, tri_idx);
                     atomicMin(&data->dev_grid_tri_info[grid_id], packed_info);
+
+                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, &data->dev_sample_position[s * 3], mpm->m_grid_spacing);
+                    atomicAdd(&data->dev_grid_sample_area[grid_id], data->dev_sample_area[s] * weight);
                 }
     }
 
@@ -332,13 +335,15 @@ namespace CoupledMPMSolverKernel
                     unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
                     CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
-                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, &data->dev_sample_position[s * 3], mpm->m_grid_spacing);
-                    diag_B[0] += weight * data->dev_grid_nnT[grid_id * 9 + 0];
-                    diag_B[1] += weight * data->dev_grid_nnT[grid_id * 9 + 4];
-                    diag_B[2] += weight * data->dev_grid_nnT[grid_id * 9 + 8];
-                    cudaPhysics::axpby(force, (Real)1, force, - weight, &data->dev_grid_contact_force[grid_id * 3], 3);
+                    Real coef = CPICTools::grid_particle_quadratic_weight(grid_position, &data->dev_sample_position[s * 3], mpm->m_grid_spacing);
+                    coef = coef / data->dev_grid_sample_area[grid_id];
+                    diag_B[0] += coef * data->dev_grid_nnT[grid_id * 9 + 0];
+                    diag_B[1] += coef * data->dev_grid_nnT[grid_id * 9 + 4];
+                    diag_B[2] += coef * data->dev_grid_nnT[grid_id * 9 + 8];
+                    cudaPhysics::axpby(force, (Real)1, force, - coef, &data->dev_grid_contact_force[grid_id * 3], 3);
                 }
-        cudaPhysics::vecMul3(diag_B, data->m_contact_stiffness * data->m_time_step, diag_B);
+        cudaPhysics::vecMul3(force, data->dev_sample_area[s]);
+        cudaPhysics::vecMul3(diag_B, data->m_contact_stiffness * data->m_time_step * data->dev_sample_area[s]);
         for (unsigned int j = 0; j < 3; ++j)
         {
             unsigned int vert_idx = data->dev_triangle[tri_idx * 3 + j];
@@ -457,12 +462,13 @@ namespace CoupledMPMSolverKernel
                     unsigned int grid_id = (x + dx) * mpm->dev_grid_size[1] * mpm->dev_grid_size[2] + (y + dy) * mpm->dev_grid_size[2] + (z + dz);
                     Real grid_position[3];
                     CPICTools::get_grid_position(grid_position, grid_id, mpm->dev_grid_size, mpm->dev_outer_bbox, mpm->m_grid_spacing);
-                    Real weight = CPICTools::grid_particle_quadratic_weight(grid_position, &data->dev_sample_position[s * 3], mpm->m_grid_spacing);
-                    cudaPhysics::axpby(sample_nnT, (Real)1, sample_nnT, weight, &data->dev_grid_nnT[grid_id * 9], 9);
+                    Real coef = CPICTools::grid_particle_quadratic_weight(grid_position, &data->dev_sample_position[s * 3], mpm->m_grid_spacing);
+                    coef = coef / data->dev_grid_sample_area[grid_id];
+                    cudaPhysics::axpby(sample_nnT, (Real)1, sample_nnT, coef, &data->dev_grid_nnT[grid_id * 9], 9);
                 }
         Real Ap[3];
         cudaPhysics::matVec3(Ap, sample_nnT, &data->dev_sample_temp3[s * 3]);
-        cudaPhysics::vecMul3(Ap, data->m_contact_stiffness * data->m_time_step, Ap);
+        cudaPhysics::vecMul3(Ap, data->m_contact_stiffness * data->m_time_step * data->dev_sample_area[s], Ap);
         for (unsigned int j = 0; j < 3; ++j)
         {
             unsigned int vert_idx = data->dev_triangle[tri_idx * 3 + j];
@@ -530,6 +536,7 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
 
     const std::vector<Real> &sample_barycentric_weights,
     const std::vector<unsigned int> &sample_triangle_idx,
+    const std::vector<Real> &sample_area,
 
     const std::vector<Real> &particle_position,
     const std::vector<unsigned int> &particle_type,
@@ -568,6 +575,8 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
     cudaMalloc((void **)&m_data.dev_sample_position, sizeof(Real) * m_data.m_num_sample * 3);
     cudaMalloc((void **)&m_data.dev_sample_barycentric, sizeof(Real) * m_data.m_num_sample * 3);
     cudaMemcpy(m_data.dev_sample_barycentric, sample_barycentric_weights.data(), sizeof(Real) * m_data.m_num_sample * 3, cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&m_data.dev_sample_area, sizeof(Real) * m_data.m_num_sample);
+    cudaMemcpy(m_data.dev_sample_area, sample_area.data(), sizeof(Real) * m_data.m_num_sample, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_tri_idx, sizeof(unsigned int) * m_data.m_num_sample);
     cudaMemcpy(m_data.dev_sample_tri_idx, sample_triangle_idx.data(), sizeof(unsigned int) * m_data.m_num_sample, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_sample_to_grid_id, sizeof(unsigned int) * m_data.m_num_sample);
@@ -583,6 +592,7 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
     cudaMalloc((void **)&m_data.dev_grid_tri_info, sizeof(uint64_t) * m_mpm_solver.m_data.m_num_grid);
     cudaMalloc((void **)&m_data.dev_grid_nnT, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 9);
     cudaMalloc((void **)&m_data.dev_grid_contact_force, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
+    cudaMalloc((void **)&m_data.dev_grid_sample_area, sizeof(Real) * m_mpm_solver.m_data.m_num_grid);
 
     assert(config.find("time_step") != config.end());
     m_data.m_time_step = std::any_cast<Real>(config.at("time_step"));
@@ -605,6 +615,7 @@ PCGCoupledMPMSolver<Real>::~PCGCoupledMPMSolver()
 
     cudaFree(m_data.dev_sample_position);
     cudaFree(m_data.dev_sample_barycentric);
+    cudaFree(m_data.dev_sample_area);
     cudaFree(m_data.dev_sample_tri_idx);
     cudaFree(m_data.dev_sample_to_grid_id);
     cudaFree(m_data.dev_sample_temp3);
@@ -618,6 +629,7 @@ PCGCoupledMPMSolver<Real>::~PCGCoupledMPMSolver()
     cudaFree(m_data.dev_grid_tri_info);
     cudaFree(m_data.dev_grid_nnT);
     cudaFree(m_data.dev_grid_contact_force);
+    cudaFree(m_data.dev_grid_sample_area);
 
     cudaFree(m_dev_data);
 }
@@ -713,6 +725,7 @@ void PCGCoupledMPMSolver<Real>::ContactConstraintForceAndPreconditioner()
     // MPM contact
     CoupledMPMSolverKernel::calc_sample_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_grid_tri_info, 0xFF, sizeof(uint64_t) * m_mpm_solver.m_data.m_num_grid);
+    cudaMemset(m_data.dev_grid_sample_area, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid);
     CoupledMPMSolverKernel::sample_to_grid<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
     CoupledMPMSolverKernel::G2P_particle_temp_position<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     CoupledMPMSolverKernel::calc_temp_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
