@@ -220,15 +220,7 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.1f, -2.0f), glm::vec3(2.0f, 7.1f, 2.0f), 0.08f,
-    //                                MPM_FLUID, 1000.0f,
-    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 3.14159f / 4.0f,
-    //                                     15.0f, glm::vec3(0.0f, 0.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
-    //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
-
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 3.1f, -2.0f), glm::vec3(2.0f, 4.1f, 2.0f), 0.08f,
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-5.0f, 3.1f, -5.0f), glm::vec3(5.0f, 6.1f, 5.0f), 0.08f,
     //                                MPM_FLUID, 1000.0f,
     //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 100.0f, 0.05f * 0.05f * 3.14159f / 4.0f,
@@ -236,38 +228,80 @@ int main()
     //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
     //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(-5.0f, 5.1f, -5.0f), glm::vec3(5.0f, 6.1f, 5.0f), 0.08f,
                                    MPM_FLUID, 1000.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 200.0f, 0.05f * 0.05f * 3.14159f / 4.0f,
-                                        1.0f, glm::vec3(0.0f, 3.8f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 1000.0f, 0.039f * 0.039f * 3.14159f / 4.0f,
+                                        15.0f, glm::vec3(0.0f, 0.1f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    float dist = 0.2f;
-    // std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
-    std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
-    unsigned int boundary_thickness = 1;
-    app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
-    std::vector<Real> real_bbox;
-    for (auto b : bbox)
-        real_bbox.push_back((Real)b);
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-4.0f, 15.1f, -4.0f), glm::vec3(4.0f, 18.1f, 4.0f), 0.08f,
+    //                                MPM_FLUID, 1000.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/armadillo/armadillo10K", 100.0f, 0.06f * 0.06f * 3.14159f / 4.0f,
+    //                                     0.12f, glm::vec3(0.0f, 5.2f, 2.5f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
+    //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     Real young_k = 1000000.0f, young_nu = 0.26f;
     std::unordered_map<std::string, std::any> config {
         {"lame_mu", (Real)(young_k / (2 * (1 + young_nu)))},
         {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
         {"fluid_lambda", (Real)(1000000.0f)},
-        {"fluid_viscosity", (Real)(1.0f)},
+        {"fluid_viscosity", (Real)(10.0f)},
         {"ground_collision_stiffness", (Real)100000.0f},
-        {"contact_stiffness", (Real)5000000.0f},
+        {"fem_box_collision_stiffness", (Real)1000000.0f},
+        {"contact_stiffness", (Real)10000000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
-        {"time_step", (Real)(1.0f / 300.0f)},
+        {"time_step", (Real)(1.0f / 100.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},
         {"fem_pcg_residual_tolerance", (Real)1e-1f},
-        {"mpm_pcg_max_iteration", (unsigned int)300},
+        {"mpm_pcg_max_iteration", (unsigned int)500},
         {"mpm_pcg_residual_tolerance", (Real)1e-1f}
     };
+    std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
+
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
+    //                                MPM_FLUID, 1000.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 200.0f, 0.05f * 0.05f * 3.14159f / 4.0f,
+    //                                     1.0f, glm::vec3(0.0f, 3.8f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
+    //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
+    //                                MPM_FLUID, 1000.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/bunny", 200.0f, 0.039f * 0.039f * 3.14159f / 4.0f,
+    //                                     15.0f, glm::vec3(0.0f, 2.8f, 2.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
+    //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+
+    // Real young_k = 1000000.0f, young_nu = 0.26f;
+    // std::unordered_map<std::string, std::any> config {
+    //     {"lame_mu", (Real)(young_k / (2 * (1 + young_nu)))},
+    //     {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
+    //     {"fluid_lambda", (Real)(1000000.0f)},
+    //     {"fluid_viscosity", (Real)(1.0f)},
+    //     {"ground_collision_stiffness", (Real)100000.0f},
+    //     {"fem_box_collision_stiffness", (Real)10000000.0f},
+    //     {"contact_stiffness", (Real)5000000.0f},
+    //     {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
+    //     {"time_step", (Real)(1.0f / 300.0f)},
+    //     {"fem_pcg_max_iteration", (unsigned int)30},
+    //     {"fem_pcg_residual_tolerance", (Real)1e-1f},
+    //     {"mpm_pcg_max_iteration", (unsigned int)500},
+    //     {"mpm_pcg_residual_tolerance", (Real)1e-1f}
+    // };
+    // std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
+
+    float dist = 0.2f;
+    unsigned int boundary_thickness = 1;
+    app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    std::vector<Real> real_bbox;
+    for (auto b : bbox)
+        real_bbox.push_back((Real)b);
 
     auto solver = std::make_shared<PCGCoupledMPMSolver<Real>>(
         scene->m_positions,

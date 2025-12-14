@@ -3,8 +3,6 @@
 #include "PCGMPMSolver.cuh"
 #include "PCGFEMSolver.cuh"
 
-// #define SEPARATE_SOLVE
-
 template <typename Real>
 struct PCGCoupledMPMSolverData
 {
@@ -38,6 +36,7 @@ struct PCGCoupledMPMSolverData
     Real m_time_step;
     Real m_time_step_inv;
     Real m_contact_stiffness;
+    Real m_fem_box_collision_stiffness;
 };
 
 template <typename Real>

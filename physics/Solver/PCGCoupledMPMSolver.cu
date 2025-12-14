@@ -37,20 +37,20 @@ namespace CoupledMPMSolverKernel
             if (data->dev_fem_data->dev_vert_position[3 * v + j] < data->dev_mpm_data->dev_inner_bbox[j])
             {
                 data->dev_fem_data->dev_vert_force[3 * v + j] += 
-                    data->dev_fem_data->m_ground_collision_stiffness 
+                    data->m_fem_box_collision_stiffness
                     * (data->dev_mpm_data->dev_inner_bbox[j] - data->dev_fem_data->dev_vert_position[3 * v + j]) 
                     * data->dev_fem_data->dev_vert_mass[v];
-                data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
-                data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->m_fem_box_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->m_fem_box_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
             }
             if (data->dev_fem_data->dev_vert_position[3 * v + j] > data->dev_mpm_data->dev_inner_bbox[j + 3])
             {
                 data->dev_fem_data->dev_vert_force[3 * v + j] += 
-                    data->dev_fem_data->m_ground_collision_stiffness 
+                    data->m_fem_box_collision_stiffness
                     * (data->dev_mpm_data->dev_inner_bbox[j + 3] - data->dev_fem_data->dev_vert_position[3 * v + j]) 
                     * data->dev_fem_data->dev_vert_mass[v];
-                data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
-                data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->dev_fem_data->m_ground_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_diag_B[3 * v + j] += data->m_fem_box_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
+                data->dev_fem_data->dev_vert_box_collision_A[3 * v + j] += data->m_fem_box_collision_stiffness * data->m_time_step * data->dev_fem_data->dev_vert_mass[v];
             }
         }
     }
@@ -599,6 +599,8 @@ PCGCoupledMPMSolver<Real>::PCGCoupledMPMSolver(
     m_data.m_time_step_inv = static_cast<Real>(1) / m_data.m_time_step;
     assert(config.find("contact_stiffness") != config.end());
     m_data.m_contact_stiffness = std::any_cast<Real>(config.at("contact_stiffness"));
+    assert(config.find("fem_box_collision_stiffness") != config.end());
+    m_data.m_fem_box_collision_stiffness = std::any_cast<Real>(config.at("fem_box_collision_stiffness"));
 
     cudaMalloc(&m_dev_data, sizeof(PCGCoupledMPMSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(PCGCoupledMPMSolverData<Real>), cudaMemcpyHostToDevice);
