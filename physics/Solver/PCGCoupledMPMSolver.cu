@@ -744,7 +744,7 @@ void PCGCoupledMPMSolver<Real>::NormalizeSearchDirection()
                       thrust::device_pointer_cast(mpm.dev_grid_temp3),
                       thrust::placeholders::_1 * thrust::placeholders::_1);
     Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(fem.dev_vert_temp3),
-                                  thrust::device_pointer_cast(fem.dev_vert_temp3 + fem.m_num_vert * 3));
+                                  thrust::device_pointer_cast(fem.dev_vert_temp3 + fem.m_num_vert * 3))
                  + thrust::reduce(thrust::device_pointer_cast(mpm.dev_grid_temp3),
                                   thrust::device_pointer_cast(mpm.dev_grid_temp3 + mpm.m_num_grid * 3));
     Real inv_sqrt_p_dot_p = 1.0f / sqrt(p_dot_p);
