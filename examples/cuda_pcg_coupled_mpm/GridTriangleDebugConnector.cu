@@ -39,7 +39,7 @@ namespace GridTriangleDebugConnectorKernel
         }
         else
         {
-            dev_particles[id].Color = glm::vec3(0.0f, 0.0f, 1.0f);
+            dev_particles[id].Color = glm::vec3(0.0f, 1.0f, 0.0f);
         }
     }
 
