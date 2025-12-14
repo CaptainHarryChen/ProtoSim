@@ -657,7 +657,7 @@ void PCGCoupledMPMSolver<Real>::Step()
         prev_z_dot_r = fem_z_dot_r + mpm_z_dot_r;
         m_fem_solver.SearchDirection(beta);
         m_mpm_solver.SearchDirection(beta);
-        NormalizeSearchDirection();
+        // NormalizeSearchDirection();
     
         cudaMemset(m_fem_solver.m_data.dev_vert_pAp, 0, sizeof(Real) * m_fem_solver.m_data.m_num_vert * 3);
         cudaMemset(m_mpm_solver.m_data.dev_grid_pAp, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
