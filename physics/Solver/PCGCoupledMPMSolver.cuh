@@ -3,6 +3,8 @@
 #include "PCGMPMSolver.cuh"
 #include "PCGFEMSolver.cuh"
 
+#define SEPARATE_SOLVE
+
 template <typename Real>
 struct PCGCoupledMPMSolverData
 {

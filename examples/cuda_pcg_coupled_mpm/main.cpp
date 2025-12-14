@@ -242,14 +242,14 @@ int main()
         {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
         {"fluid_lambda", (Real)(1000000.0f)},
         {"fluid_viscosity", (Real)(1.0f)},
-        {"ground_collision_stiffness", (Real)1000000.0f},
-        {"contact_stiffness", (Real)100000000.0f},
+        {"ground_collision_stiffness", (Real)100000.0f},
+        {"contact_stiffness", (Real)5000000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
         {"time_step", (Real)(1.0f / 300.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},
-        {"fem_pcg_residual_tolerance", (Real)1e-2f},
+        {"fem_pcg_residual_tolerance", (Real)1e-1f},
         {"mpm_pcg_max_iteration", (unsigned int)300},
-        {"mpm_pcg_residual_tolerance", (Real)1e-2f}
+        {"mpm_pcg_residual_tolerance", (Real)1e-1f}
     };
 
     auto solver = std::make_shared<PCGCoupledMPMSolver<Real>>(
