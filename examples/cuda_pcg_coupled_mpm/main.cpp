@@ -21,6 +21,11 @@
 #include <proj_config.h>
 #include "GridTriangleDebugConnector.cuh"
 
+// #define GRID_TRIANGLE_DEBUG
+// #define PARTICLE_DISTANCE_DEBUG
+// #define SURFACE_TRIANGLE_DEBUG
+// #define SAMPLE_PARTICLE_DEBUG
+
 template <typename Real>
 class PCGCoupledMPMScene : public SimulationScene<Real>
 {
@@ -61,7 +66,9 @@ public:
         }
         auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
         mesh->AddRenderer(std::make_shared<PbrRenderer>(mesh_render_material));
+        #ifdef SURFACE_TRIANGLE_DEBUG
         mesh->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(0.0f, 0.0f, 0.0f), true));
+        #endif
         SimulationScene<Real>::AddMesh(mesh);
 
         unsigned int node_offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
@@ -104,7 +111,9 @@ public:
         m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
         m_sample_batch_offsets.push_back(std::make_pair(m_sample_particle_batch, sample_offset * 3));
         m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(sample_material, sample_radius));
+        #ifdef SAMPLE_PARTICLE_DEBUG
         GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
+        #endif
     }
 
     void AddMPMCubeParticleBatch(glm::vec3 lower_bound, glm::vec3 upper_bound, float dis,
@@ -162,7 +171,10 @@ public:
         for (auto &[particle_batch, node_offset] : this->m_particle_batch_offsets)
         {
             Real *position_ptr = solver->GetDeviceParticlePositions();
-            Real *color_ptr = solver->m_data.dev_particle_color;
+            Real *color_ptr = nullptr;
+            #ifdef PARTICLE_DISTANCE_DEBUG
+            solver->m_data.dev_particle_color;
+            #endif
             if (position_ptr)
                 position_ptr = position_ptr + node_offset;
             if (color_ptr)
@@ -220,9 +232,9 @@ int main()
     //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
-                                   MPM_FLUID, 1000.0f,
+                                   MPM_FLUID, 800.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 500.0f, 0.05f * 0.05f * 0.05f,
+    scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 1000.0f, 0.05f * 0.05f * 0.05f,
                                         1.0f, glm::vec3(0.0f, 3.8f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
@@ -274,6 +286,7 @@ int main()
     scene->SetupConnectors();
     scene->SetStepPerFrame(1);
 
+    #ifdef GRID_TRIANGLE_DEBUG
     unsigned int num_grid = solver->m_mpm_solver.m_data.m_num_grid;
     auto grid_inside_monitor = std::make_shared<ParticleBatch>(std::vector<Particle>(num_grid));
     grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.02f));
@@ -283,6 +296,7 @@ int main()
     grid_dis_monitor->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
     app->GetRenderSystem()->AddRenderObject(grid_dis_monitor);
     scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, grid_dis_monitor, &solver->m_data, solver->m_dev_data));
+    #endif
 
     app->Run();
 
