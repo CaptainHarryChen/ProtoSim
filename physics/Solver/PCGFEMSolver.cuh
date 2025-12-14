@@ -62,11 +62,14 @@ public:
     void ElasticForceAndPreconditioner();
     void GroundConstraintForceAndPreconditioner();
     Real ResidualNorm();
-    void SearchDirection(Real &prev_z_dot_r);
+    Real Calculate_z_dot_r();
+    void SearchDirection(Real beta);
     void NormalizeSearchDirection();
     void Calc_pAp_Elastic();
     void Calc_pAp_GroundConstraint();
-    void UpdateSolution();
+    Real Calculate_pAp();
+    Real Calculate_p_dot_r();
+    void UpdateSolution(Real alpha);
     void PCG_After();
 
     bool m_verbose = false;

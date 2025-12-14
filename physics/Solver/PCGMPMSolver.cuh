@@ -73,11 +73,14 @@ public:
     void MaterialForceAndPreconditioner();
     void BoxConstraintForceAndPreconditioner();
     Real ResidualNorm();
-    void SearchDirection(Real &prev_z_dot_r);
+    Real Calculate_z_dot_r();
+    void SearchDirection(Real beta);
     void NormalizeSearchDirection();
     void Calc_pAp_Material();
     void Calc_pAp_BoxConstraint();
-    void UpdateSolution();
+    Real Calculate_pAp();
+    Real Calculate_p_dot_r();
+    void UpdateSolution(Real alpha);
     void PCG_After();
 
     bool m_verbose = false;

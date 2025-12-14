@@ -385,14 +385,19 @@ void PCGFEMSolver<Real>::Step()
         if (residual < m_pcg_residual_tolerance)
             break;
         
-        SearchDirection(prev_z_dot_r);
+        Real z_dot_r = Calculate_z_dot_r();
+        Real beta = (iter == 0) ? 0 : (z_dot_r / prev_z_dot_r);
+        prev_z_dot_r = z_dot_r;
+        SearchDirection(beta);
         NormalizeSearchDirection();
     
         cudaMemset(m_data.dev_vert_pAp, 0, sizeof(Real) * m_data.m_num_vert * 3);
         Calc_pAp_Elastic();
         Calc_pAp_GroundConstraint();
-
-        UpdateSolution();
+        Real pAp = Calculate_pAp();
+        Real p_dot_r = Calculate_p_dot_r();
+        Real alpha = p_dot_r / pAp;
+        UpdateSolution(alpha);
     }
 
     PCG_After();
@@ -438,15 +443,17 @@ Real PCGFEMSolver<Real>::ResidualNorm()
 }
 
 template <typename Real>
-void PCGFEMSolver<Real>::SearchDirection(Real &prev_z_dot_r)
+Real PCGFEMSolver<Real>::Calculate_z_dot_r()
 {
-    Real beta = 0;
     PCGFEMSolverKernel::vert_z_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
     Real z_dot_r = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp3),
                                   thrust::device_pointer_cast(m_data.dev_vert_temp3 + m_data.m_num_vert * 3));
-    if (prev_z_dot_r != 0) // not the first iteration
-        beta = z_dot_r / prev_z_dot_r;
-    prev_z_dot_r = z_dot_r;
+    return z_dot_r;
+}
+
+template <typename Real>
+void PCGFEMSolver<Real>::SearchDirection(Real beta)
+{
     PCGFEMSolverKernel::vert_search_direction<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data, beta);
 }
 
@@ -481,14 +488,23 @@ void PCGFEMSolver<Real>::Calc_pAp_GroundConstraint()
 }
 
 template <typename Real>
-void PCGFEMSolver<Real>::UpdateSolution()
+Real PCGFEMSolver<Real>::Calculate_pAp()
 {
-    Real pAp = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_pAp),
-                              thrust::device_pointer_cast(m_data.dev_vert_pAp + m_data.m_num_vert * 3));
-    PCGFEMSolverKernel::vert_p_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    Real alpha = thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp3),
-                                thrust::device_pointer_cast(m_data.dev_vert_temp3 + m_data.m_num_vert * 3)) / pAp;
+    return thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_pAp),
+                          thrust::device_pointer_cast(m_data.dev_vert_pAp + m_data.m_num_vert * 3));
+}
 
+template <typename Real>
+Real PCGFEMSolver<Real>::Calculate_p_dot_r()
+{
+    PCGFEMSolverKernel::vert_p_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    return thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp3),
+                          thrust::device_pointer_cast(m_data.dev_vert_temp3 + m_data.m_num_vert * 3));
+}
+
+template <typename Real>
+void PCGFEMSolver<Real>::UpdateSolution(Real alpha)
+{
     thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_velocity),
                       thrust::device_pointer_cast(m_data.dev_vert_velocity + m_data.m_num_vert * 3),
                       thrust::device_pointer_cast(m_data.dev_vert_p),

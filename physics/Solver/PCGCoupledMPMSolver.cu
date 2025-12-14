@@ -627,8 +627,7 @@ void PCGCoupledMPMSolver<Real>::Step()
 {
     m_fem_solver.PCG_Preparation();
     m_mpm_solver.PCG_Preparation();
-    Real fem_prev_z_dot_r = 0;
-    Real mpm_prev_z_dot_r = 0;
+    Real prev_z_dot_r = 0.0f;
     for (unsigned int iter = 0;; ++iter)
     {
         if (m_verbose)
@@ -652,10 +651,13 @@ void PCGCoupledMPMSolver<Real>::Step()
         if ((fem_residual < m_fem_solver.m_pcg_residual_tolerance || iter >= m_fem_solver.m_pcg_max_iteration )
             && (mpm_residual < m_mpm_solver.m_pcg_residual_tolerance || iter >= m_mpm_solver.m_pcg_max_iteration))
             break;
-        m_fem_solver.SearchDirection(fem_prev_z_dot_r);
-        m_fem_solver.NormalizeSearchDirection();
-        m_mpm_solver.SearchDirection(mpm_prev_z_dot_r);
-        m_mpm_solver.NormalizeSearchDirection();
+        Real fem_z_dot_r = m_fem_solver.Calculate_z_dot_r();
+        Real mpm_z_dot_r = m_mpm_solver.Calculate_z_dot_r();
+        Real beta = iter == 0 ? 0 : (fem_z_dot_r + mpm_z_dot_r) / prev_z_dot_r;
+        prev_z_dot_r = fem_z_dot_r + mpm_z_dot_r;
+        m_fem_solver.SearchDirection(beta);
+        m_mpm_solver.SearchDirection(beta);
+        NormalizeSearchDirection();
     
         cudaMemset(m_fem_solver.m_data.dev_vert_pAp, 0, sizeof(Real) * m_fem_solver.m_data.m_num_vert * 3);
         cudaMemset(m_mpm_solver.m_data.dev_grid_pAp, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 3);
@@ -664,8 +666,13 @@ void PCGCoupledMPMSolver<Real>::Step()
         Calc_pAp_BoxConstraint();
         Calc_pAp_ContactConstraint();
 
-        m_fem_solver.UpdateSolution();
-        m_mpm_solver.UpdateSolution();
+        Real fem_pAp = m_fem_solver.Calculate_pAp();
+        Real mpm_pAp = m_mpm_solver.Calculate_pAp();
+        Real fem_p_dot_r = m_fem_solver.Calculate_p_dot_r();
+        Real mpm_p_dot_r = m_mpm_solver.Calculate_p_dot_r();
+        Real alpha = (fem_p_dot_r + mpm_p_dot_r) / (fem_pAp + mpm_pAp);
+        m_fem_solver.UpdateSolution(alpha);
+        m_mpm_solver.UpdateSolution(alpha);
     }
     m_fem_solver.PCG_After();
     m_mpm_solver.PCG_After();
@@ -721,6 +728,36 @@ void PCGCoupledMPMSolver<Real>::ContactConstraintForceAndPreconditioner()
     cudaMemset(m_data.dev_grid_nnT, 0, sizeof(Real) * m_mpm_solver.m_data.m_num_grid * 9);
     CoupledMPMSolverKernel::P2G_grid_nnT<Real><<<CUDA_GRID_SIZE(m_mpm_solver.m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     CoupledMPMSolverKernel::G2S2V_contact_force_and_preconditioner<Real><<<CUDA_GRID_SIZE(m_data.m_num_sample), CUDA_BLOCK_SIZE>>>(m_dev_data);
+}
+
+template <typename Real>
+void PCGCoupledMPMSolver<Real>::NormalizeSearchDirection()
+{
+    auto fem = m_fem_solver.m_data;
+    auto mpm = m_mpm_solver.m_data;
+    thrust::transform(thrust::device_pointer_cast(fem.dev_vert_p),
+                      thrust::device_pointer_cast(fem.dev_vert_p + fem.m_num_vert * 3),
+                      thrust::device_pointer_cast(fem.dev_vert_temp3),
+                      thrust::placeholders::_1 * thrust::placeholders::_1);
+    thrust::transform(thrust::device_pointer_cast(mpm.dev_grid_p),
+                      thrust::device_pointer_cast(mpm.dev_grid_p + mpm.m_num_grid * 3),
+                      thrust::device_pointer_cast(mpm.dev_grid_temp3),
+                      thrust::placeholders::_1 * thrust::placeholders::_1);
+    Real p_dot_p = thrust::reduce(thrust::device_pointer_cast(fem.dev_vert_temp3),
+                                  thrust::device_pointer_cast(fem.dev_vert_temp3 + fem.m_num_vert * 3));
+                 + thrust::reduce(thrust::device_pointer_cast(mpm.dev_grid_temp3),
+                                  thrust::device_pointer_cast(mpm.dev_grid_temp3 + mpm.m_num_grid * 3));
+    Real inv_sqrt_p_dot_p = 1.0f / sqrt(p_dot_p);
+    thrust::transform(thrust::device_pointer_cast(fem.dev_vert_p),
+                      thrust::device_pointer_cast(fem.dev_vert_p + fem.m_num_vert * 3),
+                      thrust::device_pointer_cast(fem.dev_vert_temp3),
+                      thrust::placeholders::_1 * inv_sqrt_p_dot_p);
+    cudaMemcpy(fem.dev_vert_p, fem.dev_vert_temp3, sizeof(Real) * fem.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+    thrust::transform(thrust::device_pointer_cast(mpm.dev_grid_p),
+                      thrust::device_pointer_cast(mpm.dev_grid_p + mpm.m_num_grid * 3),
+                      thrust::device_pointer_cast(mpm.dev_grid_temp3),
+                      thrust::placeholders::_1 * inv_sqrt_p_dot_p);
+    cudaMemcpy(mpm.dev_grid_p, mpm.dev_grid_temp3, sizeof(Real) * mpm.m_num_grid * 3, cudaMemcpyDeviceToDevice);
 }
 
 template <typename Real>

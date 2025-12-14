@@ -67,6 +67,7 @@ public:
 
     void BoxConstraintForceAndPreconditioner();
     void ContactConstraintForceAndPreconditioner();
+    void NormalizeSearchDirection();
     void Calc_pAp_BoxConstraint();
     void Calc_pAp_ContactConstraint();
 

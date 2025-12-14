@@ -211,21 +211,21 @@ int main()
     //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
     //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 6.1f, -2.0f), glm::vec3(2.0f, 7.1f, 2.0f), 0.08f,
-    //                                MPM_FLUID, 100.0f,
-    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 100.0f, 0.05f * 0.05f * 0.05f,
-    //                                     1.0f, glm::vec3(0.0f, 1.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
-    //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
-
-    scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
+    scene->AddMPMCubeParticleBatch(glm::vec3(-2.0f, 3.1f, -2.0f), glm::vec3(2.0f, 4.1f, 2.0f), 0.08f,
                                    MPM_FLUID, 100.0f,
                                    0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
     scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 100.0f, 0.05f * 0.05f * 0.05f,
-                                        1.0f, glm::vec3(0.0f, 3.8f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                                        1.0f, glm::vec3(0.0f, 1.1f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                                         {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
                                         0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
+
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-4.9f, 0.1f, -4.9f), glm::vec3(4.9f, 2.1f, 4.9f), 0.08f,
+    //                                MPM_FLUID, 100.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    // scene->LoadTetrahedronWithPLYSample(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 100.0f, 0.05f * 0.05f * 0.05f,
+    //                                     1.0f, glm::vec3(0.0f, 3.8f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+    //                                     {glm::vec3(1.0f, 1.0f, 0.5f), glm::vec3(0.1f, 0.1f, 0.1f)},
+    //                                     0.005f, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.1f, 0.1f));
 
     float dist = 0.2f;
     // std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
@@ -245,7 +245,7 @@ int main()
         {"ground_collision_stiffness", (Real)1000000.0f},
         {"contact_stiffness", (Real)100000000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
-        {"time_step", (Real)(1.0f / 1000.0f)},
+        {"time_step", (Real)(1.0f / 300.0f)},
         {"fem_pcg_max_iteration", (unsigned int)30},
         {"fem_pcg_residual_tolerance", (Real)1e-2f},
         {"mpm_pcg_max_iteration", (unsigned int)300},
