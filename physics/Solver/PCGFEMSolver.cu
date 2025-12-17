@@ -35,8 +35,7 @@ namespace PCGFEMSolverKernel
         unsigned int v = blockDim.x * blockIdx.x + threadIdx.x;
         if (v >= data->m_num_vert)
             return;
-        cudaPhysics::axpby(&data->dev_vert_velocity[3 * v], (Real)1.0, &data->dev_vert_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
-        cudaPhysics::axpby(&data->dev_vert_position[3 * v], (Real)1.0, &data->dev_vert_position_prev[3 * v], data->m_time_step, &data->dev_vert_velocity[3 * v], 3);
+        cudaPhysics::axpby(&data->dev_vert_p[3 * v], (Real)1.0, &data->dev_vert_velocity[3 * v], data->m_time_step, data->dev_gravity, 3);
     }
 
     template <typename Real>
@@ -290,6 +289,7 @@ PCGFEMSolver<Real>::PCGFEMSolver(
     cudaMemcpy(m_data.dev_vert_position_prev, position.data(), sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyHostToDevice);
     cudaMalloc((void **)&m_data.dev_vert_position, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMemcpy(m_data.dev_vert_position, m_data.dev_vert_position_prev, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+    cudaMalloc((void **)&m_data.dev_vert_velocity_prev, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_vert_velocity, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMemset(m_data.dev_vert_velocity, 0, sizeof(Real) * m_data.m_num_vert * 3);
     cudaMalloc((void **)&m_data.dev_vert_velocity_hat, sizeof(Real) * m_data.m_num_vert * 3);
@@ -319,6 +319,8 @@ PCGFEMSolver<Real>::PCGFEMSolver(
     m_data.m_lame_lambda = std::any_cast<Real>(config.at("lame_lambda"));
     assert(config.find("ground_collision_stiffness") != config.end());
     m_data.m_ground_collision_stiffness = std::any_cast<Real>(config.at("ground_collision_stiffness"));
+    assert(config.find("line_search_max_iteration") != config.end());
+    m_line_search_max_iteration = std::any_cast<unsigned int>(config.at("line_search_max_iteration"));
     assert(config.find("fem_pcg_max_iteration") != config.end());
     m_pcg_max_iteration = std::any_cast<unsigned int>(config.at("fem_pcg_max_iteration"));
     assert(config.find("fem_pcg_residual_tolerance") != config.end());
@@ -342,6 +344,7 @@ PCGFEMSolver<Real>::~PCGFEMSolver()
 {
     cudaFree(m_data.dev_vert_position_prev);
     cudaFree(m_data.dev_vert_position);
+    cudaFree(m_data.dev_vert_velocity_prev);
     cudaFree(m_data.dev_vert_velocity);
     cudaFree(m_data.dev_vert_velocity_hat);
     cudaFree(m_data.dev_vert_mass);
@@ -367,22 +370,33 @@ void PCGFEMSolver<Real>::Step()
 {
     PCG_Preparation();
 
+    Real last_residual = std::numeric_limits<Real>::max();
+    Real alpha = 1.0f;
     Real prev_z_dot_r = 0; // for calculate beta in PCG
-    for (unsigned int iter = 0; iter < m_pcg_max_iteration; ++iter)
+    for (unsigned int iter = 0;; ++iter)
     {
         if (m_verbose)
-            printf("PCG iteration %u\n", iter);
+            printf("PCG iteration %u\n  last_residual = %e\n", iter, last_residual);
+        Real residual = last_residual;
+        for (unsigned int ls_iter = 0;;)
+        {
+            UpdateSolution(alpha);
+            cudaMemset(m_data.dev_vert_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
+            cudaMemset(m_data.dev_vert_diag_B, 0, sizeof(Real) * m_data.m_num_vert * 3);
+            ElasticForceAndPreconditioner();
+            GroundConstraintForceAndPreconditioner();
 
-        cudaMemset(m_data.dev_vert_force, 0, sizeof(Real) * m_data.m_num_vert * 3);
-        cudaMemset(m_data.dev_vert_diag_B, 0, sizeof(Real) * m_data.m_num_vert * 3);
-        ElasticForceAndPreconditioner();
-        GroundConstraintForceAndPreconditioner();
-
-        Real residual = ResidualNorm();
-        if (m_verbose)
-            printf("  residual = %e\n", residual);
-        assert(!std::isnan(residual));
-        if (residual < m_pcg_residual_tolerance)
+            residual = ResidualNorm();
+            if (m_verbose)
+                printf("  line_search_iter %u: residual = %e\n", ls_iter, residual);
+            ls_iter++;
+            if ((residual <= last_residual || ls_iter >= m_line_search_max_iteration) && !std::isnan(residual))
+                break;
+            alpha *= 0.5f;
+        }
+        last_residual = residual;
+        cudaMemcpy(m_data.dev_vert_velocity_prev, m_data.dev_vert_velocity, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+        if (residual < m_pcg_residual_tolerance || iter >= m_pcg_max_iteration)
             break;
         
         Real z_dot_r = Calculate_z_dot_r();
@@ -396,8 +410,7 @@ void PCGFEMSolver<Real>::Step()
         Calc_pAp_GroundConstraint();
         Real pAp = Calculate_pAp();
         Real p_dot_r = Calculate_p_dot_r();
-        Real alpha = p_dot_r / pAp;
-        UpdateSolution(alpha);
+        alpha = p_dot_r / pAp;
     }
 
     PCG_After();
@@ -414,7 +427,23 @@ void PCGFEMSolver<Real>::PCG_Preparation()
 {
     cudaMemcpy(m_data.dev_vert_position_prev, m_data.dev_vert_position, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
     PCGFEMSolverKernel::initial_guess<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    cudaMemcpy(m_data.dev_vert_velocity_hat, m_data.dev_vert_velocity, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_data.dev_vert_velocity_hat, m_data.dev_vert_p, sizeof(Real) * m_data.m_num_vert * 3, cudaMemcpyDeviceToDevice);
+    cudaMemset(m_data.dev_vert_velocity_prev, 0, sizeof(Real) * m_data.m_num_vert * 3);
+}
+
+template <typename Real>
+void PCGFEMSolver<Real>::UpdateSolution(Real alpha)
+{
+    thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_velocity_prev),
+                      thrust::device_pointer_cast(m_data.dev_vert_velocity_prev + m_data.m_num_vert * 3),
+                      thrust::device_pointer_cast(m_data.dev_vert_p),
+                      thrust::device_pointer_cast(m_data.dev_vert_velocity),
+                      thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
+    thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_position_prev),
+                      thrust::device_pointer_cast(m_data.dev_vert_position_prev + m_data.m_num_vert * 3),
+                      thrust::device_pointer_cast(m_data.dev_vert_velocity),
+                      thrust::device_pointer_cast(m_data.dev_vert_position),
+                      thrust::placeholders::_1 + m_data.m_time_step * thrust::placeholders::_2);
 }
 
 template <typename Real>
@@ -500,21 +529,6 @@ Real PCGFEMSolver<Real>::Calculate_p_dot_r()
     PCGFEMSolverKernel::vert_p_dot_r<Real><<<CUDA_GRID_SIZE(m_data.m_num_vert), CUDA_BLOCK_SIZE>>>(m_dev_data);
     return thrust::reduce(thrust::device_pointer_cast(m_data.dev_vert_temp3),
                           thrust::device_pointer_cast(m_data.dev_vert_temp3 + m_data.m_num_vert * 3));
-}
-
-template <typename Real>
-void PCGFEMSolver<Real>::UpdateSolution(Real alpha)
-{
-    thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_velocity),
-                      thrust::device_pointer_cast(m_data.dev_vert_velocity + m_data.m_num_vert * 3),
-                      thrust::device_pointer_cast(m_data.dev_vert_p),
-                      thrust::device_pointer_cast(m_data.dev_vert_velocity),
-                      thrust::placeholders::_1 + alpha * thrust::placeholders::_2);
-    thrust::transform(thrust::device_pointer_cast(m_data.dev_vert_position_prev),
-                      thrust::device_pointer_cast(m_data.dev_vert_position_prev + m_data.m_num_vert * 3),
-                      thrust::device_pointer_cast(m_data.dev_vert_velocity),
-                      thrust::device_pointer_cast(m_data.dev_vert_position),
-                      thrust::placeholders::_1 + m_data.m_time_step * thrust::placeholders::_2);
 }
 
 template <typename Real>

@@ -76,6 +76,7 @@ public:
     void Calc_pAp_ContactConstraint();
 
     bool m_verbose = false;
+    unsigned int m_line_search_max_iteration;
     PCGCoupledMPMSolverData<Real> m_data;
     PCGCoupledMPMSolverData<Real> *m_dev_data;
     PCGMPMSolver<Real> m_mpm_solver;

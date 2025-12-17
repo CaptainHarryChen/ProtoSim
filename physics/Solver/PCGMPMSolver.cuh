@@ -33,6 +33,7 @@ struct PCGMPMSolverData
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
     Real *dev_grid_force;
+    Real *dev_grid_velocity_prev;
     Real *dev_grid_velocity;
     Real *dev_grid_velocity_hat;
     Real *dev_grid_diag_B_const;
@@ -85,6 +86,7 @@ public:
 
     bool m_verbose = false;
     unsigned int m_pcg_max_iteration;
+    unsigned int m_line_search_max_iteration;
     Real m_pcg_residual_tolerance;
     PCGMPMSolverData<Real> m_data;
     PCGMPMSolverData<Real> *m_dev_data;

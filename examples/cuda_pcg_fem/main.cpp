@@ -8,6 +8,7 @@
 #include <Loader/TetrahedronLoader.h>
 #include <Mesh/Mesh.h>
 #include <Mesh/PbrRenderer.h>
+#include <Object/LightScene.h>
 #include <Solver/PCGFEMSolver.cuh>
 #include <proj_config.h>
 
@@ -48,6 +49,26 @@ public:
         for (size_t i = 0; i < m_tetrahedras.size() / 4; ++i)
             m_tetrahedras_densities[i + tet_offset] = density;
     }
+
+    virtual void SetupScene() override
+    {
+        SimulationScene<Real>::SetupScene();
+        auto app = GLFWApp::GetInstance();
+        for (auto &object : app->m_objects)
+        {
+            auto lightScene = std::dynamic_pointer_cast<LightScene>(object);
+            if (lightScene)
+            {
+                lightScene->m_control_gui->m_light_on = {true, true, true, true};
+                lightScene->m_control_gui->m_light_pos = {
+                    glm::vec3(-10.0f, 10.0f, -10.0f),
+                    glm::vec3(-10.0f, 10.0f, 10.0f),
+                    glm::vec3(10.0f, 10.0f, -10.0f),
+                    glm::vec3(10.0f, 10.0f, 10.0f)};
+                break;
+            }
+        }
+    }
 };
 
 int main()
@@ -62,12 +83,12 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1000.0f,
-                           15.0f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
-                           {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
-    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/armadillo10K", 1000.0f,
-    //                        0.1f, glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+    // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1000.0f,
+    //                        15.0f, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
     //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
+    scene->LoadTetrahedron(std::string(ASSET_DIR) + "/armadillo/armadillo10K", 1000.0f,
+                           0.12f, glm::vec3(0.0f, 5.5f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
+                           {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
     // scene->LoadTetrahedron(std::string(ASSET_DIR) + "/sphere/sphere1.5k", 1000.0f,
     //                        1.0f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(glm::radians(-45.0f), 0.0f, 0.0f),
     //                        {glm::vec3(0.5f, 0.5f, 1.0f), glm::vec3(0.1f, 0.1f, 0.1f)});
@@ -85,8 +106,9 @@ int main()
         {"ground_collision_stiffness", (Real)100000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
         {"time_step", (Real)(1.0f / 60.0f)},
-        {"fem_pcg_max_iteration", (unsigned int)30},
-        {"fem_pcg_residual_tolerance", (Real)1e-2f}
+        {"line_search_max_iteration", (unsigned int)3},
+        {"fem_pcg_max_iteration", (unsigned int)300},
+        {"fem_pcg_residual_tolerance", (Real)1e-1f}
     };
 
     auto solver = std::make_shared<PCGFEMSolver<Real>>(

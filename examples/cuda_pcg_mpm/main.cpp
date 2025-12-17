@@ -67,6 +67,7 @@ int main()
         {"ground_collision_stiffness", (Real)100000.0f},
         {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
         {"time_step", (Real)(1.0f / 200.0f)},
+        {"line_search_max_iteration", (unsigned int)3},
         {"mpm_pcg_max_iteration", (unsigned int)200},
         {"mpm_pcg_residual_tolerance", (Real)0.01f}
     };

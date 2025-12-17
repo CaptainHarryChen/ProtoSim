@@ -20,6 +20,7 @@ struct PCGFEMSolverData
 
     Real *dev_vert_position_prev;
     Real *dev_vert_position;
+    Real *dev_vert_velocity_prev;
     Real *dev_vert_velocity;
     Real *dev_vert_velocity_hat;
     Real *dev_vert_mass;
@@ -74,6 +75,7 @@ public:
 
     bool m_verbose = false;
     unsigned int m_pcg_max_iteration;
+    unsigned int m_line_search_max_iteration;
     Real m_pcg_residual_tolerance;
     PCGFEMSolverData<Real> m_data;
     PCGFEMSolverData<Real> *m_dev_data;
