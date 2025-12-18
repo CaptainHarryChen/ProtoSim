@@ -23,7 +23,7 @@ namespace CPICTools
     }
 
     template <typename Real>
-    __device__ void get_grid_position(Real *grid_position, unsigned int id, unsigned int *dev_grid_size, const Real *dev_bbox, Real grid_spacing)
+    __device__ __forceinline__ void get_grid_position(Real *grid_position, unsigned int id, const unsigned int *dev_grid_size, const Real *dev_bbox, Real grid_spacing)
     {
         unsigned int z = id % dev_grid_size[2];
         unsigned int y = (id / dev_grid_size[2]) % dev_grid_size[1];
@@ -34,7 +34,7 @@ namespace CPICTools
     }
 
     template <typename Real>
-    __device__ Real grid_particle_quadratic_weight(const Real *grid_position, const Real *particle_position, Real grid_spacing)
+    __device__ __forceinline__ Real grid_particle_quadratic_weight(const Real *grid_position, const Real *particle_position, Real grid_spacing)
     {
         Real result = 1.;
         for (unsigned int i = 0; i < 3; ++i)

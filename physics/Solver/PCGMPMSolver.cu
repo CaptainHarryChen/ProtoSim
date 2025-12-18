@@ -644,6 +644,21 @@ PCGMPMSolver<Real>::PCGMPMSolver(
     cudaMalloc(&m_dev_data, sizeof(PCGMPMSolverData<Real>));
     cudaMemcpy(m_dev_data, &m_data, sizeof(PCGMPMSolverData<Real>), cudaMemcpyHostToDevice);
 
+    if (config.find("position_correction_iteration") != config.end())
+    {
+        unsigned int position_correction_iteration = std::any_cast<unsigned int>(config.at("position_correction_iteration"));
+        m_volume_corrector = new PICVolumeCorrector<Real>(
+            m_data.m_num_particle,
+            m_data.dev_particle_position,
+            m_data.dev_particle_volume,
+            m_data.dev_particle_to_grid_id,
+            bbox,
+            grid_spacing,
+            boundary_thickness,
+            position_correction_iteration
+        );
+    }
+
     cudaCheck(cudaDeviceSynchronize());
     printf("PCGMPMSolver initialized.\n");
 }
@@ -680,6 +695,9 @@ PCGMPMSolver<Real>::~PCGMPMSolver()
     cudaFree(m_data.dev_gravity);
 
     cudaFree(m_dev_data);
+
+    if (m_volume_corrector)
+        delete m_volume_corrector;
 }
 
 template <typename Real>
@@ -858,6 +876,9 @@ void PCGMPMSolver<Real>::PCG_After()
     PCGMPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     PCGMPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     // PCGMPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+
+    if (m_volume_corrector)
+        m_volume_corrector->Run();
 }
 
 template class PCGMPMSolver<float>;

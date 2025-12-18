@@ -69,7 +69,8 @@ int main()
         {"time_step", (Real)(1.0f / 200.0f)},
         {"line_search_max_iteration", (unsigned int)3},
         {"mpm_pcg_max_iteration", (unsigned int)200},
-        {"mpm_pcg_residual_tolerance", (Real)0.01f}
+        {"mpm_pcg_residual_tolerance", (Real)0.01f},
+        {"position_correction_iteration", (unsigned int)50}
     };
 
     auto solver = std::make_shared<PCGMPMSolver<Real>>(

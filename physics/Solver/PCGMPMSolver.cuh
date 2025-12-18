@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include <Solver/Solver.cuh>
+#include "PICVolumeCorrector.cuh"
 
 #define MPM_STATIC 0
 #define MPM_ELASTIC 1
@@ -90,6 +91,8 @@ public:
     Real m_pcg_residual_tolerance;
     PCGMPMSolverData<Real> m_data;
     PCGMPMSolverData<Real> *m_dev_data;
+
+    PICVolumeCorrector<Real> *m_volume_corrector = nullptr;
 };
 
 extern template struct PCGMPMSolverData<float>;
