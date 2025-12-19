@@ -101,7 +101,7 @@ public:
         m_sample_batch_offsets.push_back(std::make_pair(m_sample_particle_batch, sample_offset * 3));
         m_sample_particle_batch->AddRenderer(std::make_shared<viewer::SphereRenderer>(sample_material, sample_radius));
         #ifdef SAMPLE_PARTICLE_DEBUG
-        GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
+        viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
         #endif
     }
 
@@ -314,12 +314,12 @@ int main()
 
     #ifdef GRID_TRIANGLE_DEBUG
     unsigned int num_grid = solver->m_mpm_solver.m_data.m_num_grid;
-    auto grid_inside_monitor = std::make_shared<ParticleBatch>(std::vector<Particle>(num_grid));
-    grid_inside_monitor->AddRenderer(std::make_shared<SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.02f));
+    auto grid_inside_monitor = std::make_shared<viewer::ParticleBatch>(std::vector<viewer::Particle>(num_grid));
+    grid_inside_monitor->AddRenderer(std::make_shared<viewer::SphereRenderer>(glm::vec3(0.1f, 0.1f, 0.1f), 0.02f));
     app->GetRenderSystem()->AddRenderObject(grid_inside_monitor);
-    std::vector<LineSeg> line_segs(num_grid);
-    auto grid_dis_monitor = std::make_shared<LineSegment>(line_segs);
-    grid_dis_monitor->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
+    std::vector<viewer::LineSeg> line_segs(num_grid);
+    auto grid_dis_monitor = std::make_shared<viewer::LineSegment>(line_segs);
+    grid_dis_monitor->AddRenderer(std::make_shared<viewer::SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
     app->GetRenderSystem()->AddRenderObject(grid_dis_monitor);
     scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, grid_dis_monitor, &solver->m_data, solver->m_dev_data));
     #endif

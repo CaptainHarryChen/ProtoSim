@@ -1,12 +1,12 @@
-#include "CoupledMPMSolver.cuh"
+#include "MultiGridMPMSolver.cuh"
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
 #include <Math/ConstitutiveModel/Neohookean.cuh>
 
-namespace CoupledMPMSolverKernel
+namespace MultiGridMPMSolverKernel
 {
     template <typename Real>
-    __global__ void update_F(CoupledMPMSolverData<Real> *data)
+    __global__ void update_F(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -30,7 +30,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_particle_affine_momentum(CoupledMPMSolverData<Real> *data)
+    __global__ void calc_particle_affine_momentum(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -56,7 +56,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_particle_to_leftbottom_grid_id(CoupledMPMSolverData<Real> *data)
+    __global__ void calc_particle_to_leftbottom_grid_id(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -81,7 +81,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __device__ void get_grid_xyz(unsigned int &x, unsigned int &y, unsigned int &z, unsigned int id, CoupledMPMSolverData<Real> *data)
+    __device__ void get_grid_xyz(unsigned int &x, unsigned int &y, unsigned int &z, unsigned int id, MultiGridMPMSolverData<Real> *data)
     {
         id = id % (data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2]);
         z = id % data->dev_grid_size[2];
@@ -90,13 +90,13 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __device__ unsigned int get_grid_id(unsigned int object_id, unsigned int x, unsigned int y, unsigned int z, CoupledMPMSolverData<Real> *data)
+    __device__ unsigned int get_grid_id(unsigned int object_id, unsigned int x, unsigned int y, unsigned int z, MultiGridMPMSolverData<Real> *data)
     {
         return (x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z) + (object_id * data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2]);
     }
 
     template <typename Real>
-    __device__ void get_grid_position(Real *grid_position, unsigned int id, CoupledMPMSolverData<Real> *data)
+    __device__ void get_grid_position(Real *grid_position, unsigned int id, MultiGridMPMSolverData<Real> *data)
     {
         id = id % (data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2]);
         unsigned int x, y, z;
@@ -126,7 +126,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void P2G_momentum_and_mass(CoupledMPMSolverData<Real> *data)
+    __global__ void P2G_momentum_and_mass(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -162,7 +162,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void P2G_normal_estimate(CoupledMPMSolverData<Real> *data)
+    __global__ void P2G_normal_estimate(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -192,7 +192,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void grid_normal_normalize(CoupledMPMSolverData<Real> *data)
+    __global__ void grid_normal_normalize(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -201,7 +201,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_grids_velocity(CoupledMPMSolverData<Real> *data)
+    __global__ void calc_grids_velocity(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -217,7 +217,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void grids_gravity(CoupledMPMSolverData<Real> *data)
+    __global__ void grids_gravity(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -228,7 +228,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void particles_gravity(CoupledMPMSolverData<Real> *data)
+    __global__ void particles_gravity(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -239,7 +239,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void grids_couple(CoupledMPMSolverData<Real> *data)
+    __global__ void grids_couple(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int grid_id = blockIdx.x * blockDim.x + threadIdx.x;
         if (grid_id >= data->dev_grid_size[0] * data->dev_grid_size[1] * data->dev_grid_size[2])
@@ -273,7 +273,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void grids_boundary_conditions(CoupledMPMSolverData<Real> *data)
+    __global__ void grids_boundary_conditions(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_grid)
@@ -295,7 +295,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void G2P_velocity_and_C(CoupledMPMSolverData<Real> *data)
+    __global__ void G2P_velocity_and_C(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -329,7 +329,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void update_particle_positions(CoupledMPMSolverData<Real> *data)
+    __global__ void update_particle_positions(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -343,7 +343,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void particles_boundary_conditions(CoupledMPMSolverData<Real> *data)
+    __global__ void particles_boundary_conditions(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -362,7 +362,7 @@ namespace CoupledMPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void get_max_particle_velocity(CoupledMPMSolverData<Real> *data)
+    __global__ void get_max_particle_velocity(MultiGridMPMSolverData<Real> *data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
         if (i >= data->m_num_particle)
@@ -375,7 +375,7 @@ namespace CoupledMPMSolverKernel
 }
 
 template <typename Real>
-CoupledMPMSolver<Real>::CoupledMPMSolver(
+MultiGridMPMSolver<Real>::MultiGridMPMSolver(
     const std::vector<unsigned int> &object_type, const std::vector<unsigned int> &particle_object_id,
     const std::vector<Real> &particle_position, const std::vector<Real> &particle_mass, const std::vector<Real> &particle_volume,
     std::vector<Real> bbox, Real grid_spacing, unsigned int boundary_thickness)
@@ -454,12 +454,12 @@ CoupledMPMSolver<Real>::CoupledMPMSolver(
 
     cudaMalloc(&m_data.dev_max_particle_velocity, sizeof(Real));
 
-    cudaMalloc(&m_dev_data, sizeof(CoupledMPMSolverData<Real>));
-    cudaMemcpy(m_dev_data, &m_data, sizeof(CoupledMPMSolverData<Real>), cudaMemcpyHostToDevice);
+    cudaMalloc(&m_dev_data, sizeof(MultiGridMPMSolverData<Real>));
+    cudaMemcpy(m_dev_data, &m_data, sizeof(MultiGridMPMSolverData<Real>), cudaMemcpyHostToDevice);
 }
 
 template <typename Real>
-CoupledMPMSolver<Real>::~CoupledMPMSolver()
+MultiGridMPMSolver<Real>::~MultiGridMPMSolver()
 {
     cudaFree(m_data.dev_object_type);
     cudaFree(m_data.dev_particle_object_id);
@@ -484,49 +484,49 @@ CoupledMPMSolver<Real>::~CoupledMPMSolver()
 }
 
 template <typename Real>
-void CoupledMPMSolver<Real>::Step()
+void MultiGridMPMSolver<Real>::Step()
 {
     // P2G
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
-    CoupledMPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    // CoupledMPMSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    CoupledMPMSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    CoupledMPMSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    CoupledMPMSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // MultiGridMPMSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
     cudaMemset(m_data.dev_grid_normal, 0, sizeof(Real) * m_data.m_num_grid * 3);
-    CoupledMPMSolverKernel::P2G_normal_estimate<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    CoupledMPMSolverKernel::grid_normal_normalize<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::P2G_normal_estimate<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::grid_normal_normalize<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
 
-    CoupledMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    CoupledMPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     for(unsigned int it = 0; it < 10; ++it)
-        CoupledMPMSolverKernel::grids_couple<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid / m_data.m_num_object), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    CoupledMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+        MultiGridMPMSolverKernel::grids_couple<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid / m_data.m_num_object), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
-    CoupledMPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     
     // cudaMemset(m_data.dev_max_particle_velocity, 0, sizeof(Real));
-    // CoupledMPMSolverKernel::get_max_particle_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // MultiGridMPMSolverKernel::get_max_particle_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
     // Real max_velocity;
     // cudaMemcpy(&max_velocity, m_data.dev_max_particle_velocity, sizeof(Real), cudaMemcpyDeviceToHost);
     // printf("max particle velocity = %.10f\n", max_velocity);
     // printf("max particle movement = %.10f\n", max_velocity * m_data.m_time_step);
     // assert(max_velocity * m_data.m_time_step <= m_data.m_grid_spacing);
 
-    CoupledMPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    // CoupledMPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MultiGridMPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    // MultiGridMPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
 }
 
 template <typename Real>
-Real *CoupledMPMSolver<Real>::GetDevicePositions()
+Real *MultiGridMPMSolver<Real>::GetDevicePositions()
 {
     return m_data.dev_particle_position;
 }
 
-template class CoupledMPMSolver<float>;
-template class CoupledMPMSolver<double>;
-template struct CoupledMPMSolverData<float>;
-template struct CoupledMPMSolverData<double>;
+template class MultiGridMPMSolver<float>;
+template class MultiGridMPMSolver<double>;
+template struct MultiGridMPMSolverData<float>;
+template struct MultiGridMPMSolverData<double>;

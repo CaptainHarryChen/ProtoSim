@@ -1,15 +1,15 @@
-#include "CoupledMPMDebugConnector.cuh"
+#include "MultiGridMPMDebugConnector.cuh"
 #include <glad/glad.h>
 #include <cuda_gl_interop.h>
 #include <cuda_utils/error.cuh>
 #include <cuda_utils/block_size.cuh>
 #include <viewer/RenderObject/LineSegment.h>
-#include <Solver/CoupledMPMSolver.cuh>
+#include <Solver/MultiGridMPMSolver.cuh>
 
-namespace CoupledMPMDebugConnectorKernel
+namespace MultiGridMPMDebugConnectorKernel
 {
     template <typename Real>
-    __global__ void transfer_data(viewer::LineSeg *dev_lines, CoupledMPMSolverData<Real> *data, unsigned int grid_id, Real scale, unsigned int num_line)
+    __global__ void transfer_data(viewer::LineSeg *dev_lines, MultiGridMPMSolverData<Real> *data, unsigned int grid_id, Real scale, unsigned int num_line)
     {
         unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
         if (id >= num_line)
@@ -26,23 +26,23 @@ namespace CoupledMPMDebugConnectorKernel
 }
 
 template <typename Real>
-CoupledMPMDebugConnector<Real>::CoupledMPMDebugConnector(std::shared_ptr<viewer::LineSegment> lines, CoupledMPMSolverData<Real> *data, unsigned int grid_id, Real scale)
+MultiGridMPMDebugConnector<Real>::MultiGridMPMDebugConnector(std::shared_ptr<viewer::LineSegment> lines, MultiGridMPMSolverData<Real> *data, unsigned int grid_id, Real scale)
     : m_lines(lines), m_data(data), m_grid_id(grid_id), m_scale(scale)
 {
     cudaCheck(cudaGraphicsGLRegisterBuffer(&m_cuda_resource_buf, lines->GetVBO(), cudaGraphicsRegisterFlagsNone));
-    cudaMalloc(&m_dev_data, sizeof(CoupledMPMSolverData<Real>));
-    cudaMemcpy(m_dev_data, data, sizeof(CoupledMPMSolverData<Real>), cudaMemcpyHostToDevice);
+    cudaMalloc(&m_dev_data, sizeof(MultiGridMPMSolverData<Real>));
+    cudaMemcpy(m_dev_data, data, sizeof(MultiGridMPMSolverData<Real>), cudaMemcpyHostToDevice);
 }
 
 template <typename Real>
-CoupledMPMDebugConnector<Real>::~CoupledMPMDebugConnector()
+MultiGridMPMDebugConnector<Real>::~MultiGridMPMDebugConnector()
 {
     // cudaCheck(cudaGraphicsUnregisterResource(m_cuda_resource_buf));
     cudaFree(m_dev_data);
 }
 
 template <typename Real>
-void CoupledMPMDebugConnector<Real>::TransferData()
+void MultiGridMPMDebugConnector<Real>::TransferData()
 {
     cudaCheck(cudaGraphicsMapResources(1, &m_cuda_resource_buf));
     viewer::LineSeg *dev_lines;
@@ -50,9 +50,9 @@ void CoupledMPMDebugConnector<Real>::TransferData()
     cudaCheck(cudaGraphicsResourceGetMappedPointer((void **)&dev_lines, &buffer_size, m_cuda_resource_buf));
     unsigned int num_lines = (unsigned int)(buffer_size / sizeof(viewer::LineSeg));
     assert(num_lines == m_data->m_num_grid / m_data->m_num_object);
-    CoupledMPMDebugConnectorKernel::transfer_data<Real><<<CUDA_GRID_SIZE(num_lines), CUDA_BLOCK_SIZE>>>(dev_lines, m_dev_data, m_grid_id, m_scale, num_lines);
+    MultiGridMPMDebugConnectorKernel::transfer_data<Real><<<CUDA_GRID_SIZE(num_lines), CUDA_BLOCK_SIZE>>>(dev_lines, m_dev_data, m_grid_id, m_scale, num_lines);
     cudaCheck(cudaGraphicsUnmapResources(1, &m_cuda_resource_buf));
 }
 
-template class CoupledMPMDebugConnector<float>;
-template class CoupledMPMDebugConnector<double>;
+template class MultiGridMPMDebugConnector<float>;
+template class MultiGridMPMDebugConnector<double>;

@@ -12,7 +12,7 @@ const float GRAVITY = 9.81f;
 const float TIME_STEP = 1.0f / 1000.0f;
 
 template <typename Real>
-struct CoupledMPMSolverData
+struct MultiGridMPMSolverData
 {
     unsigned int m_num_object;
     unsigned int *dev_object_type; // 0: static, 1: elastic, 2: fluid
@@ -48,24 +48,24 @@ struct CoupledMPMSolverData
 };
 
 template <typename Real>
-class CoupledMPMSolver : public Solver<Real>
+class MultiGridMPMSolver : public Solver<Real>
 {
 public:
-    CoupledMPMSolver(const std::vector<unsigned int> &object_type, const std::vector<unsigned int> &particle_object_id,
+    MultiGridMPMSolver(const std::vector<unsigned int> &object_type, const std::vector<unsigned int> &particle_object_id,
                 const std::vector<Real> &particle_position, const std::vector<Real> &particle_mass, const std::vector<Real> &particle_volume,
                 std::vector<Real> bbox, Real grid_spacing, unsigned int boundary_thickness);
-    virtual ~CoupledMPMSolver();
+    virtual ~MultiGridMPMSolver();
 
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
 
-    CoupledMPMSolverData<Real> m_data;
+    MultiGridMPMSolverData<Real> m_data;
 
 protected:
-    CoupledMPMSolverData<Real> *m_dev_data;
+    MultiGridMPMSolverData<Real> *m_dev_data;
 };
 
-extern template struct CoupledMPMSolverData<float>;
-extern template struct CoupledMPMSolverData<double>;
-extern template class CoupledMPMSolver<float>;
-extern template class CoupledMPMSolver<double>;
+extern template struct MultiGridMPMSolverData<float>;
+extern template struct MultiGridMPMSolverData<double>;
+extern template class MultiGridMPMSolver<float>;
+extern template class MultiGridMPMSolver<double>;
