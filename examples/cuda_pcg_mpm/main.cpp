@@ -74,7 +74,7 @@ int main()
         {"line_search_max_iteration", (unsigned int)3},
         {"mpm_pcg_max_iteration", (unsigned int)200},
         {"mpm_pcg_residual_tolerance", (Real)0.01f},
-        // {"position_correction_iteration", (unsigned int)10}
+        // {"position_correction_iteration", (unsigned int)10} // This will enable separating corrector. // FIXME: didnot check the particle type
     };
 
     auto solver = std::make_shared<PCGMPMSolver<Real>>(
