@@ -23,7 +23,7 @@ struct PCGMPMSolverData
     Real *dev_particle_temp_C;
     Real *dev_particle_F;                  // deformation gradient
     unsigned int *dev_particle_to_grid_id; // order: x y z
-    Real *dev_particle_temp1; // for temporary G2P when calculate Ap in PCG
+    Real *dev_particle_p_nabla_w; // 3x3 matrix, for temporary G2P when calculate Ap in PCG
 
     unsigned int m_num_grid;
     Real m_grid_spacing;
@@ -47,8 +47,10 @@ struct PCGMPMSolverData
     Real m_time_step;
     Real m_time_step_inv;
     Real m_ground_stiffness;
-    Real m_fluid_lambda;
-    Real m_fluid_viscosity;
+    Real m_fluid_lambda = 1000000.0f;
+    Real m_fluid_viscosity = 0.0f;
+    Real m_lame_mu = 500000.0f;
+    Real m_lame_lambda = 400000.0f;
     Real *dev_gravity;
 };
 

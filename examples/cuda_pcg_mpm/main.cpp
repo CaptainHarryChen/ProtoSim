@@ -44,15 +44,20 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 0.3f, -3.0f), glm::vec3(3.0f, 3.3f, 3.0f), 0.08f,
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 0.3f, -3.0f), glm::vec3(3.0f, 3.3f, 3.0f), 0.08f,
+    //                                MPM_FLUID, 1000.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+
+
+    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 7.0f, -3.0f), glm::vec3(3.0f, 8.0f, 3.0f), 0.15f,
                                    MPM_FLUID, 1000.0f,
-                                   0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-6.0f, 6.0f, -1.0f), glm::vec3(5.0f, 8.0f, 1.0f), 0.08f,
-    //                                MPM_ELASTIC, 500.0f,
-    //                                0.03f, glm::vec3(0.5f, 1.0f, 0.0f), glm::vec2(0.8f, 0.8f));
-    // scene->AddMPMCubeParticleBatch(glm::vec3(-1.0f, 3.0f, -6.0f), glm::vec3(1.0f, 5.0f, 5.0f), 0.08f,
-    //                                MPM_ELASTIC, 500.0f,
-    //                                0.03f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
+                                   0.06f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 4.0f, -1.0f), glm::vec3(3.0f, 5.0f, 1.0f), 0.15f,
+                                   MPM_ELASTIC, 500.0f,
+                                   0.06f, glm::vec3(0.5f, 1.0f, 0.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-0.5f, 5.5f, -4.0f), glm::vec3(0.5f, 6.5f, 3.0f), 0.15f,
+                                   MPM_ELASTIC, 500.0f,
+                                   0.06f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
 
     float dist = 0.2f;
     // std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
@@ -61,7 +66,10 @@ int main()
     app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
     std::vector<Real> bbox_real(bbox.begin(), bbox.end());
 
+    Real young_k = 1000000.0f, young_nu = 0.26f;
     std::unordered_map<std::string, std::any> config {
+        {"lame_mu", (Real)(young_k / (2 * (1 + young_nu)))},
+        {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
         {"fluid_lambda", (Real)(1000000.0f)},
         {"fluid_viscosity", (Real)(10.0f)},
         {"ground_collision_stiffness", (Real)100000.0f},
@@ -70,7 +78,7 @@ int main()
         {"line_search_max_iteration", (unsigned int)3},
         {"mpm_pcg_max_iteration", (unsigned int)200},
         {"mpm_pcg_residual_tolerance", (Real)0.01f},
-        {"position_correction_iteration", (unsigned int)10}
+        // {"position_correction_iteration", (unsigned int)10}
     };
 
     auto solver = std::make_shared<PCGMPMSolver<Real>>(

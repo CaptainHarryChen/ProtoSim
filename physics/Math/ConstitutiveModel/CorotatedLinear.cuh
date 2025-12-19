@@ -12,7 +12,8 @@ namespace cudaPhysics
 	{
         Real R[9];
 		polar_decomposition_R(R, F);
-        axpby(P, 2 * mu, F, -2 * mu, R, 9);
+        vecSubs(P, F, R, 9);
+        vecMul(P, 2 * mu, P, 9);
 	}
 
     /**
