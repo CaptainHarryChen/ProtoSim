@@ -1,4 +1,4 @@
-function(add_examples name)
+function(add_example name)
     foreach(module IN ITEMS ${ARGN})
         if(NOT TARGET ${module})
             return()
@@ -6,9 +6,10 @@ function(add_examples name)
     endforeach()
 
     message(STATUS "Creating viewer examples: ${name}")
-    file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/${name}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/${name}/*.cu)
+    file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/${name}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/${name}/*.cu ${CMAKE_CURRENT_SOURCE_DIR}/common.cpp)
     add_executable(${name} ${sources})
-    target_link_libraries(${name} PRIVATE App ${ARGN})
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(${name} PRIVATE ${ARGN})
 
     set_target_properties(${name} PROPERTIES FOLDER Examples)
 endfunction()
@@ -25,7 +26,8 @@ macro(subdirlist result curdir)
 endmacro()
 
 subdirlist(subdirs ${CMAKE_CURRENT_SOURCE_DIR})
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/example_config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/example_config.h)
 
 foreach(dir ${subdirs})
-    add_examples(${dir})
+    add_example(${dir} viewer Physics)
 endforeach()

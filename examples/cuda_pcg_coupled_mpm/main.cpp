@@ -1,22 +1,8 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <GLFWApp.h>
-#include <Scene/SimulationScene.h>
-#include <Loader/TetrahedronLoader.h>
-#include <Object/CubeLineBox.h>
-#include <Object/LightScene.h>
-#include <Mesh/Mesh.h>
-#include <Mesh/PbrRenderer.h>
-#include <Geometry/ParticleBatch.h>
-#include <Geometry/LineSegment.h>
-#include <Geometry/SphereRenderer.h>
-#include <Mesh/SolidColorRenderer.h>
-#include <Render/RenderSystem.h>
-#include <Connector/MeshConnector.cuh>
-#include <Connector/ParticleConnector.cuh>
+#include <common.h>
 #include <Solver/PCGCoupledMPMSolver.cuh>
-#include <proj_config.h>
 #include "GridTriangleDebugConnector.cuh"
 
 // #define GRID_TRIANGLE_DEBUG
@@ -36,8 +22,8 @@ public:
     std::vector<Real> m_sample_barycentric_weights;
     std::vector<unsigned int> m_sample_tri_idx;
     std::vector<Real> m_sample_area;
-    std::shared_ptr<ParticleBatch> m_sample_particle_batch;
-    std::vector<std::pair<std::shared_ptr<ParticleBatch>, size_t>> m_sample_batch_offsets;
+    std::shared_ptr<viewer::ParticleBatch> m_sample_particle_batch;
+    std::vector<std::pair<std::shared_ptr<viewer::ParticleBatch>, size_t>> m_sample_batch_offsets;
 
     std::vector<Real> m_particle_positions;
     std::vector<unsigned int> m_particle_types;
@@ -54,19 +40,19 @@ public:
         std::vector<unsigned int> tetrahedras;
         std::vector<unsigned int> sample_tri_idx;
         std::vector<float> sample_barycentric_weights;
-        TetrahedronLoader::LoadTetrahedronWithPLYSample(inputfile, scale, translate, rotate, positions, surface_triangles, tetrahedras, sample_tri_idx, sample_barycentric_weights);
+        viewer::TetrahedronLoader::LoadTetrahedronWithPLYSample(inputfile, scale, translate, rotate, positions, surface_triangles, tetrahedras, sample_tri_idx, sample_barycentric_weights);
 
-        std::vector<Vertex> vertices(positions.size() / 3);
+        std::vector<viewer::Vertex> vertices(positions.size() / 3);
         for (size_t i = 0; i < positions.size() / 3; ++i)
         {
             vertices[i].position = glm::vec3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
             vertices[i].normal = glm::vec3(0.0f, 0.0f, 0.0f);
             vertices[i].tex_coords = glm::vec2(0.0f, 0.0f);
         }
-        auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
-        mesh->AddRenderer(std::make_shared<PbrRenderer>(mesh_render_material));
+        auto mesh = std::make_shared<viewer::Mesh>(vertices, surface_triangles);
+        mesh->AddRenderer(std::make_shared<viewer::PbrRenderer>(mesh_render_material));
         #ifdef SURFACE_TRIANGLE_DEBUG
-        mesh->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(0.0f, 0.0f, 0.0f), true));
+        mesh->AddRenderer(std::make_shared<viewer::SolidColorRenderer>(glm::vec3(0.0f, 0.0f, 0.0f), true));
         #endif
         SimulationScene<Real>::AddMesh(mesh);
 
@@ -97,7 +83,7 @@ public:
         for (size_t i = 0; i < sample_tri_idx.size(); ++i)
             m_sample_area[i + sample_offset] = sample_area;
 
-        std::vector<Particle> particles(sample_tri_idx.size());
+        std::vector<viewer::Particle> particles(sample_tri_idx.size());
         for (size_t i = 0; i < sample_tri_idx.size(); ++i)
         {
             unsigned int tri_idx = sample_tri_idx[i];
@@ -111,9 +97,9 @@ public:
             particles[i].Position = bary_coords.x * v0 + bary_coords.y * v1 + bary_coords.z * v2;
             particles[i].Color = sample_color;
         }
-        m_sample_particle_batch = std::make_shared<ParticleBatch>(particles);
+        m_sample_particle_batch = std::make_shared<viewer::ParticleBatch>(particles);
         m_sample_batch_offsets.push_back(std::make_pair(m_sample_particle_batch, sample_offset * 3));
-        m_sample_particle_batch->AddRenderer(std::make_shared<SphereRenderer>(sample_material, sample_radius));
+        m_sample_particle_batch->AddRenderer(std::make_shared<viewer::SphereRenderer>(sample_material, sample_radius));
         #ifdef SAMPLE_PARTICLE_DEBUG
         GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(m_sample_particle_batch);
         #endif
@@ -123,7 +109,7 @@ public:
                                  unsigned int particle_type, Real density,
                                  float radius, glm::vec3 color, glm::vec2 material)
     {
-        std::vector<Particle> particles;
+        std::vector<viewer::Particle> particles;
         size_t node_offset = m_particle_positions.size();
         for (Real x = lower_bound.x; x <= upper_bound.x; x += dis)
             for (Real y = lower_bound.y; y <= upper_bound.y; y += dis)
@@ -134,10 +120,10 @@ public:
                     m_particle_positions.push_back(y);
                     m_particle_positions.push_back(z);
                 }
-        auto particle_batch = std::make_shared<ParticleBatch>(particles);
+        auto particle_batch = std::make_shared<viewer::ParticleBatch>(particles);
         this->m_particle_batch_offsets.push_back(std::make_pair(particle_batch, node_offset));
-        particle_batch->AddRenderer(std::make_shared<SphereRenderer>(material, radius));
-        GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(particle_batch);
+        particle_batch->AddRenderer(std::make_shared<viewer::SphereRenderer>(material, radius));
+        viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(particle_batch);
 
         size_t num_particle = this->m_particle_batch_offsets.back().first->m_particles.size();
         Real total_volume = (upper_bound.x - lower_bound.x) * (upper_bound.y - lower_bound.y) * (upper_bound.z - lower_bound.z);
@@ -160,7 +146,7 @@ public:
             auto position_ptr = solver->GetDeviceVertexPositions();
             if (position_ptr)
                 position_ptr = position_ptr + node_offset;
-            auto connector = std::make_shared<MeshConnector<Real>>(mesh, position_ptr);
+            auto connector = std::make_shared<viewer::MeshConnector<Real>>(mesh, position_ptr);
             this->m_connectors.push_back(connector);
         }
         for (auto &[sample, node_offset] : this->m_sample_batch_offsets)
@@ -168,7 +154,7 @@ public:
             auto position_ptr = solver->GetDeviceSamplePositions();
             if (position_ptr)
                 position_ptr = position_ptr + node_offset;
-            auto connector = std::make_shared<ParticleConnector<Real>>(sample, position_ptr, nullptr);
+            auto connector = std::make_shared<viewer::ParticleConnector<Real>>(sample, position_ptr, nullptr);
             this->m_connectors.push_back(connector);
         }
         for (auto &[particle_batch, node_offset] : this->m_particle_batch_offsets)
@@ -182,7 +168,7 @@ public:
                 position_ptr = position_ptr + node_offset;
             if (color_ptr)
                 color_ptr = color_ptr + node_offset;
-            auto connector = std::make_shared<ParticleConnector<Real>>(particle_batch, position_ptr, color_ptr);
+            auto connector = std::make_shared<viewer::ParticleConnector<Real>>(particle_batch, position_ptr, color_ptr);
             this->m_connectors.push_back(connector);
         }
     }
@@ -190,10 +176,10 @@ public:
     virtual void SetupScene() override
     {
         SimulationScene<Real>::SetupScene();
-        auto app = GLFWApp::GetInstance();
+        auto app = viewer::GLFWApp::GetInstance();
         for (auto &object : app->m_objects)
         {
-            auto lightScene = std::dynamic_pointer_cast<LightScene>(object);
+            auto lightScene = std::dynamic_pointer_cast<viewer::LightScene>(object);
             if (lightScene)
             {
                 lightScene->m_control_gui->m_light_on = {true, true, true, true};
@@ -212,7 +198,7 @@ int main()
 {
     using Real = float;
 
-    auto app = GLFWApp::GetInstance("PCG Coupled MPM Solver Example", 1600, 900);
+    auto app = viewer::GLFWApp::GetInstance("PCG Coupled MPM Solver Example", 1600, 900);
 
     auto scene = std::make_shared<PCGCoupledMPMScene<Real>>();
     scene->SetupScene();
@@ -298,7 +284,7 @@ int main()
 
     float dist = 0.2f;
     unsigned int boundary_thickness = 1;
-    app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    app->AddObject(std::make_shared<viewer::CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
     std::vector<Real> real_bbox;
     for (auto b : bbox)
         real_bbox.push_back((Real)b);

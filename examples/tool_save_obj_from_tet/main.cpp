@@ -1,15 +1,14 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
-#include <Loader/TetrahedronLoader.h>
-#include <proj_config.h>
+#include <common.h>
 
 int main()
 {
     std::vector<float> positions;
     std::vector<unsigned int> surface_triangles;
     std::vector<unsigned int> tetrahedras;
-    TetrahedronLoader::LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1.0f, glm::vec3(0.0f), glm::vec3(0.0f), positions, surface_triangles, tetrahedras);
+    viewer::TetrahedronLoader::LoadTetrahedron(std::string(ASSET_DIR) + "/bunny", 1.0f, glm::vec3(0.0f), glm::vec3(0.0f), positions, surface_triangles, tetrahedras);
     std::ofstream obj_file(std::string(ASSET_DIR) + "/bunny.obj");
     for (size_t i = 0; i < positions.size() / 3; ++i)
     {

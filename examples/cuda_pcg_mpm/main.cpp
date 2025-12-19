@@ -1,11 +1,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <GLFWApp.h>
-#include <Object/CubeLineBox.h>
-#include <Scene/SimulationScene.h>
-#include <Geometry/ParticleBatch.h>
-#include <Mesh/MeshLoader.h>
+#include <common.h>
 #include <Solver/PCGMPMSolver.cuh>
 
 template <typename Real>
@@ -38,7 +34,7 @@ int main()
 {
     using Real = float;
 
-    auto app = GLFWApp::GetInstance("MPM Solver Example", 1600, 900);
+    auto app = viewer::GLFWApp::GetInstance("MPM Solver Example", 1600, 900);
 
     auto scene = std::make_shared<MPMScene<Real>>();
     scene->SetupScene();
@@ -63,7 +59,7 @@ int main()
     // std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
     std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
     unsigned int boundary_thickness = 1;
-    app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    app->AddObject(std::make_shared<viewer::CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
     std::vector<Real> bbox_real(bbox.begin(), bbox.end());
 
     Real young_k = 1000000.0f, young_nu = 0.26f;

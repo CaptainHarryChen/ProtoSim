@@ -53,9 +53,9 @@ namespace SeparatingCorrectorKernel
         Real res[3] = {0};
         unsigned int denorm = 0;
         unsigned int center_grid_id = data.dev_particle_to_grid_id[p];
-        unsigned int x = center_grid_id / data.m_grid_size[1] / data.m_grid_size[2];
-        unsigned int y = (center_grid_id / data.m_grid_size[2]) % data.m_grid_size[1];
-        unsigned int z = center_grid_id % data.m_grid_size[2];
+        int x = center_grid_id / data.m_grid_size[1] / data.m_grid_size[2];
+        int y = (center_grid_id / data.m_grid_size[2]) % data.m_grid_size[1];
+        int z = center_grid_id % data.m_grid_size[2];
         for (int dx = -1; dx <= 1; ++dx)
             for (int dy = -1; dy <= 1; ++dy)
                 for (int dz = -1; dz <= 1; ++dz)

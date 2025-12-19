@@ -3,14 +3,8 @@
 #include <unordered_map>
 #include <vector>
 #include <memory>
-#include <GLFWApp.h>
-#include <Scene/SimulationScene.h>
-#include <Loader/TetrahedronLoader.h>
-#include <Mesh/Mesh.h>
-#include <Mesh/PbrRenderer.h>
-#include <Object/LightScene.h>
+#include <common.h>
 #include <Solver/PCGFEMSolver.cuh>
-#include <proj_config.h>
 
 template <typename Real>
 class TetrahedronScene : public SimulationScene<Real>
@@ -27,17 +21,17 @@ public:
         std::vector<float> positions;
         std::vector<unsigned int> surface_triangles;
         std::vector<unsigned int> tetrahedras;
-        TetrahedronLoader::LoadTetrahedron(inputfile, scale, translate, rotate, positions, surface_triangles, tetrahedras);
+        viewer::TetrahedronLoader::LoadTetrahedron(inputfile, scale, translate, rotate, positions, surface_triangles, tetrahedras);
 
-        std::vector<Vertex> vertices(positions.size() / 3);
+        std::vector<viewer::Vertex> vertices(positions.size() / 3);
         for (size_t i = 0; i < positions.size() / 3; ++i)
         {
             vertices[i].position = glm::vec3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
             vertices[i].normal = glm::vec3(0.0f, 0.0f, 0.0f);
             vertices[i].tex_coords = glm::vec2(0.0f, 0.0f);
         }
-        auto mesh = std::make_shared<Mesh>(vertices, surface_triangles);
-        mesh->AddRenderer(std::make_shared<PbrRenderer>(render_material));
+        auto mesh = std::make_shared<viewer::Mesh>(vertices, surface_triangles);
+        mesh->AddRenderer(std::make_shared<viewer::PbrRenderer>(render_material));
         SimulationScene<Real>::AddMesh(mesh);
 
         unsigned int node_offset = (unsigned int)SimulationScene<Real>::m_mesh_offsets.back().second / 3;
@@ -53,10 +47,10 @@ public:
     virtual void SetupScene() override
     {
         SimulationScene<Real>::SetupScene();
-        auto app = GLFWApp::GetInstance();
+        auto app = viewer::GLFWApp::GetInstance();
         for (auto &object : app->m_objects)
         {
-            auto lightScene = std::dynamic_pointer_cast<LightScene>(object);
+            auto lightScene = std::dynamic_pointer_cast<viewer::LightScene>(object);
             if (lightScene)
             {
                 lightScene->m_control_gui->m_light_on = {true, true, true, true};
@@ -77,7 +71,7 @@ int main()
     // Neohookean Model requires double precision for better stability
     using Real = float;
 
-    auto app = GLFWApp::GetInstance("PCG FEM Solver Example", 1600, 900);
+    auto app = viewer::GLFWApp::GetInstance("PCG FEM Solver Example", 1600, 900);
 
     auto scene = std::make_shared<TetrahedronScene<Real>>();
     scene->SetupScene();

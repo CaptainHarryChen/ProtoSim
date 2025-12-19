@@ -1,14 +1,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <GLFWApp.h>
-#include <Object/CubeLineBox.h>
-#include <Scene/SimulationScene.h>
-#include <Geometry/ParticleBatch.h>
-#include <Mesh/MeshLoader.h>
-#include <Geometry/LineSegment.h>
-#include <Render/RenderSystem.h>
-#include <Mesh/SolidColorRenderer.h>
+#include <common.h>
 #include <Solver/CoupledMPMSolver.cuh>
 #include "CoupledMPMDebugConnector.cuh"
 
@@ -45,7 +38,7 @@ int main()
 {
     using Real = float;
 
-    auto app = GLFWApp::GetInstance("IQ-MPM Solver Example", 1600, 900);
+    auto app = viewer::GLFWApp::GetInstance("MPM Explicit multi-grid no sticky Solver Example", 1600, 900);
 
     auto scene = std::make_shared<CoupledMPMScene<Real>>();
     scene->SetupScene();
@@ -67,7 +60,7 @@ int main()
     float dist = 0.2f;
     std::vector<float> bbox = {-10.0f, 0.0f, -12.0f, 10.0f, 20.0f, 8.0f};
     unsigned int boundary_thickness = 1;
-    app->AddObject(std::make_shared<CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    app->AddObject(std::make_shared<viewer::CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
 
     std::vector<Real> bbox_real;
     for (const auto &b : bbox)
@@ -80,8 +73,8 @@ int main()
     scene->SetupConnectors();
 
     unsigned int num_one_grid = solver->m_data.m_num_grid / solver->m_data.m_num_object;
-    auto field_vec_line = std::make_shared<LineSegment>(std::vector<LineSeg>(num_one_grid));
-    field_vec_line->AddRenderer(std::make_shared<SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
+    auto field_vec_line = std::make_shared<viewer::LineSegment>(std::vector<viewer::LineSeg>(num_one_grid));
+    field_vec_line->AddRenderer(std::make_shared<viewer::SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
     app->GetRenderSystem()->AddRenderObject(field_vec_line);
     // scene->AddConnector(std::make_shared<CoupledMPMDebugConnector<Real>>(field_vec_line, &solver->m_data, 1, dist * 0.5f));
 

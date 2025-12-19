@@ -3,15 +3,15 @@
 #include <cuda_gl_interop.h>
 #include <cuda_utils/error.cuh>
 #include <cuda_utils/block_size.cuh>
-#include <Geometry/ParticleBatch.h>
-#include <Geometry/LineSegment.h>
+#include <viewer/RenderObject/ParticleBatch.h>
+#include <viewer/RenderObject/LineSegment.h>
 #include <Solver/PCGCoupledMPMSolver.cuh>
 #include <Solver/CPICTools.cuh>
 
 namespace GridTriangleDebugConnectorKernel
 {
     template <typename Real>
-    __global__ void transfer_particle_data(Particle *dev_particles, PCGCoupledMPMSolverData<Real> *data, unsigned int num_particle)
+    __global__ void transfer_particle_data(viewer::Particle *dev_particles, PCGCoupledMPMSolverData<Real> *data, unsigned int num_particle)
     {
         unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
         if (id >= num_particle)
@@ -44,7 +44,7 @@ namespace GridTriangleDebugConnectorKernel
     }
 
     template <typename Real>
-    __global__ void transfer_line_seg_data(LineSeg *dev_line_segs, PCGCoupledMPMSolverData<Real> *data, unsigned int num_particle)
+    __global__ void transfer_line_seg_data(viewer::LineSeg *dev_line_segs, PCGCoupledMPMSolverData<Real> *data, unsigned int num_particle)
     {
         unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
         if (id >= num_particle)
@@ -87,7 +87,7 @@ namespace GridTriangleDebugConnectorKernel
 }
 
 template <typename Real>
-GridTriangleDebugConnector<Real>::GridTriangleDebugConnector(std::shared_ptr<ParticleBatch> particles, std::shared_ptr<LineSegment> line_segs, PCGCoupledMPMSolverData<Real> *data, PCGCoupledMPMSolverData<Real> *dev_data)
+GridTriangleDebugConnector<Real>::GridTriangleDebugConnector(std::shared_ptr<viewer::ParticleBatch> particles, std::shared_ptr<viewer::LineSegment> line_segs, PCGCoupledMPMSolverData<Real> *data, PCGCoupledMPMSolverData<Real> *dev_data)
     : m_particles(particles), m_line_segs(line_segs), m_data(data), m_dev_data(dev_data)
 {
     cudaCheck(cudaGraphicsGLRegisterBuffer(&m_particle_buf, particles->GetVBO(), cudaGraphicsRegisterFlagsNone));
@@ -104,17 +104,17 @@ template <typename Real>
 void GridTriangleDebugConnector<Real>::TransferData()
 {
     cudaCheck(cudaGraphicsMapResources(1, &m_particle_buf));
-    Particle *dev_particles;
+    viewer::Particle *dev_particles;
     size_t buffer_size;
     cudaCheck(cudaGraphicsResourceGetMappedPointer((void **)&dev_particles, &buffer_size, m_particle_buf));
-    unsigned int num_particle = (unsigned int)(buffer_size / sizeof(Particle));
+    unsigned int num_particle = (unsigned int)(buffer_size / sizeof(viewer::Particle));
     GridTriangleDebugConnectorKernel::transfer_particle_data<Real><<<CUDA_GRID_SIZE(num_particle), CUDA_BLOCK_SIZE>>>(dev_particles, m_dev_data, num_particle);
     cudaCheck(cudaGraphicsUnmapResources(1, &m_particle_buf));
 
     cudaCheck(cudaGraphicsMapResources(1, &m_line_seg_buf));
-    LineSeg *dev_line_segs;
+    viewer::LineSeg *dev_line_segs;
     cudaCheck(cudaGraphicsResourceGetMappedPointer((void **)&dev_line_segs, &buffer_size, m_line_seg_buf));
-    num_particle = (unsigned int)(buffer_size / sizeof(LineSeg));
+    num_particle = (unsigned int)(buffer_size / sizeof(viewer::LineSeg));
     GridTriangleDebugConnectorKernel::transfer_line_seg_data<Real><<<CUDA_GRID_SIZE(num_particle), CUDA_BLOCK_SIZE>>>(dev_line_segs, m_dev_data, num_particle);
     cudaCheck(cudaGraphicsUnmapResources(1, &m_line_seg_buf));
 }
