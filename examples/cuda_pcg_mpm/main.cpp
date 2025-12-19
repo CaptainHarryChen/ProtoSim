@@ -1,0 +1,98 @@
+#include <string>
+#include <vector>
+#include <memory>
+#include <common.h>
+#include <Solver/PCGMPMSolver.cuh>
+
+template <typename Real>
+class MPMScene : public SimulationScene<Real>
+{
+public:
+    std::vector<unsigned int> m_particle_types;
+    std::vector<Real> m_particle_masses;
+    std::vector<Real> m_particle_volumes;
+
+    virtual void AddMPMCubeParticleBatch(glm::vec3 lower_bound, glm::vec3 upper_bound, float dis,
+                                         unsigned int particle_type, Real density,
+                                         float radius, glm::vec3 color, glm::vec2 material)
+    {
+        SimulationScene<Real>::AddCubeParticleBatch(lower_bound, upper_bound, dis, radius, color, material);
+        size_t num_particle = this->m_particle_batch_offsets.back().first->m_particles.size();
+        Real total_volume = (upper_bound.x - lower_bound.x) * (upper_bound.y - lower_bound.y) * (upper_bound.z - lower_bound.z);
+        Real particle_volume = dis * dis * dis;
+        Real particle_mass = density * particle_volume;
+        for (size_t i = 0; i < num_particle; ++i)
+        {
+            m_particle_types.push_back(particle_type);
+            m_particle_masses.push_back(particle_mass);
+            m_particle_volumes.push_back(particle_volume);
+        }
+    }
+};
+
+int main()
+{
+    using Real = float;
+
+    auto app = viewer::GLFWApp::GetInstance("MPM Solver Example", 1600, 900);
+
+    auto scene = std::make_shared<MPMScene<Real>>();
+    scene->SetupScene();
+    app->AddObject(scene);
+
+    // scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 0.3f, -3.0f), glm::vec3(3.0f, 3.3f, 3.0f), 0.08f,
+    //                                MPM_FLUID, 1000.0f,
+    //                                0.03f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+
+
+    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 7.0f, -3.0f), glm::vec3(3.0f, 8.0f, 3.0f), 0.15f,
+                                   MPM_FLUID, 1000.0f,
+                                   0.06f, glm::vec3(0.2f, 0.2f, 1.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-3.0f, 4.0f, -1.0f), glm::vec3(3.0f, 5.0f, 1.0f), 0.15f,
+                                   MPM_ELASTIC, 500.0f,
+                                   0.06f, glm::vec3(0.5f, 1.0f, 0.0f), glm::vec2(0.8f, 0.8f));
+    scene->AddMPMCubeParticleBatch(glm::vec3(-0.5f, 5.5f, -4.0f), glm::vec3(0.5f, 6.5f, 3.0f), 0.15f,
+                                   MPM_ELASTIC, 500.0f,
+                                   0.06f, glm::vec3(1.0f, 0.5f, 0.0f), glm::vec2(0.8f, 0.8f));
+
+    float dist = 0.2f;
+    // std::vector<float> bbox = {-10.0f, 0.0f, -10.0f, 10.0f, 20.0f, 10.0f};
+    std::vector<float> bbox = {-5.0f, 0.0f, -5.0f, 5.0f, 10.0f, 5.0f};
+    unsigned int boundary_thickness = 1;
+    app->AddObject(std::make_shared<viewer::CubeLineBox>(bbox, dist, glm::vec3(1.0f, 1.0f, 1.0f)));
+    std::vector<Real> bbox_real(bbox.begin(), bbox.end());
+
+    Real young_k = 1000000.0f, young_nu = 0.26f;
+    std::unordered_map<std::string, std::any> config {
+        {"lame_mu", (Real)(young_k / (2 * (1 + young_nu)))},
+        {"lame_lambda", (Real)(young_k * young_nu / ((1 + young_nu) * (1 - 2 * young_nu)))},
+        {"fluid_lambda", (Real)(1000000.0f)},
+        {"fluid_viscosity", (Real)(10.0f)},
+        {"ground_collision_stiffness", (Real)100000.0f},
+        {"gravity", std::vector<Real>{0.0f, -9.81f, 0.0f}},
+        {"time_step", (Real)(1.0f / 200.0f)},
+        {"line_search_max_iteration", (unsigned int)3},
+        {"mpm_pcg_max_iteration", (unsigned int)200},
+        {"mpm_pcg_residual_tolerance", (Real)0.01f},
+        // {"position_correction_iteration", (unsigned int)10} // This will enable separating corrector. // FIXME: didnot check the particle type
+    };
+
+    auto solver = std::make_shared<PCGMPMSolver<Real>>(
+        scene->m_positions,
+        scene->m_particle_types,
+        scene->m_particle_masses,
+        scene->m_particle_volumes,
+        bbox_real,
+        dist,
+        boundary_thickness,
+        config
+    );
+    solver->m_verbose = true;
+    scene->SetSolver(solver);
+    // scene->SetStepPerFrame(2);
+    scene->SetupConnectors();
+
+    app->Run();
+
+    return 0;
+}

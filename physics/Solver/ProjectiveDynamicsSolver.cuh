@@ -23,7 +23,6 @@ struct ProjectiveDynamicsSolverData
     Real *dev_position_prev;
     Real *dev_position;
     Real *dev_position_next;
-    Real *dev_position_delta;
     Real *dev_velocity;
     Real *dev_mass;
     Real *dev_vert_force;
@@ -42,24 +41,20 @@ struct ProjectiveDynamicsSolverData
     Real m_lame_lambda;
     Real m_ground_collision_stiffness;
     Real m_under_relaxation;
-    Real *dev_gravity;
+    Real m_gravity[3];
 };
 
 template <typename Real>
 class ProjectiveDynamicsSolver : public Solver<Real>
 {
 public:
-    ProjectiveDynamicsSolver(const std::vector<Real> &position, const std::vector<unsigned int> &tetrahedron, const std::vector<Real> &tetrahedron_density,
-                             const std::vector<unsigned int> &object_tetrahedron_offset);
+    ProjectiveDynamicsSolver(const std::vector<Real> &position, const std::vector<unsigned int> &tetrahedron, const std::vector<Real> &tetrahedron_density);
     virtual ~ProjectiveDynamicsSolver();
 
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
 
     ProjectiveDynamicsSolverData<Real> m_data;
-
-protected:
-    ProjectiveDynamicsSolverData<Real> *m_dev_data;
 
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
     void SwapPositionBuffers();

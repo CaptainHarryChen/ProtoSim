@@ -23,9 +23,6 @@ public:
     virtual Real *GetDevicePositions() override;
 
     EmptySolverData<Real> m_data;
-
-protected:
-    EmptySolverData<Real> *m_dev_data;
 };
 
 extern template class EmptySolver<float>;

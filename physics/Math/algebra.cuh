@@ -304,10 +304,36 @@ namespace cudaPhysics
         X_trans[8] = X[8];
     }
 
+    // see ./sympy_utils/matrix_inv.py for symbolic derivation
+    template <class T>
+    __host__ __device__ __forceinline__ void matInv4(T *inv_X, const T *X)
+    {
+        inv_X[0] = X[5]*X[10]*X[15] - X[5]*X[11]*X[14] - X[6]*X[9]*X[15] + X[6]*X[11]*X[13] + X[7]*X[9]*X[14] - X[7]*X[10]*X[13];
+        inv_X[1] = -X[1]*X[10]*X[15] + X[1]*X[11]*X[14] + X[2]*X[9]*X[15] - X[2]*X[11]*X[13] - X[3]*X[9]*X[14] + X[3]*X[10]*X[13];
+        inv_X[2] = X[1]*X[6]*X[15] - X[1]*X[7]*X[14] - X[2]*X[5]*X[15] + X[2]*X[7]*X[13] + X[3]*X[5]*X[14] - X[3]*X[6]*X[13];
+        inv_X[3] = -X[1]*X[6]*X[11] + X[1]*X[7]*X[10] + X[2]*X[5]*X[11] - X[2]*X[7]*X[9] - X[3]*X[5]*X[10] + X[3]*X[6]*X[9];
+        inv_X[4] = -X[4]*X[10]*X[15] + X[4]*X[11]*X[14] + X[6]*X[8]*X[15] - X[6]*X[11]*X[12] - X[7]*X[8]*X[14] + X[7]*X[10]*X[12];
+        inv_X[5] = X[0]*X[10]*X[15] - X[0]*X[11]*X[14] - X[2]*X[8]*X[15] + X[2]*X[11]*X[12] + X[3]*X[8]*X[14] - X[3]*X[10]*X[12];
+        inv_X[6] = -X[0]*X[6]*X[15] + X[0]*X[7]*X[14] + X[2]*X[4]*X[15] - X[2]*X[7]*X[12] - X[3]*X[4]*X[14] + X[3]*X[6]*X[12];
+        inv_X[7] = X[0]*X[6]*X[11] - X[0]*X[7]*X[10] - X[2]*X[4]*X[11] + X[2]*X[7]*X[8] + X[3]*X[4]*X[10] - X[3]*X[6]*X[8];
+        inv_X[8] = X[4]*X[9]*X[15] - X[4]*X[11]*X[13] - X[5]*X[8]*X[15] + X[5]*X[11]*X[12] + X[7]*X[8]*X[13] - X[7]*X[9]*X[12];
+        inv_X[9] = -X[0]*X[9]*X[15] + X[0]*X[11]*X[13] + X[1]*X[8]*X[15] - X[1]*X[11]*X[12] - X[3]*X[8]*X[13] + X[3]*X[9]*X[12];
+        inv_X[10] = X[0]*X[5]*X[15] - X[0]*X[7]*X[13] - X[1]*X[4]*X[15] + X[1]*X[7]*X[12] + X[3]*X[4]*X[13] - X[3]*X[5]*X[12];
+        inv_X[11] = -X[0]*X[5]*X[11] + X[0]*X[7]*X[9] + X[1]*X[4]*X[11] - X[1]*X[7]*X[8] - X[3]*X[4]*X[9] + X[3]*X[5]*X[8];
+        inv_X[12] = -X[4]*X[9]*X[14] + X[4]*X[10]*X[13] + X[5]*X[8]*X[14] - X[5]*X[10]*X[12] - X[6]*X[8]*X[13] + X[6]*X[9]*X[12];
+        inv_X[13] = X[0]*X[9]*X[14] - X[0]*X[10]*X[13] - X[1]*X[8]*X[14] + X[1]*X[10]*X[12] + X[2]*X[8]*X[13] - X[2]*X[9]*X[12];
+        inv_X[14] = -X[0]*X[5]*X[14] + X[0]*X[6]*X[13] + X[1]*X[4]*X[14] - X[1]*X[6]*X[12] - X[2]*X[4]*X[13] + X[2]*X[5]*X[12];
+        inv_X[15] = X[0]*X[5]*X[10] - X[0]*X[6]*X[9] - X[1]*X[4]*X[10] + X[1]*X[6]*X[8] + X[2]*X[4]*X[9] - X[2]*X[5]*X[8];
+        T J = X[0]*X[5]*X[10]*X[15] - X[0]*X[5]*X[11]*X[14] - X[0]*X[6]*X[9]*X[15] + X[0]*X[6]*X[11]*X[13] + X[0]*X[7]*X[9]*X[14] - X[0]*X[7]*X[10]*X[13] - X[1]*X[4]*X[10]*X[15] + X[1]*X[4]*X[11]*X[14] + X[1]*X[6]*X[8]*X[15] - X[1]*X[6]*X[11]*X[12] - X[1]*X[7]*X[8]*X[14] + X[1]*X[7]*X[10]*X[12] + X[2]*X[4]*X[9]*X[15] - X[2]*X[4]*X[11]*X[13] - X[2]*X[5]*X[8]*X[15] + X[2]*X[5]*X[11]*X[12] + X[2]*X[7]*X[8]*X[13] - X[2]*X[7]*X[9]*X[12] - X[3]*X[4]*X[9]*X[14] + X[3]*X[4]*X[10]*X[13] + X[3]*X[5]*X[8]*X[14] - X[3]*X[5]*X[10]*X[12] - X[3]*X[6]*X[8]*X[13] + X[3]*X[6]*X[9]*X[12];
+        T inv_J = 1.0f / J;
+        for (int i = 0; i < 16; i++)
+            inv_X[i] *= inv_J;
+    }
+
     /**** MatLab codes ****
-     * syms x0 x1 x2 x3 x4 x5 x6 x7 x8
+     * syms X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8]
      * syms X
-     * X = [x0 x1 x2; x3 x4 x5; x6 x7 x8]
+     * X = [X[0] X[1] X[2]; X[3] X[4] X[5]; X[6] X[7] X[8]]
      * J = det(X)
      * ccode(inv(X) * J)
      **** MatLab codes ****/
@@ -324,7 +350,7 @@ namespace cudaPhysics
         inv_X[7] = -X[0] * X[7] + X[1] * X[6];
         inv_X[8] = X[0] * X[4] - X[1] * X[3];
         T J = X[0] * inv_X[0] + X[3] * inv_X[1] + X[6] * inv_X[2];
-        T inv_J = 1.0 / J;
+        T inv_J = 1.0f / J;
         for (int i = 0; i < 9; i++)
             inv_X[i] *= inv_J;
     }
@@ -353,7 +379,7 @@ namespace cudaPhysics
     }
 
     template <class T>
-    __host__ __device__ __forceinline__ void axpby(T *v, T a, T *x, T b, T *y, unsigned int n)
+    __host__ __device__ __forceinline__ void axpby(T *v, T a, const T *x, T b, const T *y, unsigned int n)
     {
         for (int i = 0; i < n; ++i)
         {
@@ -362,7 +388,7 @@ namespace cudaPhysics
     }
 
     template <class T>
-    __host__ __device__ __forceinline__ void axpbypcz(T *v, T a, T *x, T b, T *y, T c, T *z, unsigned int n)
+    __host__ __device__ __forceinline__ void axpbypcz(T *v, T a, const T *x, T b, const T *y, T c, const T *z, unsigned int n)
     {
         for (int i = 0; i < n; ++i)
         {

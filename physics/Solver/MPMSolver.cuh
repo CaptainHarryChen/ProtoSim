@@ -28,9 +28,9 @@ struct MPMSolverData
     unsigned int m_num_grid;
     Real m_grid_spacing;
     unsigned int m_boundary_thickness;
-    Real *dev_inner_bbox;
-    Real *dev_outer_bbox;
-    unsigned int *dev_grid_size;
+    Real m_inner_bbox[6];
+    Real m_outer_bbox[6];
+    unsigned int m_grid_size[3];
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
     Real *dev_grid_velocity;
@@ -38,7 +38,7 @@ struct MPMSolverData
     Real m_time_step;
     Real m_lame_mu;
     Real m_lame_lambda;
-    Real *dev_gravity;
+    Real m_gravity[3];
 };
 
 template <typename Real>
@@ -53,8 +53,6 @@ public:
     virtual Real *GetDevicePositions() override;
 
     MPMSolverData<Real> m_data;
-protected:
-    MPMSolverData<Real> *m_dev_data;
 };
 
 extern template struct MPMSolverData<float>;
