@@ -1,8 +1,6 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <Eigen/Core>
-#include <igl/random_points_on_mesh.h>
 #include <GLFWApp.h>
 #include <Scene/SimulationScene.h>
 #include <Loader/TetrahedronLoader.h>
