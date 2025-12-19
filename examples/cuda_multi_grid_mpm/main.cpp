@@ -76,7 +76,7 @@ int main()
     auto field_vec_line = std::make_shared<viewer::LineSegment>(std::vector<viewer::LineSeg>(num_one_grid));
     field_vec_line->AddRenderer(std::make_shared<viewer::SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
     app->GetRenderSystem()->AddRenderObject(field_vec_line);
-    // scene->AddConnector(std::make_shared<MultiGridMPMDebugConnector<Real>>(field_vec_line, &solver->m_data, 1, dist * 0.5f));
+    // scene->AddConnector(std::make_shared<MultiGridMPMDebugConnector<Real>>(field_vec_line, solver->m_data, 1, dist * 0.5f));
 
     app->Run();
 

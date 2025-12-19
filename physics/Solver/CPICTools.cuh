@@ -23,11 +23,11 @@ namespace CPICTools
     }
 
     template <typename Real>
-    __device__ __forceinline__ void get_grid_position(Real *grid_position, unsigned int id, const unsigned int *dev_grid_size, const Real *dev_bbox, Real grid_spacing)
+    __device__ __forceinline__ void get_grid_position(Real *grid_position, unsigned int id, const unsigned int *m_grid_size, const Real *dev_bbox, Real grid_spacing)
     {
-        unsigned int z = id % dev_grid_size[2];
-        unsigned int y = (id / dev_grid_size[2]) % dev_grid_size[1];
-        unsigned int x = id / dev_grid_size[2] / dev_grid_size[1];
+        unsigned int z = id % m_grid_size[2];
+        unsigned int y = (id / m_grid_size[2]) % m_grid_size[1];
+        unsigned int x = id / m_grid_size[2] / m_grid_size[1];
         grid_position[0] = dev_bbox[0] + x * grid_spacing;
         grid_position[1] = dev_bbox[1] + y * grid_spacing;
         grid_position[2] = dev_bbox[2] + z * grid_spacing;

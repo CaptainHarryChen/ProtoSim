@@ -7,49 +7,49 @@
 namespace MPMSolverKernel
 {
     template <typename Real>
-    __global__ void update_F(MPMSolverData<Real> *data)
+    __global__ void update_F(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
-        if (data->dev_particle_type[i] == MPM_ELASTIC)
+        if (data.dev_particle_type[i] == MPM_ELASTIC)
         {
             Real F[9], temp[9];
-            cudaPhysics::matMul3(temp, data->m_time_step, &data->dev_particle_C[i * 9]);
+            cudaPhysics::matMul3(temp, data.m_time_step, &data.dev_particle_C[i * 9]);
             temp[0] += 1.;
             temp[4] += 1.;
             temp[8] += 1.;
-            cudaPhysics::matMul3(F, temp, &data->dev_particle_F[i * 9]);
-            cudaPhysics::vecCopy(&data->dev_particle_F[i * 9], F, 9);
+            cudaPhysics::matMul3(F, temp, &data.dev_particle_F[i * 9]);
+            cudaPhysics::vecCopy(&data.dev_particle_F[i * 9], F, 9);
         }
-        else if (data->dev_particle_type[i] == MPM_FLUID)
+        else if (data.dev_particle_type[i] == MPM_FLUID)
         {
             // Only use the first element of F to store J
-            Real J = data->dev_particle_F[i * 9] * (1 + data->m_time_step * (data->dev_particle_C[i * 9] + data->dev_particle_C[i * 9 + 4] + data->dev_particle_C[i * 9 + 8]));
-            data->dev_particle_F[i * 9 + 0] = J;
+            Real J = data.dev_particle_F[i * 9] * (1 + data.m_time_step * (data.dev_particle_C[i * 9] + data.dev_particle_C[i * 9 + 4] + data.dev_particle_C[i * 9 + 8]));
+            data.dev_particle_F[i * 9 + 0] = J;
         }
     }
 
     template <typename Real>
-    __global__ void calc_particle_affine_momentum(MPMSolverData<Real> *data)
+    __global__ void calc_particle_affine_momentum(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
-        Real *affine_momentum = &data->dev_particle_affine_momentum[i * 9];
-        cudaPhysics::vecMul(affine_momentum, data->dev_particle_mass[i], &data->dev_particle_C[i * 9], 9);
-        if (data->dev_particle_type[i] == MPM_ELASTIC)
+        Real *affine_momentum = &data.dev_particle_affine_momentum[i * 9];
+        cudaPhysics::vecMul(affine_momentum, data.dev_particle_mass[i], &data.dev_particle_C[i * 9], 9);
+        if (data.dev_particle_type[i] == MPM_ELASTIC)
         {
             Real stress[9];
             Real P[9];
-            cudaPhysics::calc_neohookean_P(P, &data->dev_particle_F[i * 9], data->m_lame_mu, data->m_lame_lambda);
-            cudaPhysics::matmatTMul3(stress, P, &data->dev_particle_F[i * 9]);
-            cudaPhysics::vecMul(stress, -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing, stress, 9);
+            cudaPhysics::calc_neohookean_P(P, &data.dev_particle_F[i * 9], data.m_lame_mu, data.m_lame_lambda);
+            cudaPhysics::matmatTMul3(stress, P, &data.dev_particle_F[i * 9]);
+            cudaPhysics::vecMul(stress, -4 * data.m_time_step * data.dev_particle_volume[i] / data.m_grid_spacing / data.m_grid_spacing, stress, 9);
             cudaPhysics::vecAdd(affine_momentum, stress, affine_momentum, 9);
         }
-        else if (data->dev_particle_type[i] == MPM_FLUID)
+        else if (data.dev_particle_type[i] == MPM_FLUID)
         {
-            Real stress = -4 * data->m_time_step * data->dev_particle_volume[i] / data->m_grid_spacing / data->m_grid_spacing * data->m_lame_lambda * (data->dev_particle_F[i * 9] - 1) * data->dev_particle_F[i * 9];
+            Real stress = -4 * data.m_time_step * data.dev_particle_volume[i] / data.m_grid_spacing / data.m_grid_spacing * data.m_lame_lambda * (data.dev_particle_F[i * 9] - 1) * data.dev_particle_F[i * 9];
             affine_momentum[0] += stress;
             affine_momentum[4] += stress;
             affine_momentum[8] += stress;
@@ -57,39 +57,39 @@ namespace MPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void calc_particle_to_leftbottom_grid_id(MPMSolverData<Real> *data)
+    __global__ void calc_particle_to_leftbottom_grid_id(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
         // find the nearest grid, so plus 0.5 and floor
-        int x = floor((data->dev_particle_position[i * 3 + 0] - data->dev_outer_bbox[0]) / data->m_grid_spacing + 0.5);
-        int y = floor((data->dev_particle_position[i * 3 + 1] - data->dev_outer_bbox[1]) / data->m_grid_spacing + 0.5);
-        int z = floor((data->dev_particle_position[i * 3 + 2] - data->dev_outer_bbox[2]) / data->m_grid_spacing + 0.5);
+        int x = floor((data.dev_particle_position[i * 3 + 0] - data.m_outer_bbox[0]) / data.m_grid_spacing + 0.5);
+        int y = floor((data.dev_particle_position[i * 3 + 1] - data.m_outer_bbox[1]) / data.m_grid_spacing + 0.5);
+        int z = floor((data.dev_particle_position[i * 3 + 2] - data.m_outer_bbox[2]) / data.m_grid_spacing + 0.5);
         // get the left bottom grid id
         x--;
         y--;
         z--;
-        if (x < 0 || y < 0 || z < 0 || x >= data->dev_grid_size[0] - 2 || y >= data->dev_grid_size[1] - 2 || z >= data->dev_grid_size[2] - 2)
+        if (x < 0 || y < 0 || z < 0 || x >= data.m_grid_size[0] - 2 || y >= data.m_grid_size[1] - 2 || z >= data.m_grid_size[2] - 2)
         {
-            x = max(0, min(x, (int)data->dev_grid_size[0] - 3));
-            y = max(0, min(y, (int)data->dev_grid_size[1] - 3));
-            z = max(0, min(z, (int)data->dev_grid_size[2] - 3));
-            printf("Warning: particle %d is out of grid, set to %d %d %d [Particle position] %.10f %.10f %.10f\n", i, x, y, z, data->dev_particle_position[i * 3 + 0], data->dev_particle_position[i * 3 + 1], data->dev_particle_position[i * 3 + 2]);
+            x = max(0, min(x, (int)data.m_grid_size[0] - 3));
+            y = max(0, min(y, (int)data.m_grid_size[1] - 3));
+            z = max(0, min(z, (int)data.m_grid_size[2] - 3));
+            printf("Warning: particle %d is out of grid, set to %d %d %d [Particle position] %.10f %.10f %.10f\n", i, x, y, z, data.dev_particle_position[i * 3 + 0], data.dev_particle_position[i * 3 + 1], data.dev_particle_position[i * 3 + 2]);
         }
 
-        data->dev_particle_to_grid_id[i] = x * data->dev_grid_size[1] * data->dev_grid_size[2] + y * data->dev_grid_size[2] + z;
+        data.dev_particle_to_grid_id[i] = x * data.m_grid_size[1] * data.m_grid_size[2] + y * data.m_grid_size[2] + z;
     }
 
     template <typename Real>
-    __device__ void get_grid_position(Real *grid_position, unsigned int id, MPMSolverData<Real> *data)
+    __device__ void get_grid_position(Real *grid_position, unsigned int id, MPMSolverData<Real> data)
     {
-        unsigned int z = id % data->dev_grid_size[2];
-        unsigned int y = (id / data->dev_grid_size[2]) % data->dev_grid_size[1];
-        unsigned int x = id / data->dev_grid_size[2] / data->dev_grid_size[1];
-        grid_position[0] = data->dev_outer_bbox[0] + x * data->m_grid_spacing;
-        grid_position[1] = data->dev_outer_bbox[1] + y * data->m_grid_spacing;
-        grid_position[2] = data->dev_outer_bbox[2] + z * data->m_grid_spacing;
+        unsigned int z = id % data.m_grid_size[2];
+        unsigned int y = (id / data.m_grid_size[2]) % data.m_grid_size[1];
+        unsigned int x = id / data.m_grid_size[2] / data.m_grid_size[1];
+        grid_position[0] = data.m_outer_bbox[0] + x * data.m_grid_spacing;
+        grid_position[1] = data.m_outer_bbox[1] + y * data.m_grid_spacing;
+        grid_position[2] = data.m_outer_bbox[2] + z * data.m_grid_spacing;
     }
 
     template <typename Real>
@@ -112,167 +112,167 @@ namespace MPMSolverKernel
     }
 
     template <typename Real>
-    __global__ void P2G_momentum_and_mass(MPMSolverData<Real> *data)
+    __global__ void P2G_momentum_and_mass(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
-        Real *particle_position = &data->dev_particle_position[i * 3];
-        Real *particle_velocity = &data->dev_particle_velocity[i * 3];
-        Real *affine_momentum = &data->dev_particle_affine_momentum[i * 9];
-        unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
-        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
-        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
-        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        Real *particle_position = &data.dev_particle_position[i * 3];
+        Real *particle_velocity = &data.dev_particle_velocity[i * 3];
+        Real *affine_momentum = &data.dev_particle_affine_momentum[i * 9];
+        unsigned int leftbottom_grid_id = data.dev_particle_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data.m_grid_size[1] / data.m_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data.m_grid_size[2]) % data.m_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data.m_grid_size[2];
         for (unsigned int dx = 0; dx < 3; ++dx)
             for (unsigned int dy = 0; dy < 3; ++dy)
                 for (unsigned int dz = 0; dz < 3; ++dz)
                 {
-                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    unsigned int grid_id = (x + dx) * data.m_grid_size[1] * data.m_grid_size[2] + (y + dy) * data.m_grid_size[2] + (z + dz);
                     Real grid_position[3];
                     get_grid_position(grid_position, grid_id, data);
-                    Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
+                    Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data.m_grid_spacing);
                     Real momentum[3];
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
                     cudaPhysics::matVec3(momentum, affine_momentum, delta_position);
                     Real temp_momentum[3];
-                    cudaPhysics::vecMul3(temp_momentum, data->dev_particle_mass[i], particle_velocity);
+                    cudaPhysics::vecMul3(temp_momentum, data.dev_particle_mass[i], particle_velocity);
                     cudaPhysics::vecAdd3(momentum, temp_momentum, momentum);
                     cudaPhysics::vecMul3(momentum, weight, momentum);
-                    atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 0], momentum[0]);
-                    atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 1], momentum[1]);
-                    atomicAdd(&data->dev_grid_momentum[grid_id * 3 + 2], momentum[2]);
+                    atomicAdd(&data.dev_grid_momentum[grid_id * 3 + 0], momentum[0]);
+                    atomicAdd(&data.dev_grid_momentum[grid_id * 3 + 1], momentum[1]);
+                    atomicAdd(&data.dev_grid_momentum[grid_id * 3 + 2], momentum[2]);
 
-                    atomicAdd(&data->dev_grid_mass[grid_id], weight * data->dev_particle_mass[i]);
+                    atomicAdd(&data.dev_grid_mass[grid_id], weight * data.dev_particle_mass[i]);
                 }
     }
 
     template <typename Real>
-    __global__ void calc_grids_velocity(MPMSolverData<Real> *data)
+    __global__ void calc_grids_velocity(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_grid)
+        if (i >= data.m_num_grid)
             return;
-        if (data->dev_grid_mass[i] > 0)
-        cudaPhysics::vecMul3(&data->dev_grid_velocity[i * 3], (Real)(1. / data->dev_grid_mass[i]), &data->dev_grid_momentum[i * 3]);
+        if (data.dev_grid_mass[i] > 0)
+        cudaPhysics::vecMul3(&data.dev_grid_velocity[i * 3], (Real)(1. / data.dev_grid_mass[i]), &data.dev_grid_momentum[i * 3]);
         else
         {
-            data->dev_grid_velocity[i * 3 + 0] = 0;
-            data->dev_grid_velocity[i * 3 + 1] = 0;
-            data->dev_grid_velocity[i * 3 + 2] = 0;
+            data.dev_grid_velocity[i * 3 + 0] = 0;
+            data.dev_grid_velocity[i * 3 + 1] = 0;
+            data.dev_grid_velocity[i * 3 + 2] = 0;
         }
     }
 
     template <typename Real>
-    __global__ void grids_gravity(MPMSolverData<Real> *data)
+    __global__ void grids_gravity(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_grid)
+        if (i >= data.m_num_grid)
             return;
         Real delta_velocity[3];
-        cudaPhysics::vecMul3(delta_velocity, data->m_time_step, data->dev_gravity);
-        cudaPhysics::vecAdd3(&data->dev_grid_velocity[i * 3], &data->dev_grid_velocity[i * 3], delta_velocity);
+        cudaPhysics::vecMul3(delta_velocity, data.m_time_step, data.m_gravity);
+        cudaPhysics::vecAdd3(&data.dev_grid_velocity[i * 3], &data.dev_grid_velocity[i * 3], delta_velocity);
     }
 
     template <typename Real>
-    __global__ void particles_gravity(MPMSolverData<Real> *data)
+    __global__ void particles_gravity(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
         Real delta_velocity[3];
-        cudaPhysics::vecMul3(delta_velocity, data->m_time_step, data->dev_gravity);
-        cudaPhysics::vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], delta_velocity);
+        cudaPhysics::vecMul3(delta_velocity, data.m_time_step, data.m_gravity);
+        cudaPhysics::vecAdd3(&data.dev_particle_velocity[i * 3], &data.dev_particle_velocity[i * 3], delta_velocity);
     }
 
     template <typename Real>
-    __global__ void grids_boundary_conditions(MPMSolverData<Real> *data)
+    __global__ void grids_boundary_conditions(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_grid)
+        if (i >= data.m_num_grid)
             return;
-        unsigned int x = i / data->dev_grid_size[1] / data->dev_grid_size[2];
-        unsigned int y = (i / data->dev_grid_size[2]) % data->dev_grid_size[1];
-        unsigned int z = i % data->dev_grid_size[2];
-        if (x <= data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 0] = max(0., data->dev_grid_velocity[i * 3 + 0]);
-        if (x >= data->dev_grid_size[0] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 0] = min(0., data->dev_grid_velocity[i * 3 + 0]);
-        if (y <= data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 1] = max(0., data->dev_grid_velocity[i * 3 + 1]);
-        if (y >= data->dev_grid_size[1] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 1] = min(0., data->dev_grid_velocity[i * 3 + 1]);
-        if (z <= data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 2] = max(0., data->dev_grid_velocity[i * 3 + 2]);
-        if (z >= data->dev_grid_size[2] - 1 - data->m_boundary_thickness)
-            data->dev_grid_velocity[i * 3 + 2] = min(0., data->dev_grid_velocity[i * 3 + 2]);
+        unsigned int x = i / data.m_grid_size[1] / data.m_grid_size[2];
+        unsigned int y = (i / data.m_grid_size[2]) % data.m_grid_size[1];
+        unsigned int z = i % data.m_grid_size[2];
+        if (x <= data.m_boundary_thickness)
+            data.dev_grid_velocity[i * 3 + 0] = max(0., data.dev_grid_velocity[i * 3 + 0]);
+        if (x >= data.m_grid_size[0] - 1 - data.m_boundary_thickness)
+            data.dev_grid_velocity[i * 3 + 0] = min(0., data.dev_grid_velocity[i * 3 + 0]);
+        if (y <= data.m_boundary_thickness)
+            data.dev_grid_velocity[i * 3 + 1] = max(0., data.dev_grid_velocity[i * 3 + 1]);
+        if (y >= data.m_grid_size[1] - 1 - data.m_boundary_thickness)
+            data.dev_grid_velocity[i * 3 + 1] = min(0., data.dev_grid_velocity[i * 3 + 1]);
+        if (z <= data.m_boundary_thickness)
+            data.dev_grid_velocity[i * 3 + 2] = max(0., data.dev_grid_velocity[i * 3 + 2]);
+        if (z >= data.m_grid_size[2] - 1 - data.m_boundary_thickness)
+            data.dev_grid_velocity[i * 3 + 2] = min(0., data.dev_grid_velocity[i * 3 + 2]);
     }
 
     template <typename Real>
-    __global__ void G2P_velocity_and_C(MPMSolverData<Real> *data)
+    __global__ void G2P_velocity_and_C(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
-        if (data->dev_particle_type[i] == MPM_STATIC)
+        if (data.dev_particle_type[i] == MPM_STATIC)
             return;
-        Real *particle_position = &data->dev_particle_position[i * 3];
-        unsigned int leftbottom_grid_id = data->dev_particle_to_grid_id[i];
-        unsigned int x = leftbottom_grid_id / data->dev_grid_size[1] / data->dev_grid_size[2];
-        unsigned int y = (leftbottom_grid_id / data->dev_grid_size[2]) % data->dev_grid_size[1];
-        unsigned int z = leftbottom_grid_id % data->dev_grid_size[2];
+        Real *particle_position = &data.dev_particle_position[i * 3];
+        unsigned int leftbottom_grid_id = data.dev_particle_to_grid_id[i];
+        unsigned int x = leftbottom_grid_id / data.m_grid_size[1] / data.m_grid_size[2];
+        unsigned int y = (leftbottom_grid_id / data.m_grid_size[2]) % data.m_grid_size[1];
+        unsigned int z = leftbottom_grid_id % data.m_grid_size[2];
         for (unsigned int dx = 0; dx < 3; ++dx)
             for (unsigned int dy = 0; dy < 3; ++dy)
                 for (unsigned int dz = 0; dz < 3; ++dz)
                 {
-                    unsigned int grid_id = (x + dx) * data->dev_grid_size[1] * data->dev_grid_size[2] + (y + dy) * data->dev_grid_size[2] + (z + dz);
+                    unsigned int grid_id = (x + dx) * data.m_grid_size[1] * data.m_grid_size[2] + (y + dy) * data.m_grid_size[2] + (z + dz);
                     Real grid_position[3];
                     get_grid_position(grid_position, grid_id, data);
-                    Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data->m_grid_spacing);
+                    Real weight = grid_particle_quadratic_weight(grid_position, particle_position, data.m_grid_spacing);
 
                     Real velocity[3];
-                    cudaPhysics::vecMul3(velocity, weight, &data->dev_grid_velocity[grid_id * 3]);
-                    cudaPhysics::vecAdd3(&data->dev_particle_velocity[i * 3], &data->dev_particle_velocity[i * 3], velocity);
+                    cudaPhysics::vecMul3(velocity, weight, &data.dev_grid_velocity[grid_id * 3]);
+                    cudaPhysics::vecAdd3(&data.dev_particle_velocity[i * 3], &data.dev_particle_velocity[i * 3], velocity);
 
                     Real delta_position[3];
                     cudaPhysics::vecSubs3(delta_position, grid_position, particle_position);
                     Real temp_C[9];
-                    cudaPhysics::vecvecT(temp_C, &data->dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
-                    cudaPhysics::matMul3(temp_C, weight * 4 / data->m_grid_spacing / data->m_grid_spacing, temp_C);
-                    cudaPhysics::vecAdd(&data->dev_particle_C[i * 9], temp_C, &data->dev_particle_C[i * 9], 9);
+                    cudaPhysics::vecvecT(temp_C, &data.dev_grid_velocity[grid_id * 3], delta_position, 3, 3);
+                    cudaPhysics::matMul3(temp_C, weight * 4 / data.m_grid_spacing / data.m_grid_spacing, temp_C);
+                    cudaPhysics::vecAdd(&data.dev_particle_C[i * 9], temp_C, &data.dev_particle_C[i * 9], 9);
                 }
     }
 
     template <typename Real>
-    __global__ void update_particle_positions(MPMSolverData<Real> *data)
+    __global__ void update_particle_positions(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
-        if (data->dev_particle_type[i] == 0)
+        if (data.dev_particle_type[i] == 0)
             return;
-        Real *position = &data->dev_particle_position[i * 3];
+        Real *position = &data.dev_particle_position[i * 3];
         Real delta_position[3];
-        cudaPhysics::vecMul3(delta_position, data->m_time_step, &data->dev_particle_velocity[i * 3]);
+        cudaPhysics::vecMul3(delta_position, data.m_time_step, &data.dev_particle_velocity[i * 3]);
         cudaPhysics::vecAdd3(position, position, delta_position);
     }
 
     template <typename Real>
-    __global__ void particles_boundary_conditions(MPMSolverData<Real> *data)
+    __global__ void particles_boundary_conditions(MPMSolverData<Real> data)
     {
         unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-        if (i >= data->m_num_particle)
+        if (i >= data.m_num_particle)
             return;
         for (unsigned int j = 0; j < 3; ++j)
         {
-            if (data->dev_particle_position[i * 3 + j] < data->dev_inner_bbox[j])
+            if (data.dev_particle_position[i * 3 + j] < data.m_inner_bbox[j])
             {
-                data->dev_particle_position[i * 3 + j] = data->dev_inner_bbox[j];
+                data.dev_particle_position[i * 3 + j] = data.m_inner_bbox[j];
             }
-            if (data->dev_particle_position[i * 3 + j] > data->dev_inner_bbox[j + 3])
+            if (data.dev_particle_position[i * 3 + j] > data.m_inner_bbox[j + 3])
             {
-                data->dev_particle_position[i * 3 + j] = data->dev_inner_bbox[j + 3];
+                data.dev_particle_position[i * 3 + j] = data.m_inner_bbox[j + 3];
             }
         }
     }
@@ -305,34 +305,26 @@ MPMSolver<Real>::MPMSolver(
     cudaPhysics::fill_identity_matrix(m_data.dev_particle_F, m_data.m_num_particle, 3);
     cudaMalloc(&m_data.dev_particle_to_grid_id, sizeof(unsigned int) * m_data.m_num_particle);
 
-    // need expand the bbox to ensure the particles can get 3x3x3 grids
-    std::vector<Real> inner_bbox;
-    std::vector<Real> outer_bbox;
-    std::vector<unsigned int> grid_size; // order: x y z
     m_data.m_grid_spacing = grid_spacing;
     m_data.m_boundary_thickness = boundary_thickness;
-    inner_bbox = bbox;
-    outer_bbox = bbox;
+    for (unsigned int i = 0; i < 6; ++i)
+    {
+        m_data.m_inner_bbox[i] = bbox[i];
+        m_data.m_outer_bbox[i] = bbox[i];
+    }
     for (unsigned int i = 0; i < 3; ++i)
     {
-        outer_bbox[i] -= m_data.m_boundary_thickness * m_data.m_grid_spacing;
-        outer_bbox[i + 3] += m_data.m_boundary_thickness * m_data.m_grid_spacing;
+        m_data.m_outer_bbox[i] -= m_data.m_boundary_thickness * m_data.m_grid_spacing;
+        m_data.m_outer_bbox[i + 3] += m_data.m_boundary_thickness * m_data.m_grid_spacing;
     }
-    grid_size.clear();
     for (unsigned int i = 0; i < 3; ++i)
-        grid_size.push_back((unsigned int)(floor((outer_bbox[i + 3] - outer_bbox[i]) / m_data.m_grid_spacing + 0.5)) + 1);
-    printf("grid_size = [%u %u %u]\n", grid_size[0], grid_size[1], grid_size[2]);
+        m_data.m_grid_size[i] = (unsigned int)(floor((m_data.m_outer_bbox[i + 3] - m_data.m_outer_bbox[i]) / m_data.m_grid_spacing + 0.5)) + 1;
+    printf("grid_size = [%u %u %u]\n", m_data.m_grid_size[0], m_data.m_grid_size[1], m_data.m_grid_size[2]);
     for (unsigned int i = 0; i < 3; ++i)
-        outer_bbox[i + 3] = outer_bbox[i] + m_data.m_grid_spacing * grid_size[i];
-    m_data.m_num_grid = grid_size[0] * grid_size[1] * grid_size[2];
+        m_data.m_outer_bbox[i + 3] = m_data.m_outer_bbox[i] + m_data.m_grid_spacing * m_data.m_grid_size[i];
+    m_data.m_num_grid = m_data.m_grid_size[0] * m_data.m_grid_size[1] * m_data.m_grid_size[2];
     printf("num_grid = %u\n", m_data.m_num_grid);
 
-    cudaMalloc(&m_data.dev_inner_bbox, sizeof(Real) * 6);
-    cudaMemcpy(m_data.dev_inner_bbox, inner_bbox.data(), sizeof(Real) * 6, cudaMemcpyHostToDevice);
-    cudaMalloc(&m_data.dev_outer_bbox, sizeof(Real) * 6);
-    cudaMemcpy(m_data.dev_outer_bbox, outer_bbox.data(), sizeof(Real) * 6, cudaMemcpyHostToDevice);
-    cudaMalloc(&m_data.dev_grid_size, sizeof(unsigned int) * 3);
-    cudaMemcpy(m_data.dev_grid_size, grid_size.data(), sizeof(unsigned int) * 3, cudaMemcpyHostToDevice);
     cudaMalloc(&m_data.dev_grid_momentum, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMalloc(&m_data.dev_grid_mass, sizeof(Real) * m_data.m_num_grid);
@@ -343,12 +335,9 @@ MPMSolver<Real>::MPMSolver(
     m_data.m_time_step = TIME_STEP;
     m_data.m_lame_mu = LAME_MU;
     m_data.m_lame_lambda = LAME_LAMBDA;
-    cudaMalloc(&m_data.dev_gravity, sizeof(Real) * 3);
-    std::vector<Real> gravity = {0., -GRAVITY, 0.};
-    cudaMemcpy(m_data.dev_gravity, gravity.data(), sizeof(Real) * 3, cudaMemcpyHostToDevice);
-
-    cudaMalloc(&m_dev_data, sizeof(MPMSolverData<Real>));
-    cudaMemcpy(m_dev_data, &m_data, sizeof(MPMSolverData<Real>), cudaMemcpyHostToDevice);
+    m_data.m_gravity[0] = 0.;
+    m_data.m_gravity[1] = -GRAVITY;
+    m_data.m_gravity[2] = 0.;
 }
 
 template <typename Real>
@@ -363,15 +352,9 @@ MPMSolver<Real>::~MPMSolver()
     cudaFree(m_data.dev_particle_affine_momentum);
     cudaFree(m_data.dev_particle_F);
     cudaFree(m_data.dev_particle_to_grid_id);
-    cudaFree(m_data.dev_inner_bbox);
-    cudaFree(m_data.dev_outer_bbox);
-    cudaFree(m_data.dev_grid_size);
     cudaFree(m_data.dev_grid_momentum);
     cudaFree(m_data.dev_grid_mass);
     cudaFree(m_data.dev_grid_velocity);
-    cudaFree(m_data.dev_gravity);
-
-    cudaFree(m_dev_data);
 }
 
 template <typename Real>
@@ -380,19 +363,19 @@ void MPMSolver<Real>::Step()
     // P2G
     cudaMemset(m_data.dev_grid_momentum, 0, sizeof(Real) * m_data.m_num_grid * 3);
     cudaMemset(m_data.dev_grid_mass, 0, sizeof(Real) * m_data.m_num_grid);
-    MPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    // MPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MPMSolverKernel::update_F<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::particles_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::calc_particle_affine_momentum<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::calc_particle_to_leftbottom_grid_id<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::P2G_momentum_and_mass<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::calc_grids_velocity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_data);
+    // MPMSolverKernel::grids_gravity<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::grids_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_grid), CUDA_BLOCK_SIZE>>>(m_data);
     cudaMemset(m_data.dev_particle_velocity, 0, sizeof(Real) * m_data.m_num_particle * 3);
     cudaMemset(m_data.dev_particle_C, 0, sizeof(Real) * m_data.m_num_particle * 9);
-    MPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
-    MPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_dev_data);
+    MPMSolverKernel::G2P_velocity_and_C<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::update_particle_positions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
+    MPMSolverKernel::particles_boundary_conditions<Real><<<CUDA_GRID_SIZE(m_data.m_num_particle), CUDA_BLOCK_SIZE>>>(m_data);
 }
 
 template <typename Real>

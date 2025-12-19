@@ -321,7 +321,7 @@ int main()
     auto grid_dis_monitor = std::make_shared<viewer::LineSegment>(line_segs);
     grid_dis_monitor->AddRenderer(std::make_shared<viewer::SolidColorRenderer>(glm::vec3(1.0f, 0.0f, 0.0f)));
     app->GetRenderSystem()->AddRenderObject(grid_dis_monitor);
-    scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, grid_dis_monitor, &solver->m_data, solver->m_dev_data));
+    scene->AddConnector(std::make_shared<GridTriangleDebugConnector<Real>>(grid_inside_monitor, grid_dis_monitor, solver->m_data));
     #endif
 
     app->Run();

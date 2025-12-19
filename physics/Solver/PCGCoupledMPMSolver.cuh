@@ -6,8 +6,8 @@
 template <typename Real>
 struct PCGCoupledMPMSolverData
 {
-    const PCGFEMSolverData<Real> *dev_fem_data;
-    const PCGMPMSolverData<Real> *dev_mpm_data;
+    PCGFEMSolverData<Real> m_fem_data;
+    PCGMPMSolverData<Real> m_mpm_data;
 
     // surface triangle mesh for coupling
     unsigned int m_num_triangle;
@@ -78,7 +78,6 @@ public:
     bool m_verbose = false;
     unsigned int m_line_search_max_iteration;
     PCGCoupledMPMSolverData<Real> m_data;
-    PCGCoupledMPMSolverData<Real> *m_dev_data;
     PCGMPMSolver<Real> m_mpm_solver;
     PCGFEMSolver<Real> m_fem_solver;
 };

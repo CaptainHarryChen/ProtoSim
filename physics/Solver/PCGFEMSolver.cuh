@@ -41,7 +41,7 @@ struct PCGFEMSolverData
     Real m_lame_mu;
     Real m_lame_lambda;
     Real m_ground_collision_stiffness;
-    Real *dev_gravity;
+    Real m_gravity[3];
 };
 
 template <typename Real>
@@ -78,7 +78,6 @@ public:
     unsigned int m_line_search_max_iteration;
     Real m_pcg_residual_tolerance;
     PCGFEMSolverData<Real> m_data;
-    PCGFEMSolverData<Real> *m_dev_data;
 };
 
 extern template struct PCGFEMSolverData<float>;

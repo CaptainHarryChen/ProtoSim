@@ -28,9 +28,9 @@ struct PCGMPMSolverData
     unsigned int m_num_grid;
     Real m_grid_spacing;
     unsigned int m_boundary_thickness;
-    Real *dev_inner_bbox;
-    Real *dev_outer_bbox;
-    unsigned int *dev_grid_size;
+    Real m_inner_bbox[6];
+    Real m_outer_bbox[6];
+    unsigned int m_grid_size[3];
     Real *dev_grid_momentum;
     Real *dev_grid_mass;
     Real *dev_grid_force;
@@ -51,7 +51,7 @@ struct PCGMPMSolverData
     Real m_fluid_viscosity = 0.0f;
     Real m_lame_mu = 500000.0f;
     Real m_lame_lambda = 400000.0f;
-    Real *dev_gravity;
+    Real m_gravity[3];
 };
 
 template <typename Real>
@@ -92,7 +92,6 @@ public:
     unsigned int m_line_search_max_iteration;
     Real m_pcg_residual_tolerance;
     PCGMPMSolverData<Real> m_data;
-    PCGMPMSolverData<Real> *m_dev_data;
 
     SeparatingCorrector<Real> *m_corrector = nullptr;
 };

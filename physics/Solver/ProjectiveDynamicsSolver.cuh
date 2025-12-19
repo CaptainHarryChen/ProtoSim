@@ -41,7 +41,7 @@ struct ProjectiveDynamicsSolverData
     Real m_lame_lambda;
     Real m_ground_collision_stiffness;
     Real m_under_relaxation;
-    Real *dev_gravity;
+    Real m_gravity[3];
 };
 
 template <typename Real>
@@ -55,9 +55,6 @@ public:
     virtual Real *GetDevicePositions() override;
 
     ProjectiveDynamicsSolverData<Real> m_data;
-
-protected:
-    ProjectiveDynamicsSolverData<Real> *m_dev_data;
 
     void UpdateChebyshevOmega(Real &omega, unsigned iter);
     void SwapPositionBuffers();
