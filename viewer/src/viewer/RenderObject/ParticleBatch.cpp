@@ -35,4 +35,9 @@ void ParticleBatch::UpdateParticles(const std::vector<Particle>& data)
     glBindVertexArray(0);
 }
 
+glm::mat4 ParticleBatch::GetModelMatrix() const
+{
+    return m_model_mat;
+}
+
 }  // namespace viewer

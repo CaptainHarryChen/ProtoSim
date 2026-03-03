@@ -6,6 +6,8 @@
 #include <Solver/RigidSolver.cuh>
 #include <viewer/utils/PrimitiveGenerator.h>
 #include <viewer/Renderer/PbrRenderer.h>
+#include <viewer/Renderer/SphereRenderer.h>
+#include <viewer/RenderObject/ParticleBatch.h>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
@@ -21,7 +23,7 @@ public:
     std::vector<int> m_shapes;
     std::vector<Real> m_shape_params;
 
-    std::vector<std::shared_ptr<viewer::Mesh>> m_rigid_meshes;
+    std::vector<std::shared_ptr<viewer::RenderObject>> m_rigid_objects;
 
     void AddBox(glm::vec3 position, glm::quat orientation,
                 glm::vec3 half_extents, Real mass,
@@ -49,7 +51,7 @@ public:
         auto mesh = viewer::PrimitiveGenerator::GenerateBox(half_extents);
         mesh->AddRenderer(std::make_shared<viewer::PbrRenderer>(render_material));
         mesh->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
-        m_rigid_meshes.push_back(mesh);
+        m_rigid_objects.push_back(mesh);
         viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(mesh);
     }
 
@@ -76,11 +78,15 @@ public:
         m_shape_params.push_back(0);
         m_shape_params.push_back(0);
 
-        auto mesh = viewer::PrimitiveGenerator::GenerateSphere(radius);
-        mesh->AddRenderer(std::make_shared<viewer::PbrRenderer>(render_material));
-        mesh->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
-        m_rigid_meshes.push_back(mesh);
-        viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(mesh);
+        std::vector<viewer::Particle> particles = {
+            {glm::vec3(0.0f, 0.0f, 0.0f), render_material[0]}
+        };
+        auto batch = std::make_shared<viewer::ParticleBatch>(particles);
+        batch->AddRenderer(std::make_shared<viewer::SphereRenderer>(
+            glm::vec2(render_material[1].x, render_material[1].y), radius));
+        batch->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
+        m_rigid_objects.push_back(batch);
+        viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(batch);
     }
 
     void AddCapsule(glm::vec3 position, glm::quat orientation,
@@ -109,7 +115,7 @@ public:
         auto mesh = viewer::PrimitiveGenerator::GenerateCapsule(radius, half_height);
         mesh->AddRenderer(std::make_shared<viewer::PbrRenderer>(render_material));
         mesh->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
-        m_rigid_meshes.push_back(mesh);
+        m_rigid_objects.push_back(mesh);
         viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(mesh);
     }
 
@@ -133,7 +139,7 @@ public:
         std::vector<Real> new_masses(num_bodies);
         std::vector<int> new_shapes(num_bodies);
         std::vector<Real> new_shape_params(num_bodies * 3);
-        std::vector<std::shared_ptr<viewer::Mesh>> new_meshes(num_bodies);
+        std::vector<std::shared_ptr<viewer::RenderObject>> new_objects(num_bodies);
 
         for (size_t i = 0; i < num_bodies; ++i)
         {
@@ -151,7 +157,7 @@ public:
             }
             new_masses[i] = m_masses[src];
             new_shapes[i] = m_shapes[src];
-            new_meshes[i] = m_rigid_meshes[src];
+            new_objects[i] = m_rigid_objects[src];
         }
 
         m_positions = std::move(new_positions);
@@ -161,7 +167,7 @@ public:
         m_masses = std::move(new_masses);
         m_shapes = std::move(new_shapes);
         m_shape_params = std::move(new_shape_params);
-        m_rigid_meshes = std::move(new_meshes);
+        m_rigid_objects = std::move(new_objects);
     }
 };
 
