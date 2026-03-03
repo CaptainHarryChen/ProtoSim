@@ -7,7 +7,9 @@
 #include <viewer/utils/PrimitiveGenerator.h>
 #include <viewer/Renderer/PbrRenderer.h>
 #include <viewer/Renderer/SphereRenderer.h>
+#include <viewer/Renderer/CapsuleRenderer.h>
 #include <viewer/RenderObject/ParticleBatch.h>
+#include <viewer/RenderObject/SingleCapsule.h>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
@@ -112,11 +114,12 @@ public:
         m_shape_params.push_back(half_height);
         m_shape_params.push_back(0);
 
-        auto mesh = viewer::PrimitiveGenerator::GenerateCapsule(radius, half_height);
-        mesh->AddRenderer(std::make_shared<viewer::PbrRenderer>(render_material));
-        mesh->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
-        m_rigid_objects.push_back(mesh);
-        viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(mesh);
+        auto capsule = std::make_shared<viewer::SingleCapsule>(render_material[0]);
+        capsule->AddRenderer(std::make_shared<viewer::CapsuleRenderer>(
+            glm::vec2(render_material[1].x, render_material[1].y), radius, half_height));
+        capsule->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
+        m_rigid_objects.push_back(capsule);
+        viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(capsule);
     }
 
     void SortByShape()
