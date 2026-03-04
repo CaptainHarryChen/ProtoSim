@@ -89,68 +89,16 @@ namespace RigidSolverKernel
     }
 
     template <typename Real>
-    __device__ void get_lowest_point_sphere(Real *lowest, const Real *pos, const Real *orient, Real radius)
-    {
-        Real down[3] = {0, -1, 0};
-        Real rotated_down[3];
-        cudaPhysics::quatRotateVector(rotated_down, orient, down);
-        cudaPhysics::axpby(lowest, static_cast<Real>(1.0), pos, radius, rotated_down, 3);
-    }
-
-    template <typename Real>
-    __device__ void get_lowest_point_box(Real *lowest, const Real *pos, const Real *orient, Real hx, Real hy, Real hz)
-    {
-        Real corners[8][3] = {
-            {-hx, -hy, -hz}, {hx, -hy, -hz}, {-hx, hy, -hz}, {hx, hy, -hz},
-            {-hx, -hy, hz}, {hx, -hy, hz}, {-hx, hy, hz}, {hx, hy, hz}};
-
-        Real min_y = 1e30;
-        Real world_corner[3];
-
-        for (int c = 0; c < 8; ++c)
-        {
-            Real rotated_corner[3];
-            cudaPhysics::quatRotateVector(rotated_corner, orient, corners[c]);
-            cudaPhysics::vecAdd3(world_corner, rotated_corner, pos);
-
-            if (world_corner[1] < min_y)
-            {
-                min_y = world_corner[1];
-                cudaPhysics::vecCopy3(lowest, world_corner);
-            }
-        }
-    }
-
-    template <typename Real>
-    __device__ void get_lowest_point_capsule(Real *lowest, const Real *pos, const Real *orient, Real radius, Real half_height)
-    {
-        Real axis[3] = {0, 1, 0};
-        Real rotated_axis[3];
-        cudaPhysics::quatRotateVector(rotated_axis, orient, axis);
-
-        Real top_center[3], bottom_center[3];
-        cudaPhysics::axpby(top_center, static_cast<Real>(1.0), pos, half_height, rotated_axis, 3);
-        cudaPhysics::axpby(bottom_center, static_cast<Real>(1.0), pos, -half_height, rotated_axis, 3);
-
-        Real down[3] = {0, -1, 0};
-        Real rotated_down[3];
-        cudaPhysics::quatRotateVector(rotated_down, orient, down);
-
-        Real top_lowest[3], bottom_lowest[3];
-        cudaPhysics::axpby(top_lowest, static_cast<Real>(1.0), top_center, radius, rotated_down, 3);
-        cudaPhysics::axpby(bottom_lowest, static_cast<Real>(1.0), bottom_center, radius, rotated_down, 3);
-
-        if (top_lowest[1] < bottom_lowest[1])
-            cudaPhysics::vecCopy3(lowest, top_lowest);
-        else
-            cudaPhysics::vecCopy3(lowest, bottom_lowest);
-    }
-
-    template <typename Real>
-    __global__ void solve_ground_collision(RigidSolverData<Real> data)
+    __global__ void solve_ground_collision(
+        RigidSolverData<Real> data,
+        const CollisionInfo<Real>* collisions)
     {
         unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
         if (i >= data.num_bodies)
+            return;
+
+        const CollisionInfo<Real>& col = collisions[i];
+        if (col.body_id_a < 0)
             return;
 
         Real *pos = &data.dev_position[i * 3];
@@ -158,25 +106,8 @@ namespace RigidSolverKernel
         Real *lin_vel = &data.dev_linear_velocity[i * 3];
         Real *ang_vel = &data.dev_angular_velocity[i * 3];
 
-        int shape = data.dev_shape[i];
-        Real p0 = data.dev_shape_param[i * 3 + 0];
-        Real p1 = data.dev_shape_param[i * 3 + 1];
-        Real p2 = data.dev_shape_param[i * 3 + 2];
-
-        Real lowest[3];
-        if (shape == RIGID_BODY_SPHERE)
-            get_lowest_point_sphere(lowest, pos, orient, p0);
-        else if (shape == RIGID_BODY_BOX)
-            get_lowest_point_box(lowest, pos, orient, p0, p1, p2);
-        else
-            get_lowest_point_capsule(lowest, pos, orient, p0, p1);
-
-        Real penetration = data.m_ground_height - lowest[1];
-        if (penetration <= 0)
-            return;
-
-        Real r[3];
-        cudaPhysics::vecSubs3(r, lowest, pos);
+        Real r_world[3];
+        cudaPhysics::quatRotateVector(r_world, orient, col.local_point_a);
 
         Real inv_m = data.dev_inv_mass[i];
         Real *inv_I_local = &data.dev_inv_inertia_tensor_local[i * 9];
@@ -189,27 +120,26 @@ namespace RigidSolverKernel
         cudaPhysics::matMul3(temp, RT, inv_I_local);
         cudaPhysics::matMul3(inv_I_world, temp, R);
 
-        Real n[3] = {0, 1, 0};
         Real r_cross_n[3];
-        cudaPhysics::cross3(r_cross_n, r, n);
+        cudaPhysics::cross3(r_cross_n, r_world, col.normal);
 
         Real w = inv_m;
         Real I_r_cross_n[3];
         cudaPhysics::matVec3(I_r_cross_n, inv_I_world, r_cross_n);
         w += cudaPhysics::dot3(r_cross_n, I_r_cross_n);
 
-        Real lambda = penetration / w;
+        Real lambda = col.penetration / w;
 
         pos[1] += lambda * inv_m;
 
         cudaPhysics::axpby(ang_vel, static_cast<Real>(1.0), ang_vel, lambda, I_r_cross_n, 3);
 
         Real v_contact[3];
-        v_contact[0] = lin_vel[0] + ang_vel[1] * r[2] - ang_vel[2] * r[1];
-        v_contact[1] = lin_vel[1] + ang_vel[2] * r[0] - ang_vel[0] * r[2];
-        v_contact[2] = lin_vel[2] + ang_vel[0] * r[1] - ang_vel[1] * r[0];
+        v_contact[0] = lin_vel[0] + ang_vel[1] * r_world[2] - ang_vel[2] * r_world[1];
+        v_contact[1] = lin_vel[1] + ang_vel[2] * r_world[0] - ang_vel[0] * r_world[2];
+        v_contact[2] = lin_vel[2] + ang_vel[0] * r_world[1] - ang_vel[1] * r_world[0];
 
-        Real v_n = v_contact[1];
+        Real v_n = cudaPhysics::dot3(v_contact, col.normal);
         if (v_n < 0)
         {
             Real v_n_new = -data.m_restitution * v_n;
@@ -222,10 +152,16 @@ namespace RigidSolverKernel
     }
 
     template <typename Real>
-    __global__ void apply_friction(RigidSolverData<Real> data)
+    __global__ void apply_friction(
+        RigidSolverData<Real> data,
+        const CollisionInfo<Real>* collisions)
     {
         unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
         if (i >= data.num_bodies)
+            return;
+
+        const CollisionInfo<Real>& col = collisions[i];
+        if (col.body_id_a < 0)
             return;
 
         Real *pos = &data.dev_position[i * 3];
@@ -233,31 +169,27 @@ namespace RigidSolverKernel
         Real *lin_vel = &data.dev_linear_velocity[i * 3];
         Real *ang_vel = &data.dev_angular_velocity[i * 3];
 
-        int shape = data.dev_shape[i];
-        Real p0 = data.dev_shape_param[i * 3 + 0];
-        Real p1 = data.dev_shape_param[i * 3 + 1];
-        Real p2 = data.dev_shape_param[i * 3 + 2];
+        Real r_world[3];
+        cudaPhysics::quatRotateVector(r_world, orient, col.local_point_a);
 
-        Real lowest[3];
-        if (shape == RIGID_BODY_SPHERE)
-            get_lowest_point_sphere(lowest, pos, orient, p0);
-        else if (shape == RIGID_BODY_BOX)
-            get_lowest_point_box(lowest, pos, orient, p0, p1, p2);
-        else
-            get_lowest_point_capsule(lowest, pos, orient, p0, p1);
+        Real world_point[3];
+        cudaPhysics::vecAdd3(world_point, pos, r_world);
 
-        if (lowest[1] > data.m_ground_height + static_cast<Real>(0.001))
+        Real ground_y = col.normal[1] > 0 ? pos[1] - r_world[1] + col.penetration : pos[1] - r_world[1];
+        if (world_point[1] > ground_y + static_cast<Real>(0.001))
             return;
 
-        Real r[3];
-        cudaPhysics::vecSubs3(r, lowest, pos);
-
         Real v_contact[3];
-        v_contact[0] = lin_vel[0] + ang_vel[1] * r[2] - ang_vel[2] * r[1];
-        v_contact[1] = lin_vel[1] + ang_vel[2] * r[0] - ang_vel[0] * r[2];
-        v_contact[2] = lin_vel[2] + ang_vel[0] * r[1] - ang_vel[1] * r[0];
+        v_contact[0] = lin_vel[0] + ang_vel[1] * r_world[2] - ang_vel[2] * r_world[1];
+        v_contact[1] = lin_vel[1] + ang_vel[2] * r_world[0] - ang_vel[0] * r_world[2];
+        v_contact[2] = lin_vel[2] + ang_vel[0] * r_world[1] - ang_vel[1] * r_world[0];
 
-        Real v_t[3] = {v_contact[0], 0, v_contact[2]};
+        Real v_n = cudaPhysics::dot3(v_contact, col.normal);
+        Real v_t[3];
+        v_t[0] = v_contact[0] - v_n * col.normal[0];
+        v_t[1] = v_contact[1] - v_n * col.normal[1];
+        v_t[2] = v_contact[2] - v_n * col.normal[2];
+
         Real v_t_len = cudaPhysics::len3(v_t);
         if (v_t_len < static_cast<Real>(1e-6))
             return;
@@ -277,7 +209,7 @@ namespace RigidSolverKernel
         cudaPhysics::vecMul3(t, static_cast<Real>(1.0) / v_t_len, v_t);
 
         Real r_cross_t[3];
-        cudaPhysics::cross3(r_cross_t, r, t);
+        cudaPhysics::cross3(r_cross_t, r_world, t);
 
         Real w_t = inv_m;
         Real I_r_cross_t[3];
@@ -285,7 +217,7 @@ namespace RigidSolverKernel
         w_t += cudaPhysics::dot3(r_cross_t, I_r_cross_t);
 
         Real lambda_t = v_t_len / w_t;
-        Real max_friction = data.m_friction * abs(lin_vel[1]) / w_t;
+        Real max_friction = data.m_friction * abs(v_n) / w_t;
         if (lambda_t > max_friction)
             lambda_t = max_friction;
 
@@ -350,6 +282,7 @@ RigidSolver<Real>::RigidSolver(
     const std::vector<Real> &mass,
     const std::vector<int> &shape,
     const std::vector<Real> &shape_param)
+    : m_ground_collision(static_cast<unsigned int>(mass.size()), static_cast<Real>(0.0))
 {
     m_data.num_bodies = static_cast<unsigned int>(mass.size());
 
@@ -452,12 +385,20 @@ void RigidSolver<Real>::Step()
     {
         RigidSolverKernel::integrate<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
+        m_ground_collision.Detect(
+            m_data.dev_position,
+            m_data.dev_orientation,
+            m_data.dev_shape,
+            m_data.dev_shape_param);
+
         for (unsigned int iter = 0; iter < 1; ++iter)
         {
-            RigidSolverKernel::solve_ground_collision<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
+            RigidSolverKernel::solve_ground_collision<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(
+                m_data, m_ground_collision.GetData().dev_collisions);
         }
 
-        RigidSolverKernel::apply_friction<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
+        RigidSolverKernel::apply_friction<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(
+            m_data, m_ground_collision.GetData().dev_collisions);
 
         RigidSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 

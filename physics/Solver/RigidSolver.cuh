@@ -2,13 +2,7 @@
 
 #include <vector>
 #include <Solver/Solver.cuh>
-
-enum RigidBodyShape
-{
-    RIGID_BODY_BOX = 0,
-    RIGID_BODY_SPHERE = 1,
-    RIGID_BODY_CAPSULE = 2
-};
+#include <collision/GroundCollision.cuh>
 
 template <typename Real>
 struct RigidSolverData
@@ -57,6 +51,7 @@ public:
     Real *GetDeviceOrientations();
 
     RigidSolverData<Real> m_data;
+    GroundCollision<Real> m_ground_collision;
 };
 
 extern template struct RigidSolverData<float>;
