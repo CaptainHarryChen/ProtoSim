@@ -10,6 +10,8 @@
 #include <viewer/Renderer/CapsuleRenderer.h>
 #include <viewer/RenderObject/ParticleBatch.h>
 #include <viewer/RenderObject/SingleCapsule.h>
+#include <viewer/Connector/ModelConnector.cuh>
+
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
@@ -81,8 +83,7 @@ public:
         m_shape_params.push_back(0);
 
         std::vector<viewer::Particle> particles = {
-            {glm::vec3(0.0f, 0.0f, 0.0f), render_material[0]}
-        };
+            {glm::vec3(0.0f, 0.0f, 0.0f), render_material[0]}};
         auto batch = std::make_shared<viewer::ParticleBatch>(particles);
         batch->AddRenderer(std::make_shared<viewer::SphereRenderer>(
             glm::vec2(render_material[1].x, render_material[1].y), radius));
@@ -239,6 +240,13 @@ int main()
         scene->m_shapes,
         scene->m_shape_params);
     scene->SetSolver(solver);
+
+    auto model_connector = std::make_shared<viewer::ModelConnector<Real>>(
+        scene->m_rigid_objects,
+        solver->GetDevicePositions(),
+        solver->GetDeviceOrientations(),
+        static_cast<unsigned int>(scene->m_masses.size()));
+    scene->AddConnector(model_connector);
 
     app->Run();
 

@@ -12,8 +12,6 @@ public:
     SingleCapsule(glm::vec3 color = glm::vec3(1.0f));
     virtual ~SingleCapsule() = default;
 
-    glm::mat4 m_model_mat = glm::mat4(1.0f);
-
     virtual void DrawVAO() const override;
     virtual glm::mat4 GetModelMatrix() const override;
 

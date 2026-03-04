@@ -18,9 +18,8 @@ public:
     virtual ~RenderObject() = default;
 
     bool m_enable = true;
+    glm::mat4 m_model_mat = glm::mat4(1.0f);
 
-    /// @brief Add a renderer to the object
-    /// @param renderer The renderer will be called while the Draw function of the object is called. The renderer should setup the shader and uniform variables, then call the DrawVAO function of the object.
     virtual void AddRenderer(std::shared_ptr<Renderer> renderer);
 
     /// @brief Draw the object

@@ -25,6 +25,17 @@ struct RigidSolverData
     Real *dev_inv_inertia_tensor_local;
     int *dev_shape;
     Real *dev_shape_param;
+
+    Real *dev_position_prev;
+    Real *dev_orientation_prev;
+
+    Real m_time_step;
+    Real m_gravity[3];
+    Real m_damping;
+    Real m_ground_height;
+    Real m_restitution;
+    Real m_friction;
+    unsigned int m_num_substeps;
 };
 
 template <typename Real>
@@ -43,6 +54,7 @@ public:
 
     virtual void Step() override;
     virtual Real *GetDevicePositions() override;
+    Real *GetDeviceOrientations();
 
     RigidSolverData<Real> m_data;
 };

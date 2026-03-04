@@ -21,9 +21,6 @@ public:
     bool                      m_enable_shadow = true;
     std::vector<Vertex>       m_vertices;
     std::vector<unsigned int> m_indices;
-    /// @brief the model transform of the object
-    /// @details it is usually the identity matrix. Because the vertices are usually already in the world space.
-    glm::mat4 m_model_mat = glm::mat4(1.0f);
 
     virtual void      UpdateVertices(const std::vector<Vertex>& data);
     virtual void      DrawVAO() const override;

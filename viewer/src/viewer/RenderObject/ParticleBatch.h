@@ -19,7 +19,6 @@ public:
     virtual ~ParticleBatch() = default;
 
     std::vector<Particle> m_particles;
-    glm::mat4 m_model_mat = glm::mat4(1.0f);
 
     virtual void                UpdateParticles(const std::vector<Particle>& data);
     virtual void                DrawVAO() const override;
