@@ -17,19 +17,26 @@ struct RigidSolverData
     Real *dev_inv_mass;
     Real *dev_inertia_tensor_local;
     Real *dev_inv_inertia_tensor_local;
+    Real *dev_inv_inertia_tensor_world;
     int *dev_shape;
     Real *dev_shape_param;
 
     Real *dev_position_prev;
     Real *dev_orientation_prev;
+    Real *dev_linear_velocity_prev;
+    Real *dev_angular_velocity_prev;
+
+    Real *dev_delta_position;
+    Real *dev_delta_omega;
+    Real *dev_constraint_inv_weight;
 
     Real m_time_step;
     Real m_gravity[3];
     Real m_damping;
-    Real m_ground_height;
     Real m_restitution;
     Real m_friction;
     unsigned int m_num_substeps;
+    unsigned int m_num_solver_iterations;
 };
 
 template <typename Real>

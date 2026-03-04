@@ -13,13 +13,16 @@ public:
         const Real* dev_position,
         const Real* dev_orientation,
         const int* dev_shape,
-        const Real* dev_shape_param);
+        const Real* dev_shape_param
+    );
 
     CollisionData<Real>& GetData() { return m_data; }
     const CollisionData<Real>& GetData() const { return m_data; }
 
 private:
     CollisionData<Real> m_data;
+    unsigned int m_num_bodies;
+    Real m_ground_height;
 };
 
 extern template class GroundCollision<float>;

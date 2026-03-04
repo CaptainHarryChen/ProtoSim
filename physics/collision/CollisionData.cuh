@@ -25,9 +25,6 @@ struct CollisionData
     CollisionInfo<Real>* dev_collisions;
     int* dev_collision_count;
     unsigned int max_collisions;
-    unsigned int num_bodies;
-    
-    Real ground_height;
 };
 
 extern template struct CollisionInfo<float>;

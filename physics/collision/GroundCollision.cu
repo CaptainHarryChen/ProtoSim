@@ -65,7 +65,6 @@ namespace GroundCollisionKernel
     template <typename Real>
     __global__ void detect_ground_collision_kernel(
         CollisionInfo<Real>* collisions,
-        int* collision_count,
         unsigned int num_bodies,
         Real ground_height,
         const Real* position,
@@ -123,9 +122,9 @@ namespace GroundCollisionKernel
 template <typename Real>
 GroundCollision<Real>::GroundCollision(unsigned int num_bodies, Real ground_height)
 {
-    m_data.num_bodies = num_bodies;
     m_data.max_collisions = num_bodies;
-    m_data.ground_height = ground_height;
+    m_num_bodies = num_bodies;
+    m_ground_height = ground_height;
 
     if (num_bodies == 0)
     {
@@ -154,18 +153,18 @@ void GroundCollision<Real>::Detect(
     const int* dev_shape,
     const Real* dev_shape_param)
 {
-    if (m_data.num_bodies == 0)
+    if (m_num_bodies == 0)
         return;
 
-    GroundCollisionKernel::detect_ground_collision_kernel<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(
+    GroundCollisionKernel::detect_ground_collision_kernel<Real><<<CUDA_GRID_SIZE(m_num_bodies), CUDA_BLOCK_SIZE>>>(
         m_data.dev_collisions,
-        m_data.dev_collision_count,
-        m_data.num_bodies,
-        m_data.ground_height,
+        m_num_bodies,
+        m_ground_height,
         dev_position,
         dev_orientation,
         dev_shape,
         dev_shape_param);
+    cudaMemcpy(m_data.dev_collision_count, &m_num_bodies, sizeof(int), cudaMemcpyHostToDevice);
 }
 
 template class GroundCollision<float>;
