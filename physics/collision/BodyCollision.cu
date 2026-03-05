@@ -144,9 +144,9 @@ namespace BodyCollisionKernel
         get_local_point(contact_a, pos_sphere, orient_sphere_conj, contact_on_sphere);
         get_local_point(contact_b, pos_box, orient_box_conj, contact_on_box);
 
-        normal[0] = -n_world[0];
-        normal[1] = -n_world[1];
-        normal[2] = -n_world[2];
+        normal[0] = n_world[0];
+        normal[1] = n_world[1];
+        normal[2] = n_world[2];
 
         penetration = radius - dist;
 
