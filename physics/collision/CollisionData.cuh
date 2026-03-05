@@ -15,8 +15,8 @@ struct CollisionInfo
     int body_id_a;
     int body_id_b;
     Real local_point_a[3];
+    Real local_point_b[3];
     Real normal[3];
-    Real penetration;
 };
 
 template <typename Real>

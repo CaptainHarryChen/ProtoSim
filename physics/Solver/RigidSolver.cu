@@ -128,12 +128,26 @@ namespace RigidSolverKernel
 
         int body_id = col.body_id_a;
 
+        Real *pos = &data.dev_position[body_id * 3];
         Real *orient = &data.dev_orientation[body_id * 4];
         Real inv_m = data.dev_inv_mass[body_id];
         Real *inv_I_world = &data.dev_inv_inertia_tensor_world[body_id * 9];
 
         Real r_world[3];
         cudaPhysics::quatRotateVector(r_world, orient, col.local_point_a);
+        Real world_point_a[3];
+        cudaPhysics::vecAdd3(world_point_a, pos, r_world);
+
+        Real world_point_b[3];
+        if (col.body_id_b < 0)
+            cudaPhysics::vecCopy3(world_point_b, col.local_point_b);
+        else {
+            assert(false && "Not implemented");
+        }
+
+        Real b_to_a[3];
+        cudaPhysics::vecSubs3(b_to_a, world_point_b, world_point_a);
+        Real penetration = cudaPhysics::dot3(col.normal, b_to_a);
 
         Real r_cross_n[3];
         cudaPhysics::cross3(r_cross_n, r_world, col.normal);
@@ -143,7 +157,7 @@ namespace RigidSolverKernel
 
         Real w = inv_m + cudaPhysics::dot3(r_cross_n, I_r_cross_n);
 
-        Real delta_lambda = col.penetration / w;
+        Real delta_lambda = penetration / w;
 
         Real delta_pos[3];
         cudaPhysics::vecMul3(delta_pos, delta_lambda * inv_m, col.normal);
@@ -160,8 +174,6 @@ namespace RigidSolverKernel
         atomicAdd(&data.dev_delta_omega[body_id * 3 + 2], delta_omega[2]);
 
         atomicAdd(&data.dev_constraint_inv_weight[body_id], (Real)1.0);
-        // printf("body: %d, penetration: %f, delta_pos: %f, %f, %f, delta_omega: %f, %f, %f\n",
-        //     body_id, col.penetration, delta_pos[0], delta_pos[1], delta_pos[2], delta_omega[0], delta_omega[1], delta_omega[2]);
     }
 
     template <typename Real>
@@ -215,8 +227,6 @@ namespace RigidSolverKernel
         Real dt_inv = static_cast<Real>(1.0) / data.m_time_step;
 
         cudaPhysics::axpby(lin_vel, dt_inv, pos, -dt_inv, pos_prev, 3);
-        // printf("body: %d, lin_vel: %f, %f, %f pos_prev: %f, %f, %f pos: %f, %f, %f\n",
-        //     i, lin_vel[0], lin_vel[1], lin_vel[2], pos_prev[0], pos_prev[1], pos_prev[2], pos[0], pos[1], pos[2]);
 
         Real dq[4];
         cudaPhysics::vecSubs(dq, orient, orient_prev, 4);
@@ -248,6 +258,7 @@ namespace RigidSolverKernel
 
         int body_id = col.body_id_a;
 
+        Real *pos = &data.dev_position[body_id * 3];
         Real *orient = &data.dev_orientation[body_id * 4];
         Real *orient_prev = &data.dev_orientation_prev[body_id * 4];
         Real *lin_vel = &data.dev_linear_velocity[body_id * 3];
@@ -259,6 +270,19 @@ namespace RigidSolverKernel
 
         Real r_world[3];
         cudaPhysics::quatRotateVector(r_world, orient, col.local_point_a);
+        // Real world_point_a[3];
+        // cudaPhysics::vecAdd3(world_point_a, pos, r_world);
+
+        // Real world_point_b[3];
+        // if (col.body_id_b < 0)
+        //     cudaPhysics::vecCopy3(world_point_b, col.local_point_b);
+        // else {
+        //     assert(false && "Not implemented");
+        // }
+
+        // Real delta_pos[3];
+        // cudaPhysics::vecSub3(delta_pos, world_point_a, world_point_b);
+        // Real penetration = cudaPhysics::dot3(col.normal, delta_pos);
 
         Real r_cross_n[3];
         cudaPhysics::cross3(r_cross_n, r_world, col.normal);
@@ -307,22 +331,22 @@ namespace RigidSolverKernel
             constraint_vel_correction[2] += bounce * col.normal[2];
         }
 
-        if (vt_len > static_cast<Real>(1e-6))
-        {
-            Real vt_normalized[3];
-            cudaPhysics::vecMul3(vt_normalized, static_cast<Real>(1.0) / vt_len, vt);
+        // if (vt_len > static_cast<Real>(1e-6))
+        // {
+        //     Real vt_normalized[3];
+        //     cudaPhysics::vecMul3(vt_normalized, static_cast<Real>(1.0) / vt_len, vt);
 
-            Real friction_impulse = vt_len;
-            Real max_friction = abs(col.penetration / data.m_time_step) * data.m_friction;
-            if (friction_impulse > max_friction)
-            {
-                friction_impulse = max_friction;
-            }
+        //     Real friction_impulse = vt_len;
+        //     Real max_friction = abs(penetration / data.m_time_step) * data.m_friction;
+        //     if (friction_impulse > max_friction)
+        //     {
+        //         friction_impulse = max_friction;
+        //     }
 
-            constraint_vel_correction[0] -= vt_normalized[0] * friction_impulse;
-            constraint_vel_correction[1] -= vt_normalized[1] * friction_impulse;
-            constraint_vel_correction[2] -= vt_normalized[2] * friction_impulse;
-        }
+        //     constraint_vel_correction[0] -= vt_normalized[0] * friction_impulse;
+        //     constraint_vel_correction[1] -= vt_normalized[1] * friction_impulse;
+        //     constraint_vel_correction[2] -= vt_normalized[2] * friction_impulse;
+        // }
 
         Real correction_len = cudaPhysics::len3(constraint_vel_correction);
         if (correction_len < static_cast<Real>(1e-10))

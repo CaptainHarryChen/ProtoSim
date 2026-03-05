@@ -2,15 +2,15 @@
 #include <cuda_utils/cuda_utils.cuh>
 #include <Math/algebra.cuh>
 
+#define EPSILON 1e-6
+
 namespace GroundCollisionKernel
 {
     template <typename Real>
-    __device__ void get_lowest_point_sphere(Real *lowest, const Real *pos, const Real *orient, Real radius)
+    __device__ void get_lowest_point_sphere(Real *lowest, const Real *pos, Real radius)
     {
-        Real down[3] = {0, -1, 0};
-        Real rotated_down[3];
-        cudaPhysics::quatRotateVector(rotated_down, orient, down);
-        cudaPhysics::axpby(lowest, static_cast<Real>(1.0), pos, radius, rotated_down, 3);
+        cudaPhysics::vecCopy3(lowest, pos);
+        lowest[1] -= radius;
     }
 
     template <typename Real>
@@ -21,6 +21,7 @@ namespace GroundCollisionKernel
             {-hx, -hy, hz}, {hx, -hy, hz}, {-hx, hy, hz}, {hx, hy, hz}};
 
         Real min_y = 1e30;
+        Real sum[3] = {0.0, 0.0, 0.0}, num_point = 0.0;
         Real world_corner[3];
 
         for (int c = 0; c < 8; ++c)
@@ -29,12 +30,19 @@ namespace GroundCollisionKernel
             cudaPhysics::quatRotateVector(rotated_corner, orient, corners[c]);
             cudaPhysics::vecAdd3(world_corner, rotated_corner, pos);
 
-            if (world_corner[1] < min_y)
+            if (abs(world_corner[1] - min_y) < EPSILON)
+            {
+                cudaPhysics::vecAdd3(sum, world_corner, sum);
+                num_point += 1.0;
+            }
+            else if (world_corner[1] < min_y)
             {
                 min_y = world_corner[1];
-                cudaPhysics::vecCopy3(lowest, world_corner);
+                cudaPhysics::vecCopy3(sum, world_corner);
+                num_point = 1.0;
             }
         }
+        cudaPhysics::vecMul3(lowest, (Real)(1.0 / num_point), sum);
     }
 
     template <typename Real>
@@ -47,19 +55,18 @@ namespace GroundCollisionKernel
         Real top_center[3], bottom_center[3];
         cudaPhysics::axpby(top_center, static_cast<Real>(1.0), pos, half_height, rotated_axis, 3);
         cudaPhysics::axpby(bottom_center, static_cast<Real>(1.0), pos, -half_height, rotated_axis, 3);
-
-        Real down[3] = {0, -1, 0};
-        Real rotated_down[3];
-        cudaPhysics::quatRotateVector(rotated_down, orient, down);
-
-        Real top_lowest[3], bottom_lowest[3];
-        cudaPhysics::axpby(top_lowest, static_cast<Real>(1.0), top_center, radius, rotated_down, 3);
-        cudaPhysics::axpby(bottom_lowest, static_cast<Real>(1.0), bottom_center, radius, rotated_down, 3);
-
-        if (top_lowest[1] < bottom_lowest[1])
-            cudaPhysics::vecCopy3(lowest, top_lowest);
+        Real lowest1[3], lowest2[3];
+        get_lowest_point_sphere(lowest1, top_center, radius);
+        get_lowest_point_sphere(lowest2, bottom_center, radius);
+        if (abs(lowest1[1] - lowest2[1]) < EPSILON)
+        {
+            cudaPhysics::vecCopy3(lowest, pos);
+            lowest[1] -= radius;
+        }
+        else if (lowest1[1] < lowest2[1])
+            cudaPhysics::vecCopy3(lowest, lowest1);
         else
-            cudaPhysics::vecCopy3(lowest, bottom_lowest);
+            cudaPhysics::vecCopy3(lowest, lowest2);
     }
 
     template <typename Real>
@@ -85,7 +92,7 @@ namespace GroundCollisionKernel
 
         Real lowest[3];
         if (s == RIGID_BODY_SPHERE)
-            get_lowest_point_sphere(lowest, pos, orient, p0);
+            get_lowest_point_sphere(lowest, pos, p0);
         else if (s == RIGID_BODY_BOX)
             get_lowest_point_box(lowest, pos, orient, p0, p1, p2);
         else
@@ -112,10 +119,12 @@ namespace GroundCollisionKernel
         collisions[i].local_point_a[0] = local_point[0];
         collisions[i].local_point_a[1] = local_point[1];
         collisions[i].local_point_a[2] = local_point[2];
+        collisions[i].local_point_b[0] = lowest[0];
+        collisions[i].local_point_b[1] = ground_height;
+        collisions[i].local_point_b[2] = lowest[2];
         collisions[i].normal[0] = static_cast<Real>(0.0);
         collisions[i].normal[1] = static_cast<Real>(1.0);
         collisions[i].normal[2] = static_cast<Real>(0.0);
-        collisions[i].penetration = penetration;
     }
 }
 
