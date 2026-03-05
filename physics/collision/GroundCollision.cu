@@ -17,8 +17,7 @@ namespace GroundCollisionKernel
     __device__ void get_lowest_point_box(Real *lowest, const Real *pos, const Real *orient, Real hx, Real hy, Real hz)
     {
         Real corners[8][3] = {
-            {-hx, -hy, -hz}, {hx, -hy, -hz}, {-hx, hy, -hz}, {hx, hy, -hz},
-            {-hx, -hy, hz}, {hx, -hy, hz}, {-hx, hy, hz}, {hx, hy, hz}};
+            {-hx, -hy, -hz}, {hx, -hy, -hz}, {-hx, hy, -hz}, {hx, hy, -hz}, {-hx, -hy, hz}, {hx, -hy, hz}, {-hx, hy, hz}, {hx, hy, hz}};
 
         Real min_y = 1e30;
         Real sum[3] = {0.0, 0.0, 0.0}, num_point = 0.0;
@@ -71,20 +70,22 @@ namespace GroundCollisionKernel
 
     template <typename Real>
     __global__ void detect_ground_collision_kernel(
-        CollisionInfo<Real>* collisions,
+        CollisionInfo<Real> *collisions,
+        int *collision_count,
+        unsigned int max_collisions,
         unsigned int num_bodies,
         Real ground_height,
-        const Real* position,
-        const Real* orientation,
-        const int* shape,
-        const Real* shape_param)
+        const Real *position,
+        const Real *orientation,
+        const int *shape,
+        const Real *shape_param)
     {
         unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
         if (i >= num_bodies)
             return;
 
-        const Real* pos = &position[i * 3];
-        const Real* orient = &orientation[i * 4];
+        const Real *pos = &position[i * 3];
+        const Real *orient = &orientation[i * 4];
         int s = shape[i];
         Real p0 = shape_param[i * 3 + 0];
         Real p1 = shape_param[i * 3 + 1];
@@ -100,11 +101,11 @@ namespace GroundCollisionKernel
 
         Real penetration = ground_height - lowest[1];
         if (penetration <= 0)
-        {
-            collisions[i].body_id_a = -1;
-            collisions[i].body_id_b = -1;
             return;
-        }
+
+        int slot = atomicAdd(collision_count, 1);
+        if (slot >= static_cast<int>(max_collisions))
+            return;
 
         Real r[3];
         cudaPhysics::vecSubs3(r, lowest, pos);
@@ -114,66 +115,51 @@ namespace GroundCollisionKernel
         Real local_point[3];
         cudaPhysics::quatRotateVector(local_point, orient_conj, r);
 
-        collisions[i].body_id_a = static_cast<int>(i);
-        collisions[i].body_id_b = -1;
-        collisions[i].local_point_a[0] = local_point[0];
-        collisions[i].local_point_a[1] = local_point[1];
-        collisions[i].local_point_a[2] = local_point[2];
-        collisions[i].local_point_b[0] = lowest[0];
-        collisions[i].local_point_b[1] = ground_height;
-        collisions[i].local_point_b[2] = lowest[2];
-        collisions[i].normal[0] = static_cast<Real>(0.0);
-        collisions[i].normal[1] = static_cast<Real>(1.0);
-        collisions[i].normal[2] = static_cast<Real>(0.0);
+        collisions[slot].body_id_a = static_cast<int>(i);
+        collisions[slot].body_id_b = -1;
+        collisions[slot].local_point_a[0] = local_point[0];
+        collisions[slot].local_point_a[1] = local_point[1];
+        collisions[slot].local_point_a[2] = local_point[2];
+        collisions[slot].local_point_b[0] = lowest[0];
+        collisions[slot].local_point_b[1] = ground_height;
+        collisions[slot].local_point_b[2] = lowest[2];
+        collisions[slot].normal[0] = static_cast<Real>(0.0);
+        collisions[slot].normal[1] = static_cast<Real>(-1.0);
+        collisions[slot].normal[2] = static_cast<Real>(0.0);
     }
 }
 
 template <typename Real>
-GroundCollision<Real>::GroundCollision(unsigned int num_bodies, Real ground_height)
+GroundCollision<Real>::GroundCollision(Real ground_height)
 {
-    m_data.max_collisions = num_bodies;
-    m_num_bodies = num_bodies;
     m_ground_height = ground_height;
-
-    if (num_bodies == 0)
-    {
-        m_data.dev_collisions = nullptr;
-        m_data.dev_collision_count = nullptr;
-        return;
-    }
-
-    cudaMalloc(&m_data.dev_collisions, sizeof(CollisionInfo<Real>) * num_bodies);
-    cudaMalloc(&m_data.dev_collision_count, sizeof(int));
 }
 
 template <typename Real>
 GroundCollision<Real>::~GroundCollision()
 {
-    if (m_data.dev_collisions)
-        cudaFree(m_data.dev_collisions);
-    if (m_data.dev_collision_count)
-        cudaFree(m_data.dev_collision_count);
 }
 
 template <typename Real>
 void GroundCollision<Real>::Detect(
-    const Real* dev_position,
-    const Real* dev_orientation,
-    const int* dev_shape,
-    const Real* dev_shape_param)
+    CollisionData<Real> *collision_data,
+    unsigned int max_collisions,
+    unsigned int num_bodies,
+    const Real *dev_position,
+    const Real *dev_orientation,
+    const int *dev_shape,
+    const Real *dev_shape_param)
 {
-    if (m_num_bodies == 0)
-        return;
-
-    GroundCollisionKernel::detect_ground_collision_kernel<Real><<<CUDA_GRID_SIZE(m_num_bodies), CUDA_BLOCK_SIZE>>>(
-        m_data.dev_collisions,
-        m_num_bodies,
+    GroundCollisionKernel::detect_ground_collision_kernel<Real><<<CUDA_GRID_SIZE(num_bodies), CUDA_BLOCK_SIZE>>>(
+        collision_data->dev_collisions,
+        collision_data->dev_collision_count,
+        num_bodies,
+        max_collisions,
         m_ground_height,
         dev_position,
         dev_orientation,
         dev_shape,
         dev_shape_param);
-    cudaMemcpy(m_data.dev_collision_count, &m_num_bodies, sizeof(int), cudaMemcpyHostToDevice);
 }
 
 template class GroundCollision<float>;

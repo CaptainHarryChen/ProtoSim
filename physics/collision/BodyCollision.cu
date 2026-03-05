@@ -746,18 +746,8 @@ namespace BodyCollisionKernel
         if (idx >= total_pairs)
             return;
 
-        unsigned int i = 0, j = 1;
-        {
-            unsigned int n = num_bodies;
-            unsigned int k = idx;
-            while (k >= n - 1)
-            {
-                k -= (n - 1);
-                --n;
-                ++i;
-            }
-            j = i + 1 + k;
-        }
+        int i = (int)((2.0 * num_bodies - 1 - sqrt((2.0 * num_bodies - 1.0) * (2.0 * num_bodies - 1.0) - 8.0 * idx)) / 2.0);
+        int j = i + 1 + (idx - i * (num_bodies - 1) + i * (i - 1) / 2);
 
         const Real* pos_a = &position[i * 3];
         const Real* orient_a = &orientation[i * 4];
@@ -796,51 +786,24 @@ namespace BodyCollisionKernel
 }
 
 template <typename Real>
-BodyCollision<Real>::BodyCollision(unsigned int num_bodies, unsigned int max_collisions)
-{
-    m_data.max_collisions = max_collisions;
-    m_num_bodies = num_bodies;
-
-    if (max_collisions == 0 || num_bodies < 2)
-    {
-        m_data.dev_collisions = nullptr;
-        m_data.dev_collision_count = nullptr;
-        return;
-    }
-
-    cudaMalloc(&m_data.dev_collisions, sizeof(CollisionInfo<Real>) * max_collisions);
-    cudaMalloc(&m_data.dev_collision_count, sizeof(int));
-}
-
-template <typename Real>
-BodyCollision<Real>::~BodyCollision()
-{
-    if (m_data.dev_collisions)
-        cudaFree(m_data.dev_collisions);
-    if (m_data.dev_collision_count)
-        cudaFree(m_data.dev_collision_count);
-}
-
-template <typename Real>
 void BodyCollision<Real>::Detect(
+    CollisionData<Real>* collision_data,
+    unsigned int max_collisions,
+    unsigned int num_bodies,
     const Real* dev_position,
     const Real* dev_orientation,
     const int* dev_shape,
     const Real* dev_shape_param)
 {
-    if (m_num_bodies < 2 || m_data.max_collisions == 0)
+    if (num_bodies < 2 || max_collisions == 0)
         return;
-
-    int zero = 0;
-    cudaMemcpy(m_data.dev_collision_count, &zero, sizeof(int), cudaMemcpyHostToDevice);
-
-    unsigned int total_pairs = m_num_bodies * (m_num_bodies - 1) / 2;
+    unsigned int total_pairs = num_bodies * (num_bodies - 1) / 2;
 
     BodyCollisionKernel::detect_body_collision_kernel<Real><<<CUDA_GRID_SIZE(total_pairs), CUDA_BLOCK_SIZE>>>(
-        m_data.dev_collisions,
-        m_data.dev_collision_count,
-        m_data.max_collisions,
-        m_num_bodies,
+        collision_data->dev_collisions,
+        collision_data->dev_collision_count,
+        max_collisions,
+        num_bodies,
         dev_position,
         dev_orientation,
         dev_shape,

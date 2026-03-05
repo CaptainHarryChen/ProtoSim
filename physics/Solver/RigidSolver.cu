@@ -126,6 +126,10 @@ namespace RigidSolverKernel
         if (col.body_id_a < 0)
             return;
 
+        printf("collision %d: %d, %d, %f, %f, %f dev_collision_count: %d\n",
+            i, col.body_id_a, col.body_id_b,
+            col.normal[0], col.normal[1], col.normal[2], *dev_collision_count);
+
         int body_id_a = col.body_id_a;
         int body_id_b = col.body_id_b;
 
@@ -159,15 +163,15 @@ namespace RigidSolverKernel
             cudaPhysics::vecAdd3(world_point_b, pos_b, r_world_b);
         }
 
-        Real b_to_a[3];
-        cudaPhysics::vecSubs3(b_to_a, world_point_b, world_point_a);
-        Real penetration = cudaPhysics::dot3(col.normal, b_to_a);
+        Real a_to_b[3];
+        cudaPhysics::vecSubs3(a_to_b, world_point_a, world_point_b);
+        Real penetration = cudaPhysics::dot3(col.normal, a_to_b);
 
         if (penetration <= static_cast<Real>(0.0))
             return;
 
         Real r_cross_n_a[3];
-        cudaPhysics::cross3(r_cross_n_a, r_world_a, col.normal);
+        cudaPhysics::cross3(r_cross_n_a, col.normal,  r_world_a);
 
         Real I_r_cross_n_a[3];
         cudaPhysics::matVec3(I_r_cross_n_a, inv_I_world_a, r_cross_n_a);
@@ -194,7 +198,7 @@ namespace RigidSolverKernel
         Real delta_lambda = penetration / w_total;
 
         Real delta_pos_a[3];
-        cudaPhysics::vecMul3(delta_pos_a, delta_lambda * inv_m_a, col.normal);
+        cudaPhysics::vecMul3(delta_pos_a, -delta_lambda * inv_m_a, col.normal);
 
         Real delta_omega_a[3];
         cudaPhysics::vecMul3(delta_omega_a, delta_lambda, I_r_cross_n_a);
@@ -212,7 +216,7 @@ namespace RigidSolverKernel
         if (body_id_b >= 0)
         {
             Real delta_pos_b[3];
-            cudaPhysics::vecMul3(delta_pos_b, -delta_lambda * inv_m_b, col.normal);
+            cudaPhysics::vecMul3(delta_pos_b, delta_lambda * inv_m_b, col.normal);
 
             Real delta_omega_b[3];
             cudaPhysics::vecMul3(delta_omega_b, -delta_lambda, I_r_cross_n_b);
@@ -226,6 +230,10 @@ namespace RigidSolverKernel
             atomicAdd(&data.dev_delta_omega[body_id_b * 3 + 2], delta_omega_b[2]);
 
             atomicAdd(&data.dev_constraint_inv_weight[body_id_b], (Real)1.0);
+
+            printf("delta_pos_a: %f, %f, %f delta_pos_b: %f, %f, %f\n",
+                delta_pos_a[0], delta_pos_a[1], delta_pos_a[2],
+                delta_pos_b[0], delta_pos_b[1], delta_pos_b[2]);
         }
     }
 
@@ -484,11 +492,11 @@ RigidSolver<Real>::RigidSolver(
     const std::vector<Real> &mass,
     const std::vector<int> &shape,
     const std::vector<Real> &shape_param)
-    : m_collision_manager(static_cast<unsigned int>(mass.size()), static_cast<unsigned int>(mass.size() * (mass.size() - 1) / 2)),
-      m_ground_collision(static_cast<unsigned int>(mass.size()), static_cast<Real>(0.0)),
-      m_body_collision(static_cast<unsigned int>(mass.size()), static_cast<unsigned int>(mass.size() * (mass.size() - 1) / 2))
+    : m_ground_collision(static_cast<Real>(0.0)),
+      m_body_collision()
 {
     m_data.num_bodies = static_cast<unsigned int>(mass.size());
+    m_max_collisions = static_cast<unsigned int>(mass.size()) + static_cast<unsigned int>(mass.size() * (mass.size() - 1) / 2);
 
     if (m_data.num_bodies == 0)
         return;
@@ -528,6 +536,10 @@ RigidSolver<Real>::RigidSolver(
     cudaMalloc(&m_data.dev_delta_position, sizeof(Real) * m_data.num_bodies * 3);
     cudaMalloc(&m_data.dev_delta_omega, sizeof(Real) * m_data.num_bodies * 3);
     cudaMalloc(&m_data.dev_constraint_inv_weight, sizeof(Real) * m_data.num_bodies);
+
+    cudaMalloc(&m_collision_data.dev_collisions, sizeof(CollisionInfo<Real>) * m_max_collisions);
+    cudaMalloc(&m_collision_data.dev_collision_count, sizeof(int));
+    m_collision_data.max_collisions = m_max_collisions;
 
     RigidSolverKernel::compute_inertia_tensor<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
@@ -581,6 +593,10 @@ RigidSolver<Real>::~RigidSolver()
         cudaFree(m_data.dev_delta_omega);
     if (m_data.dev_constraint_inv_weight)
         cudaFree(m_data.dev_constraint_inv_weight);
+    if (m_collision_data.dev_collisions)
+        cudaFree(m_collision_data.dev_collisions);
+    if (m_collision_data.dev_collision_count)
+        cudaFree(m_collision_data.dev_collision_count);
 }
 
 template <typename Real>
@@ -592,58 +608,47 @@ void RigidSolver<Real>::Step()
 
     for (unsigned int substep = 0; substep < m_data.m_num_substeps; ++substep)
     {
+        cudaDeviceSynchronize();
+        fflush(stdout);
+        printf("substep: %d\n", substep);
+        fflush(stdout);
+
         RigidSolverKernel::integrate<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
         RigidSolverKernel::compute_inv_inertia_world<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
-        m_collision_manager.Clear();
-
+        cudaMemset(m_collision_data.dev_collision_count, 0, sizeof(int));
         m_ground_collision.Detect(
+            &m_collision_data,
+            m_max_collisions,
+            m_data.num_bodies,
             m_data.dev_position,
             m_data.dev_orientation,
             m_data.dev_shape,
             m_data.dev_shape_param);
-
-        cudaMemcpy(m_collision_manager.GetGroundCollisionData().dev_collisions,
-                   m_ground_collision.GetData().dev_collisions,
-                   sizeof(CollisionInfo<Real>) * m_ground_collision.GetData().max_collisions,
-                   cudaMemcpyDeviceToDevice);
-        cudaMemcpy(m_collision_manager.GetGroundCollisionData().dev_collision_count,
-                   m_ground_collision.GetData().dev_collision_count,
-                   sizeof(int),
-                   cudaMemcpyDeviceToDevice);
-
         m_body_collision.Detect(
+            &m_collision_data,
+            m_max_collisions,
+            m_data.num_bodies,
             m_data.dev_position,
             m_data.dev_orientation,
             m_data.dev_shape,
             m_data.dev_shape_param);
-
-        cudaMemcpy(m_collision_manager.GetBodyCollisionData().dev_collisions,
-                   m_body_collision.GetData().dev_collisions,
-                   sizeof(CollisionInfo<Real>) * m_body_collision.GetData().max_collisions,
-                   cudaMemcpyDeviceToDevice);
-        cudaMemcpy(m_collision_manager.GetBodyCollisionData().dev_collision_count,
-                   m_body_collision.GetData().dev_collision_count,
-                   sizeof(int),
-                   cudaMemcpyDeviceToDevice);
-
-        m_collision_manager.MergeCollisions();
 
         for (unsigned int iter = 0; iter < m_data.m_num_solver_iterations; ++iter)
         {
             cudaMemset(m_data.dev_delta_position, 0, sizeof(Real) * m_data.num_bodies * 3);
             cudaMemset(m_data.dev_delta_omega, 0, sizeof(Real) * m_data.num_bodies * 3);
             cudaMemset(m_data.dev_constraint_inv_weight, 0, sizeof(Real) * m_data.num_bodies);
-            RigidSolverKernel::accumulate_collision_deltas<Real><<<CUDA_GRID_SIZE(m_collision_manager.GetMaxCollisions()), CUDA_BLOCK_SIZE>>>(
-                m_data, m_collision_manager.GetAllCollisions(), m_collision_manager.GetAllCollisionCount());
+            RigidSolverKernel::accumulate_collision_deltas<Real><<<CUDA_GRID_SIZE(m_max_collisions), CUDA_BLOCK_SIZE>>>(
+                m_data, m_collision_data.dev_collisions, m_collision_data.dev_collision_count);
             RigidSolverKernel::apply_deltas<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
             RigidSolverKernel::compute_inv_inertia_world<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
         }
 
         RigidSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
-        RigidSolverKernel::solve_contact_velocities<Real><<<CUDA_GRID_SIZE(m_collision_manager.GetMaxCollisions()), CUDA_BLOCK_SIZE>>>(
-            m_data, m_collision_manager.GetAllCollisions(), m_collision_manager.GetAllCollisionCount());
+        RigidSolverKernel::solve_contact_velocities<Real><<<CUDA_GRID_SIZE(m_max_collisions), CUDA_BLOCK_SIZE>>>(
+            m_data, m_collision_data.dev_collisions, m_collision_data.dev_collision_count);
 
         RigidSolverKernel::normalize_orientation<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
     }

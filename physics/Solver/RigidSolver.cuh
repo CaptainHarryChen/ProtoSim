@@ -2,7 +2,7 @@
 
 #include <vector>
 #include <Solver/Solver.cuh>
-#include <collision/CollisionManager.cuh>
+#include <collision/CollisionData.cuh>
 #include <collision/GroundCollision.cuh>
 #include <collision/BodyCollision.cuh>
 
@@ -60,7 +60,8 @@ public:
     Real *GetDeviceOrientations();
 
     RigidSolverData<Real> m_data;
-    CollisionManager<Real> m_collision_manager;
+    CollisionData<Real> m_collision_data;
+    unsigned int m_max_collisions;
     GroundCollision<Real> m_ground_collision;
     BodyCollision<Real> m_body_collision;
 };
