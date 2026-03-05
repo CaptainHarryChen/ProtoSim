@@ -278,6 +278,10 @@ namespace BodyCollisionKernel
                 Real cross_axis[3];
                 cudaPhysics::cross3(cross_axis, axes_a[i], axes_b[j]);
 
+                Real cross_len = cudaPhysics::len3(cross_axis);
+                if (cross_len < EPSILON)
+                    continue;
+
                 Real overlap;
                 if (!test_axis(overlap, cross_axis, pos_a, orient_a, hx_a, hy_a, hz_a, pos_b, orient_b, hx_b, hy_b, hz_b))
                     return false;
@@ -334,12 +338,8 @@ namespace BodyCollisionKernel
         cudaPhysics::quatRotateVector(world_support_b, orient_b, support_b);
         cudaPhysics::vecAdd3(world_support_b, pos_b, world_support_b);
 
-        Real contact_world[3];
-        cudaPhysics::vecAdd3(contact_world, world_support_a, world_support_b);
-        cudaPhysics::vecMul3(contact_world, static_cast<Real>(0.5), contact_world);
-
-        get_local_point(contact_a, pos_a, orient_a_conj, contact_world);
-        get_local_point(contact_b, pos_b, orient_b_conj, contact_world);
+        get_local_point(contact_a, pos_a, orient_a_conj, world_support_a);
+        get_local_point(contact_b, pos_b, orient_b_conj, world_support_b);
 
         normal[0] = n[0];
         normal[1] = n[1];
