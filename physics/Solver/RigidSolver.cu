@@ -126,10 +126,6 @@ namespace RigidSolverKernel
         if (col.body_id_a < 0)
             return;
 
-        printf("collision %d: %d, %d, %f, %f, %f dev_collision_count: %d\n",
-            i, col.body_id_a, col.body_id_b,
-            col.normal[0], col.normal[1], col.normal[2], *dev_collision_count);
-
         int body_id_a = col.body_id_a;
         int body_id_b = col.body_id_b;
 
@@ -230,10 +226,6 @@ namespace RigidSolverKernel
             atomicAdd(&data.dev_delta_omega[body_id_b * 3 + 2], delta_omega_b[2]);
 
             atomicAdd(&data.dev_constraint_inv_weight[body_id_b], (Real)1.0);
-
-            printf("delta_pos_a: %f, %f, %f delta_pos_b: %f, %f, %f\n",
-                delta_pos_a[0], delta_pos_a[1], delta_pos_a[2],
-                delta_pos_b[0], delta_pos_b[1], delta_pos_b[2]);
         }
     }
 
@@ -380,33 +372,19 @@ namespace RigidSolverKernel
 
         Real rel_vel[3];
         cudaPhysics::vecSubs3(rel_vel, v_contact_a, v_contact_b);
-
         Real vn = cudaPhysics::dot3(rel_vel, col.normal);
 
         Real rel_vel_prev[3];
         cudaPhysics::vecSubs3(rel_vel_prev, v_contact_prev_a, v_contact_prev_b);
-
         Real vn_prev = cudaPhysics::dot3(rel_vel_prev, col.normal);
 
         Real restitution = data.m_restitution;
-        Real gravity = -data.m_gravity[1];
-        if (abs(vn) <= static_cast<Real>(2.0) * gravity * data.m_time_step)
-        {
-            restitution = 0;
-        }
-
         Real constraint_vel_correction[3];
-        constraint_vel_correction[0] = -vn * col.normal[0];
-        constraint_vel_correction[1] = -vn * col.normal[1];
-        constraint_vel_correction[2] = -vn * col.normal[2];
+        cudaPhysics::vecMul3(constraint_vel_correction, -vn, col.normal);
 
         Real bounce = -restitution * vn_prev;
         if (bounce < 0)
-        {
-            constraint_vel_correction[0] += bounce * col.normal[0];
-            constraint_vel_correction[1] += bounce * col.normal[1];
-            constraint_vel_correction[2] += bounce * col.normal[2];
-        }
+            cudaPhysics::axpby(constraint_vel_correction, (Real)1.0, constraint_vel_correction, bounce, col.normal, 3);
 
         Real correction_len = cudaPhysics::len3(constraint_vel_correction);
         if (correction_len < static_cast<Real>(1e-10))
@@ -417,10 +395,8 @@ namespace RigidSolverKernel
 
         Real r_cross_n_a[3];
         cudaPhysics::cross3(r_cross_n_a, r_world_a, n);
-
         Real I_r_cross_n_a[3];
         cudaPhysics::matVec3(I_r_cross_n_a, inv_I_world_a, r_cross_n_a);
-
         Real w_a = inv_m_a + cudaPhysics::dot3(r_cross_n_a, I_r_cross_n_a);
 
         Real w_b = static_cast<Real>(0.0);
@@ -442,14 +418,12 @@ namespace RigidSolverKernel
 
         Real delta_p_a[3];
         cudaPhysics::vecMul3(delta_p_a, correction_len / w_total * inv_m_a, n);
-
         Real delta_omega_a[3];
         cudaPhysics::vecMul3(delta_omega_a, correction_len / w_total, I_r_cross_n_a);
 
         atomicAdd(&data.dev_linear_velocity[body_id_a * 3 + 0], delta_p_a[0]);
         atomicAdd(&data.dev_linear_velocity[body_id_a * 3 + 1], delta_p_a[1]);
         atomicAdd(&data.dev_linear_velocity[body_id_a * 3 + 2], delta_p_a[2]);
-
         atomicAdd(&data.dev_angular_velocity[body_id_a * 3 + 0], delta_omega_a[0]);
         atomicAdd(&data.dev_angular_velocity[body_id_a * 3 + 1], delta_omega_a[1]);
         atomicAdd(&data.dev_angular_velocity[body_id_a * 3 + 2], delta_omega_a[2]);
@@ -458,14 +432,12 @@ namespace RigidSolverKernel
         {
             Real delta_p_b[3];
             cudaPhysics::vecMul3(delta_p_b, -correction_len / w_total * inv_m_b, n);
-
             Real delta_omega_b[3];
-            cudaPhysics::vecMul3(delta_omega_b, -correction_len / w_total, I_r_cross_n_b);
+            cudaPhysics::vecMul3(delta_omega_b, correction_len / w_total, I_r_cross_n_b);
 
             atomicAdd(&data.dev_linear_velocity[body_id_b * 3 + 0], delta_p_b[0]);
             atomicAdd(&data.dev_linear_velocity[body_id_b * 3 + 1], delta_p_b[1]);
             atomicAdd(&data.dev_linear_velocity[body_id_b * 3 + 2], delta_p_b[2]);
-
             atomicAdd(&data.dev_angular_velocity[body_id_b * 3 + 0], delta_omega_b[0]);
             atomicAdd(&data.dev_angular_velocity[body_id_b * 3 + 1], delta_omega_b[1]);
             atomicAdd(&data.dev_angular_velocity[body_id_b * 3 + 2], delta_omega_b[2]);
@@ -543,15 +515,15 @@ RigidSolver<Real>::RigidSolver(
 
     RigidSolverKernel::compute_inertia_tensor<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
-    m_data.m_time_step = static_cast<Real>(0.01);
+    m_data.m_time_step = static_cast<Real>(0.002);
     m_data.m_gravity[0] = static_cast<Real>(0.0);
     m_data.m_gravity[1] = static_cast<Real>(-9.8);
     m_data.m_gravity[2] = static_cast<Real>(0.0);
     m_data.m_damping = static_cast<Real>(1.0);
     m_data.m_restitution = static_cast<Real>(0.3);
     m_data.m_friction = static_cast<Real>(0.5);
-    m_data.m_num_substeps = 4;
-    m_data.m_num_solver_iterations = 100;
+    m_data.m_num_substeps = 1;
+    m_data.m_num_solver_iterations = 10;
 }
 
 template <typename Real>
@@ -608,11 +580,6 @@ void RigidSolver<Real>::Step()
 
     for (unsigned int substep = 0; substep < m_data.m_num_substeps; ++substep)
     {
-        cudaDeviceSynchronize();
-        fflush(stdout);
-        printf("substep: %d\n", substep);
-        fflush(stdout);
-
         RigidSolverKernel::integrate<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
         RigidSolverKernel::compute_inv_inertia_world<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
