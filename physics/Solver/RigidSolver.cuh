@@ -2,7 +2,9 @@
 
 #include <vector>
 #include <Solver/Solver.cuh>
+#include <collision/CollisionManager.cuh>
 #include <collision/GroundCollision.cuh>
+#include <collision/BodyCollision.cuh>
 
 template <typename Real>
 struct RigidSolverData
@@ -58,7 +60,9 @@ public:
     Real *GetDeviceOrientations();
 
     RigidSolverData<Real> m_data;
+    CollisionManager<Real> m_collision_manager;
     GroundCollision<Real> m_ground_collision;
+    BodyCollision<Real> m_body_collision;
 };
 
 extern template struct RigidSolverData<float>;

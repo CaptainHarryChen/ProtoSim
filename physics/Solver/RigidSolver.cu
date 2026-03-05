@@ -126,54 +126,107 @@ namespace RigidSolverKernel
         if (col.body_id_a < 0)
             return;
 
-        int body_id = col.body_id_a;
+        int body_id_a = col.body_id_a;
+        int body_id_b = col.body_id_b;
 
-        Real *pos = &data.dev_position[body_id * 3];
-        Real *orient = &data.dev_orientation[body_id * 4];
-        Real inv_m = data.dev_inv_mass[body_id];
-        Real *inv_I_world = &data.dev_inv_inertia_tensor_world[body_id * 9];
+        Real *pos_a = &data.dev_position[body_id_a * 3];
+        Real *orient_a = &data.dev_orientation[body_id_a * 4];
+        Real inv_m_a = data.dev_inv_mass[body_id_a];
+        Real *inv_I_world_a = &data.dev_inv_inertia_tensor_world[body_id_a * 9];
 
-        Real r_world[3];
-        cudaPhysics::quatRotateVector(r_world, orient, col.local_point_a);
+        Real r_world_a[3];
+        cudaPhysics::quatRotateVector(r_world_a, orient_a, col.local_point_a);
         Real world_point_a[3];
-        cudaPhysics::vecAdd3(world_point_a, pos, r_world);
+        cudaPhysics::vecAdd3(world_point_a, pos_a, r_world_a);
 
         Real world_point_b[3];
-        if (col.body_id_b < 0)
+        Real r_world_b[3];
+        Real inv_m_b = static_cast<Real>(0.0);
+        Real *inv_I_world_b = nullptr;
+
+        if (body_id_b < 0)
+        {
             cudaPhysics::vecCopy3(world_point_b, col.local_point_b);
-        else {
-            assert(false && "Not implemented");
+        }
+        else
+        {
+            Real *pos_b = &data.dev_position[body_id_b * 3];
+            Real *orient_b = &data.dev_orientation[body_id_b * 4];
+            inv_m_b = data.dev_inv_mass[body_id_b];
+            inv_I_world_b = &data.dev_inv_inertia_tensor_world[body_id_b * 9];
+
+            cudaPhysics::quatRotateVector(r_world_b, orient_b, col.local_point_b);
+            cudaPhysics::vecAdd3(world_point_b, pos_b, r_world_b);
         }
 
         Real b_to_a[3];
         cudaPhysics::vecSubs3(b_to_a, world_point_b, world_point_a);
         Real penetration = cudaPhysics::dot3(col.normal, b_to_a);
 
-        Real r_cross_n[3];
-        cudaPhysics::cross3(r_cross_n, r_world, col.normal);
+        if (penetration <= static_cast<Real>(0.0))
+            return;
 
-        Real I_r_cross_n[3];
-        cudaPhysics::matVec3(I_r_cross_n, inv_I_world, r_cross_n);
+        Real r_cross_n_a[3];
+        cudaPhysics::cross3(r_cross_n_a, r_world_a, col.normal);
 
-        Real w = inv_m + cudaPhysics::dot3(r_cross_n, I_r_cross_n);
+        Real I_r_cross_n_a[3];
+        cudaPhysics::matVec3(I_r_cross_n_a, inv_I_world_a, r_cross_n_a);
 
-        Real delta_lambda = penetration / w;
+        Real w_a = inv_m_a + cudaPhysics::dot3(r_cross_n_a, I_r_cross_n_a);
 
-        Real delta_pos[3];
-        cudaPhysics::vecMul3(delta_pos, delta_lambda * inv_m, col.normal);
+        Real w_b = static_cast<Real>(0.0);
+        Real I_r_cross_n_b[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
+        if (body_id_b >= 0)
+        {
+            Real r_cross_n_b[3];
+            Real neg_normal[3];
+            cudaPhysics::vecMul3(neg_normal, static_cast<Real>(-1.0), col.normal);
+            cudaPhysics::cross3(r_cross_n_b, r_world_b, neg_normal);
 
-        Real delta_omega[3];
-        cudaPhysics::vecMul3(delta_omega, delta_lambda, I_r_cross_n);
+            cudaPhysics::matVec3(I_r_cross_n_b, inv_I_world_b, r_cross_n_b);
+            w_b = inv_m_b + cudaPhysics::dot3(r_cross_n_b, I_r_cross_n_b);
+        }
 
-        atomicAdd(&data.dev_delta_position[body_id * 3 + 0], delta_pos[0]);
-        atomicAdd(&data.dev_delta_position[body_id * 3 + 1], delta_pos[1]);
-        atomicAdd(&data.dev_delta_position[body_id * 3 + 2], delta_pos[2]);
+        Real w_total = w_a + w_b;
+        if (w_total < static_cast<Real>(1e-10))
+            return;
 
-        atomicAdd(&data.dev_delta_omega[body_id * 3 + 0], delta_omega[0]);
-        atomicAdd(&data.dev_delta_omega[body_id * 3 + 1], delta_omega[1]);
-        atomicAdd(&data.dev_delta_omega[body_id * 3 + 2], delta_omega[2]);
+        Real delta_lambda = penetration / w_total;
 
-        atomicAdd(&data.dev_constraint_inv_weight[body_id], (Real)1.0);
+        Real delta_pos_a[3];
+        cudaPhysics::vecMul3(delta_pos_a, delta_lambda * inv_m_a, col.normal);
+
+        Real delta_omega_a[3];
+        cudaPhysics::vecMul3(delta_omega_a, delta_lambda, I_r_cross_n_a);
+
+        atomicAdd(&data.dev_delta_position[body_id_a * 3 + 0], delta_pos_a[0]);
+        atomicAdd(&data.dev_delta_position[body_id_a * 3 + 1], delta_pos_a[1]);
+        atomicAdd(&data.dev_delta_position[body_id_a * 3 + 2], delta_pos_a[2]);
+
+        atomicAdd(&data.dev_delta_omega[body_id_a * 3 + 0], delta_omega_a[0]);
+        atomicAdd(&data.dev_delta_omega[body_id_a * 3 + 1], delta_omega_a[1]);
+        atomicAdd(&data.dev_delta_omega[body_id_a * 3 + 2], delta_omega_a[2]);
+
+        atomicAdd(&data.dev_constraint_inv_weight[body_id_a], (Real)1.0);
+
+        if (body_id_b >= 0)
+        {
+            Real delta_pos_b[3];
+            cudaPhysics::vecMul3(delta_pos_b, -delta_lambda * inv_m_b, col.normal);
+
+            Real delta_omega_b[3];
+            cudaPhysics::vecMul3(delta_omega_b, -delta_lambda, I_r_cross_n_b);
+
+            atomicAdd(&data.dev_delta_position[body_id_b * 3 + 0], delta_pos_b[0]);
+            atomicAdd(&data.dev_delta_position[body_id_b * 3 + 1], delta_pos_b[1]);
+            atomicAdd(&data.dev_delta_position[body_id_b * 3 + 2], delta_pos_b[2]);
+
+            atomicAdd(&data.dev_delta_omega[body_id_b * 3 + 0], delta_omega_b[0]);
+            atomicAdd(&data.dev_delta_omega[body_id_b * 3 + 1], delta_omega_b[1]);
+            atomicAdd(&data.dev_delta_omega[body_id_b * 3 + 2], delta_omega_b[2]);
+
+            atomicAdd(&data.dev_constraint_inv_weight[body_id_b], (Real)1.0);
+        }
     }
 
     template <typename Real>
@@ -256,53 +309,76 @@ namespace RigidSolverKernel
         if (col.body_id_a < 0)
             return;
 
-        int body_id = col.body_id_a;
+        int body_id_a = col.body_id_a;
+        int body_id_b = col.body_id_b;
 
-        Real *pos = &data.dev_position[body_id * 3];
-        Real *orient = &data.dev_orientation[body_id * 4];
-        Real *orient_prev = &data.dev_orientation_prev[body_id * 4];
-        Real *lin_vel = &data.dev_linear_velocity[body_id * 3];
-        Real *ang_vel = &data.dev_angular_velocity[body_id * 3];
-        Real *lin_vel_prev = &data.dev_linear_velocity_prev[body_id * 3];
-        Real *ang_vel_prev = &data.dev_angular_velocity_prev[body_id * 3];
-        Real inv_m = data.dev_inv_mass[body_id];
-        Real *inv_I_world = &data.dev_inv_inertia_tensor_world[body_id * 9];
+        Real *pos_a = &data.dev_position[body_id_a * 3];
+        Real *orient_a = &data.dev_orientation[body_id_a * 4];
+        Real *orient_prev_a = &data.dev_orientation_prev[body_id_a * 4];
+        Real *lin_vel_a = &data.dev_linear_velocity[body_id_a * 3];
+        Real *ang_vel_a = &data.dev_angular_velocity[body_id_a * 3];
+        Real *lin_vel_prev_a = &data.dev_linear_velocity_prev[body_id_a * 3];
+        Real *ang_vel_prev_a = &data.dev_angular_velocity_prev[body_id_a * 3];
+        Real inv_m_a = data.dev_inv_mass[body_id_a];
+        Real *inv_I_world_a = &data.dev_inv_inertia_tensor_world[body_id_a * 9];
 
-        Real r_world[3];
-        cudaPhysics::quatRotateVector(r_world, orient, col.local_point_a);
-        // Real world_point_a[3];
-        // cudaPhysics::vecAdd3(world_point_a, pos, r_world);
+        Real r_world_a[3];
+        cudaPhysics::quatRotateVector(r_world_a, orient_a, col.local_point_a);
 
-        // Real world_point_b[3];
-        // if (col.body_id_b < 0)
-        //     cudaPhysics::vecCopy3(world_point_b, col.local_point_b);
-        // else {
-        //     assert(false && "Not implemented");
-        // }
+        Real v_contact_a[3];
+        v_contact_a[0] = lin_vel_a[0] + ang_vel_a[1] * r_world_a[2] - ang_vel_a[2] * r_world_a[1];
+        v_contact_a[1] = lin_vel_a[1] + ang_vel_a[2] * r_world_a[0] - ang_vel_a[0] * r_world_a[2];
+        v_contact_a[2] = lin_vel_a[2] + ang_vel_a[0] * r_world_a[1] - ang_vel_a[1] * r_world_a[0];
 
-        // Real delta_pos[3];
-        // cudaPhysics::vecSub3(delta_pos, world_point_a, world_point_b);
-        // Real penetration = cudaPhysics::dot3(col.normal, delta_pos);
+        Real r_world_prev_a[3];
+        cudaPhysics::quatRotateVector(r_world_prev_a, orient_prev_a, col.local_point_a);
 
-        Real r_cross_n[3];
-        cudaPhysics::cross3(r_cross_n, r_world, col.normal);
+        Real v_contact_prev_a[3];
+        v_contact_prev_a[0] = lin_vel_prev_a[0] + ang_vel_prev_a[1] * r_world_prev_a[2] - ang_vel_prev_a[2] * r_world_prev_a[1];
+        v_contact_prev_a[1] = lin_vel_prev_a[1] + ang_vel_prev_a[2] * r_world_prev_a[0] - ang_vel_prev_a[0] * r_world_prev_a[2];
+        v_contact_prev_a[2] = lin_vel_prev_a[2] + ang_vel_prev_a[0] * r_world_prev_a[1] - ang_vel_prev_a[1] * r_world_prev_a[0];
 
-        Real v_contact[3];
-        v_contact[0] = lin_vel[0] + ang_vel[1] * r_world[2] - ang_vel[2] * r_world[1];
-        v_contact[1] = lin_vel[1] + ang_vel[2] * r_world[0] - ang_vel[0] * r_world[2];
-        v_contact[2] = lin_vel[2] + ang_vel[0] * r_world[1] - ang_vel[1] * r_world[0];
+        Real v_contact_b[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
+        Real v_contact_prev_b[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
+        Real r_world_b[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
+        Real inv_m_b = static_cast<Real>(0.0);
+        Real *inv_I_world_b = nullptr;
 
-        Real vn = cudaPhysics::dot3(v_contact, col.normal);
+        if (body_id_b >= 0)
+        {
+            Real *pos_b = &data.dev_position[body_id_b * 3];
+            Real *orient_b = &data.dev_orientation[body_id_b * 4];
+            Real *orient_prev_b = &data.dev_orientation_prev[body_id_b * 4];
+            Real *lin_vel_b = &data.dev_linear_velocity[body_id_b * 3];
+            Real *ang_vel_b = &data.dev_angular_velocity[body_id_b * 3];
+            Real *lin_vel_prev_b = &data.dev_linear_velocity_prev[body_id_b * 3];
+            Real *ang_vel_prev_b = &data.dev_angular_velocity_prev[body_id_b * 3];
+            inv_m_b = data.dev_inv_mass[body_id_b];
+            inv_I_world_b = &data.dev_inv_inertia_tensor_world[body_id_b * 9];
 
-        Real r_world_prev[3];
-        cudaPhysics::quatRotateVector(r_world_prev, orient_prev, col.local_point_a);
+            cudaPhysics::quatRotateVector(r_world_b, orient_b, col.local_point_b);
 
-        Real v_contact_prev[3];
-        v_contact_prev[0] = lin_vel_prev[0] + ang_vel_prev[1] * r_world_prev[2] - ang_vel_prev[2] * r_world_prev[1];
-        v_contact_prev[1] = lin_vel_prev[1] + ang_vel_prev[2] * r_world_prev[0] - ang_vel_prev[0] * r_world_prev[2];
-        v_contact_prev[2] = lin_vel_prev[2] + ang_vel_prev[0] * r_world_prev[1] - ang_vel_prev[1] * r_world_prev[0];
+            v_contact_b[0] = lin_vel_b[0] + ang_vel_b[1] * r_world_b[2] - ang_vel_b[2] * r_world_b[1];
+            v_contact_b[1] = lin_vel_b[1] + ang_vel_b[2] * r_world_b[0] - ang_vel_b[0] * r_world_b[2];
+            v_contact_b[2] = lin_vel_b[2] + ang_vel_b[0] * r_world_b[1] - ang_vel_b[1] * r_world_b[0];
 
-        Real vn_prev = cudaPhysics::dot3(v_contact_prev, col.normal);
+            Real r_world_prev_b[3];
+            cudaPhysics::quatRotateVector(r_world_prev_b, orient_prev_b, col.local_point_b);
+
+            v_contact_prev_b[0] = lin_vel_prev_b[0] + ang_vel_prev_b[1] * r_world_prev_b[2] - ang_vel_prev_b[2] * r_world_prev_b[1];
+            v_contact_prev_b[1] = lin_vel_prev_b[1] + ang_vel_prev_b[2] * r_world_prev_b[0] - ang_vel_prev_b[0] * r_world_prev_b[2];
+            v_contact_prev_b[2] = lin_vel_prev_b[2] + ang_vel_prev_b[0] * r_world_prev_b[1] - ang_vel_prev_b[1] * r_world_prev_b[0];
+        }
+
+        Real rel_vel[3];
+        cudaPhysics::vecSubs3(rel_vel, v_contact_a, v_contact_b);
+
+        Real vn = cudaPhysics::dot3(rel_vel, col.normal);
+
+        Real rel_vel_prev[3];
+        cudaPhysics::vecSubs3(rel_vel_prev, v_contact_prev_a, v_contact_prev_b);
+
+        Real vn_prev = cudaPhysics::dot3(rel_vel_prev, col.normal);
 
         Real restitution = data.m_restitution;
         Real gravity = -data.m_gravity[1];
@@ -310,13 +386,6 @@ namespace RigidSolverKernel
         {
             restitution = 0;
         }
-
-        Real vt[3];
-        vt[0] = v_contact[0] - vn * col.normal[0];
-        vt[1] = v_contact[1] - vn * col.normal[1];
-        vt[2] = v_contact[2] - vn * col.normal[2];
-
-        Real vt_len = cudaPhysics::len3(vt);
 
         Real constraint_vel_correction[3];
         constraint_vel_correction[0] = -vn * col.normal[0];
@@ -331,23 +400,6 @@ namespace RigidSolverKernel
             constraint_vel_correction[2] += bounce * col.normal[2];
         }
 
-        // if (vt_len > static_cast<Real>(1e-6))
-        // {
-        //     Real vt_normalized[3];
-        //     cudaPhysics::vecMul3(vt_normalized, static_cast<Real>(1.0) / vt_len, vt);
-
-        //     Real friction_impulse = vt_len;
-        //     Real max_friction = abs(penetration / data.m_time_step) * data.m_friction;
-        //     if (friction_impulse > max_friction)
-        //     {
-        //         friction_impulse = max_friction;
-        //     }
-
-        //     constraint_vel_correction[0] -= vt_normalized[0] * friction_impulse;
-        //     constraint_vel_correction[1] -= vt_normalized[1] * friction_impulse;
-        //     constraint_vel_correction[2] -= vt_normalized[2] * friction_impulse;
-        // }
-
         Real correction_len = cudaPhysics::len3(constraint_vel_correction);
         if (correction_len < static_cast<Real>(1e-10))
             return;
@@ -355,29 +407,61 @@ namespace RigidSolverKernel
         Real n[3];
         cudaPhysics::vecMul3(n, static_cast<Real>(1.0) / correction_len, constraint_vel_correction);
 
-        Real r_cross_n_local[3];
-        cudaPhysics::cross3(r_cross_n_local, r_world, n);
+        Real r_cross_n_a[3];
+        cudaPhysics::cross3(r_cross_n_a, r_world_a, n);
 
-        Real w = inv_m + cudaPhysics::dot3(r_cross_n_local, inv_I_world) * r_cross_n_local[0] + cudaPhysics::dot3(r_cross_n_local, inv_I_world) * r_cross_n_local[1] + cudaPhysics::dot3(r_cross_n_local, inv_I_world) * r_cross_n_local[2];
+        Real I_r_cross_n_a[3];
+        cudaPhysics::matVec3(I_r_cross_n_a, inv_I_world_a, r_cross_n_a);
 
-        Real I_r_cross_n_local[3];
-        cudaPhysics::matVec3(I_r_cross_n_local, inv_I_world, r_cross_n_local);
-        w = inv_m + cudaPhysics::dot3(r_cross_n_local, I_r_cross_n_local);
+        Real w_a = inv_m_a + cudaPhysics::dot3(r_cross_n_a, I_r_cross_n_a);
 
-        Real delta_p[3];
-        cudaPhysics::vecMul3(delta_p, correction_len / w, n);
+        Real w_b = static_cast<Real>(0.0);
+        Real I_r_cross_n_b[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
+        if (body_id_b >= 0)
+        {
+            Real r_cross_n_b[3];
+            Real neg_n[3];
+            cudaPhysics::vecMul3(neg_n, static_cast<Real>(-1.0), n);
+            cudaPhysics::cross3(r_cross_n_b, r_world_b, neg_n);
 
-        Real delta_omega[3];
-        cudaPhysics::cross3(delta_omega, r_world, delta_p);
-        cudaPhysics::matVec3(delta_omega, inv_I_world, delta_omega);
+            cudaPhysics::matVec3(I_r_cross_n_b, inv_I_world_b, r_cross_n_b);
+            w_b = inv_m_b + cudaPhysics::dot3(r_cross_n_b, I_r_cross_n_b);
+        }
 
-        atomicAdd(&data.dev_linear_velocity[body_id * 3 + 0], delta_p[0] * inv_m);
-        atomicAdd(&data.dev_linear_velocity[body_id * 3 + 1], delta_p[1] * inv_m);
-        atomicAdd(&data.dev_linear_velocity[body_id * 3 + 2], delta_p[2] * inv_m);
+        Real w_total = w_a + w_b;
+        if (w_total < static_cast<Real>(1e-10))
+            return;
 
-        atomicAdd(&data.dev_angular_velocity[body_id * 3 + 0], delta_omega[0]);
-        atomicAdd(&data.dev_angular_velocity[body_id * 3 + 1], delta_omega[1]);
-        atomicAdd(&data.dev_angular_velocity[body_id * 3 + 2], delta_omega[2]);
+        Real delta_p_a[3];
+        cudaPhysics::vecMul3(delta_p_a, correction_len / w_total * inv_m_a, n);
+
+        Real delta_omega_a[3];
+        cudaPhysics::vecMul3(delta_omega_a, correction_len / w_total, I_r_cross_n_a);
+
+        atomicAdd(&data.dev_linear_velocity[body_id_a * 3 + 0], delta_p_a[0]);
+        atomicAdd(&data.dev_linear_velocity[body_id_a * 3 + 1], delta_p_a[1]);
+        atomicAdd(&data.dev_linear_velocity[body_id_a * 3 + 2], delta_p_a[2]);
+
+        atomicAdd(&data.dev_angular_velocity[body_id_a * 3 + 0], delta_omega_a[0]);
+        atomicAdd(&data.dev_angular_velocity[body_id_a * 3 + 1], delta_omega_a[1]);
+        atomicAdd(&data.dev_angular_velocity[body_id_a * 3 + 2], delta_omega_a[2]);
+
+        if (body_id_b >= 0)
+        {
+            Real delta_p_b[3];
+            cudaPhysics::vecMul3(delta_p_b, -correction_len / w_total * inv_m_b, n);
+
+            Real delta_omega_b[3];
+            cudaPhysics::vecMul3(delta_omega_b, -correction_len / w_total, I_r_cross_n_b);
+
+            atomicAdd(&data.dev_linear_velocity[body_id_b * 3 + 0], delta_p_b[0]);
+            atomicAdd(&data.dev_linear_velocity[body_id_b * 3 + 1], delta_p_b[1]);
+            atomicAdd(&data.dev_linear_velocity[body_id_b * 3 + 2], delta_p_b[2]);
+
+            atomicAdd(&data.dev_angular_velocity[body_id_b * 3 + 0], delta_omega_b[0]);
+            atomicAdd(&data.dev_angular_velocity[body_id_b * 3 + 1], delta_omega_b[1]);
+            atomicAdd(&data.dev_angular_velocity[body_id_b * 3 + 2], delta_omega_b[2]);
+        }
     }
 
     template <typename Real>
@@ -400,7 +484,9 @@ RigidSolver<Real>::RigidSolver(
     const std::vector<Real> &mass,
     const std::vector<int> &shape,
     const std::vector<Real> &shape_param)
-    : m_ground_collision(static_cast<unsigned int>(mass.size()), static_cast<Real>(0.0))
+    : m_collision_manager(static_cast<unsigned int>(mass.size()), static_cast<unsigned int>(mass.size() * (mass.size() - 1) / 2)),
+      m_ground_collision(static_cast<unsigned int>(mass.size()), static_cast<Real>(0.0)),
+      m_body_collision(static_cast<unsigned int>(mass.size()), static_cast<unsigned int>(mass.size() * (mass.size() - 1) / 2))
 {
     m_data.num_bodies = static_cast<unsigned int>(mass.size());
 
@@ -509,27 +595,55 @@ void RigidSolver<Real>::Step()
         RigidSolverKernel::integrate<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
         RigidSolverKernel::compute_inv_inertia_world<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
+        m_collision_manager.Clear();
+
         m_ground_collision.Detect(
             m_data.dev_position,
             m_data.dev_orientation,
             m_data.dev_shape,
             m_data.dev_shape_param);
 
+        cudaMemcpy(m_collision_manager.GetGroundCollisionData().dev_collisions,
+                   m_ground_collision.GetData().dev_collisions,
+                   sizeof(CollisionInfo<Real>) * m_ground_collision.GetData().max_collisions,
+                   cudaMemcpyDeviceToDevice);
+        cudaMemcpy(m_collision_manager.GetGroundCollisionData().dev_collision_count,
+                   m_ground_collision.GetData().dev_collision_count,
+                   sizeof(int),
+                   cudaMemcpyDeviceToDevice);
+
+        m_body_collision.Detect(
+            m_data.dev_position,
+            m_data.dev_orientation,
+            m_data.dev_shape,
+            m_data.dev_shape_param);
+
+        cudaMemcpy(m_collision_manager.GetBodyCollisionData().dev_collisions,
+                   m_body_collision.GetData().dev_collisions,
+                   sizeof(CollisionInfo<Real>) * m_body_collision.GetData().max_collisions,
+                   cudaMemcpyDeviceToDevice);
+        cudaMemcpy(m_collision_manager.GetBodyCollisionData().dev_collision_count,
+                   m_body_collision.GetData().dev_collision_count,
+                   sizeof(int),
+                   cudaMemcpyDeviceToDevice);
+
+        m_collision_manager.MergeCollisions();
+
         for (unsigned int iter = 0; iter < m_data.m_num_solver_iterations; ++iter)
         {
             cudaMemset(m_data.dev_delta_position, 0, sizeof(Real) * m_data.num_bodies * 3);
             cudaMemset(m_data.dev_delta_omega, 0, sizeof(Real) * m_data.num_bodies * 3);
             cudaMemset(m_data.dev_constraint_inv_weight, 0, sizeof(Real) * m_data.num_bodies);
-            RigidSolverKernel::accumulate_collision_deltas<Real><<<CUDA_GRID_SIZE(m_ground_collision.GetData().max_collisions), CUDA_BLOCK_SIZE>>>(
-                m_data, m_ground_collision.GetData().dev_collisions, m_ground_collision.GetData().dev_collision_count);
+            RigidSolverKernel::accumulate_collision_deltas<Real><<<CUDA_GRID_SIZE(m_collision_manager.GetMaxCollisions()), CUDA_BLOCK_SIZE>>>(
+                m_data, m_collision_manager.GetAllCollisions(), m_collision_manager.GetAllCollisionCount());
             RigidSolverKernel::apply_deltas<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
             RigidSolverKernel::compute_inv_inertia_world<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
         }
 
         RigidSolverKernel::update_velocity<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
-        RigidSolverKernel::solve_contact_velocities<Real><<<CUDA_GRID_SIZE(m_ground_collision.GetData().max_collisions), CUDA_BLOCK_SIZE>>>(
-            m_data, m_ground_collision.GetData().dev_collisions, m_ground_collision.GetData().dev_collision_count);
+        RigidSolverKernel::solve_contact_velocities<Real><<<CUDA_GRID_SIZE(m_collision_manager.GetMaxCollisions()), CUDA_BLOCK_SIZE>>>(
+            m_data, m_collision_manager.GetAllCollisions(), m_collision_manager.GetAllCollisionCount());
 
         RigidSolverKernel::normalize_orientation<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
     }
