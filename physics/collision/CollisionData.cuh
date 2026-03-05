@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cuda_runtime.h>
-
 enum RigidBodyShape
 {
     RIGID_BODY_BOX = 0,

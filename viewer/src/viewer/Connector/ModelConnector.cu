@@ -1,5 +1,4 @@
 #include "ModelConnector.cuh"
-#include <cuda_runtime.h>
 #include <viewer/Framework/RenderObject.h>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
