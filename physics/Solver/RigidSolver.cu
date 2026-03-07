@@ -519,7 +519,7 @@ RigidSolver<Real>::RigidSolver(
       m_body_collision()
 {
     m_data.num_bodies = static_cast<unsigned int>(mass.size());
-    m_max_collisions = static_cast<unsigned int>(mass.size()) + static_cast<unsigned int>(mass.size() * (mass.size() - 1) / 2);
+    m_max_collisions = (static_cast<unsigned int>(mass.size()) + static_cast<unsigned int>(mass.size() * (mass.size() - 1) / 2)) * MAX_MANIFOLD_POINTS;
 
     if (m_data.num_bodies == 0)
         return;

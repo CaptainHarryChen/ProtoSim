@@ -611,4 +611,12 @@ namespace cudaPhysics
         q[3] += dq[3];
         quatNormalize(q);
     }
+
+    template <typename Real>
+    __host__ __device__ __forceinline__ void get_local_point(Real *local_point, const Real *pos, const Real *orient_conj, const Real *world_point)
+    {
+        Real r[3];
+        cudaPhysics::vecSubs3(r, world_point, pos);
+        cudaPhysics::quatRotateVector(local_point, orient_conj, r);
+    }
 }

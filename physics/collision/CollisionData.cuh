@@ -7,6 +7,8 @@ enum RigidBodyShape
     RIGID_BODY_CAPSULE = 2
 };
 
+constexpr int MAX_MANIFOLD_POINTS = 4;
+
 template <typename Real>
 struct CollisionInfo
 {
@@ -20,8 +22,8 @@ struct CollisionInfo
 template <typename Real>
 struct CollisionData
 {
-    CollisionInfo<Real>* dev_collisions;
-    int* dev_collision_count;
+    CollisionInfo<Real> *dev_collisions;
+    int *dev_collision_count;
     unsigned int max_collisions;
 };
 
