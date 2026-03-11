@@ -96,17 +96,18 @@ namespace RigidSolverKernel
         Real *ang_vel = &data.dev_angular_velocity[i * 3];
         Real *pos_prev = &data.dev_position_prev[i * 3];
         Real *orient_prev = &data.dev_orientation_prev[i * 4];
-        Real *lin_vel_prev = &data.dev_linear_velocity_prev[i * 3];
-        Real *ang_vel_prev = &data.dev_angular_velocity_prev[i * 3];
+        Real *lin_vel_prev = &data.dev_linear_velocity_before_constraint[i * 3];
+        Real *ang_vel_prev = &data.dev_angular_velocity_before_constraint[i * 3];
 
         cudaPhysics::vecCopy3(pos_prev, pos);
         cudaPhysics::vecCopy(orient_prev, orient, 4);
-        cudaPhysics::vecCopy3(lin_vel_prev, lin_vel);
-        cudaPhysics::vecCopy3(ang_vel_prev, ang_vel);
 
         cudaPhysics::axpby(lin_vel, static_cast<Real>(1.0), lin_vel, data.m_time_step, data.m_gravity, 3);
         cudaPhysics::vecMul3(lin_vel, data.m_damping, lin_vel);
         cudaPhysics::vecMul3(ang_vel, data.m_damping, ang_vel);
+
+        cudaPhysics::vecCopy3(lin_vel_prev, lin_vel);
+        cudaPhysics::vecCopy3(ang_vel_prev, ang_vel);
 
         cudaPhysics::axpby(pos, static_cast<Real>(1.0), pos, data.m_time_step, lin_vel, 3);
         cudaPhysics::quatAddAngularVelocity(orient, ang_vel, data.m_time_step);
@@ -163,10 +164,10 @@ namespace RigidSolverKernel
         cudaPhysics::vecSubs3(a_to_b, world_point_a, world_point_b);
         Real penetration = cudaPhysics::dot3(col.normal, a_to_b);
 
-        printf("i:%d, body_id_a:%d, body_id_b:%d, world_point_a:(%f, %f, %f), world_point_b:(%f, %f, %f), normal:(%f, %f, %f), penetration:%f\n",
-            i, body_id_a, body_id_b, world_point_a[0], world_point_a[1], world_point_a[2],
-            world_point_b[0], world_point_b[1], world_point_b[2], 
-             col.normal[0], col.normal[1], col.normal[2], penetration);
+        // printf("i:%d, body_id_a:%d, body_id_b:%d, world_point_a:(%f, %f, %f), world_point_b:(%f, %f, %f), normal:(%f, %f, %f), penetration:%f\n",
+        //     i, body_id_a, body_id_b, world_point_a[0], world_point_a[1], world_point_a[2],
+        //     world_point_b[0], world_point_b[1], world_point_b[2], 
+        //      col.normal[0], col.normal[1], col.normal[2], penetration);
 
         if (penetration <= static_cast<Real>(0.0))
             return;
@@ -320,8 +321,8 @@ namespace RigidSolverKernel
         Real *orient_prev_a = &data.dev_orientation_prev[body_id_a * 4];
         Real *lin_vel_a = &data.dev_linear_velocity[body_id_a * 3];
         Real *ang_vel_a = &data.dev_angular_velocity[body_id_a * 3];
-        Real *lin_vel_prev_a = &data.dev_linear_velocity_prev[body_id_a * 3];
-        Real *ang_vel_prev_a = &data.dev_angular_velocity_prev[body_id_a * 3];
+        Real *lin_vel_prev_a = &data.dev_linear_velocity_before_constraint[body_id_a * 3];
+        Real *ang_vel_prev_a = &data.dev_angular_velocity_before_constraint[body_id_a * 3];
         Real inv_m_a = data.dev_inv_mass[body_id_a];
         Real *inv_I_world_a = &data.dev_inv_inertia_tensor_world[body_id_a * 9];
 
@@ -354,8 +355,8 @@ namespace RigidSolverKernel
             Real *orient_prev_b = &data.dev_orientation_prev[body_id_b * 4];
             Real *lin_vel_b = &data.dev_linear_velocity[body_id_b * 3];
             Real *ang_vel_b = &data.dev_angular_velocity[body_id_b * 3];
-            Real *lin_vel_prev_b = &data.dev_linear_velocity_prev[body_id_b * 3];
-            Real *ang_vel_prev_b = &data.dev_angular_velocity_prev[body_id_b * 3];
+            Real *lin_vel_prev_b = &data.dev_linear_velocity_before_constraint[body_id_b * 3];
+            Real *ang_vel_prev_b = &data.dev_angular_velocity_before_constraint[body_id_b * 3];
             inv_m_b = data.dev_inv_mass[body_id_b];
             inv_I_world_b = &data.dev_inv_inertia_tensor_world[body_id_b * 9];
 
@@ -440,45 +441,45 @@ namespace RigidSolverKernel
         cudaPhysics::vecSubs3(tangent_vel, rel_vel, vt);
 
         Real tangent_speed = cudaPhysics::len3(tangent_vel);
-        if (tangent_speed >= static_cast<Real>(1e-10))
+        Real friction_coef = data.m_friction;
+        Real max_friction_impulse = abs(normal_impulse) * friction_coef;
+        Real friction_impulse = min(tangent_speed, max_friction_impulse);
+
+        printf("body_id_a:%d, body_id_b:%d, vn:%f, vn_prev:%f, restitution:%f, bounce:%f, correction_len:%f, normal_impulse:%f, tangent_speed:%f, max_friction_impulse:%f, friction_impulse:%f\n",
+            body_id_a, body_id_b, vn, vn_prev, restitution, bounce, correction_len, normal_impulse, tangent_speed, max_friction_impulse, friction_impulse);
+
+        Real t[3];
+        cudaPhysics::vecMul3(t, static_cast<Real>(1.0) / tangent_speed, tangent_vel);
+
+        Real r_cross_t_a[3];
+        cudaPhysics::cross3(r_cross_t_a, r_world_a, t);
+        Real I_r_cross_t_a[3];
+        cudaPhysics::matVec3(I_r_cross_t_a, inv_I_world_a, r_cross_t_a);
+        Real w_t_a = inv_m_a + cudaPhysics::dot3(r_cross_t_a, I_r_cross_t_a);
+
+        Real w_t_b = static_cast<Real>(0.0);
+        Real I_r_cross_t_b[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
+        if (body_id_b >= 0)
         {
-            Real friction_coef = data.m_friction;
-            Real max_friction_impulse = abs(normal_impulse) * friction_coef;
-            Real friction_impulse = min(tangent_speed, max_friction_impulse);
+            Real r_cross_t_b[3];
+            Real neg_t[3];
+            cudaPhysics::vecMul3(neg_t, static_cast<Real>(-1.0), t);
+            cudaPhysics::cross3(r_cross_t_b, r_world_b, neg_t);
+            cudaPhysics::matVec3(I_r_cross_t_b, inv_I_world_b, r_cross_t_b);
+            w_t_b = inv_m_b + cudaPhysics::dot3(r_cross_t_b, I_r_cross_t_b);
+        }
 
-            Real t[3];
-            cudaPhysics::vecMul3(t, static_cast<Real>(1.0) / tangent_speed, tangent_vel);
+        Real w_t_total = w_t_a + w_t_b;
+        if (w_t_total >= static_cast<Real>(1e-10))
+        {
+            Real friction_factor = friction_impulse / w_t_total;
+            cudaPhysics::axpby(delta_p_a, (Real)1.0, delta_p_a, -friction_factor * inv_m_a, t, 3);
+            cudaPhysics::axpby(delta_omega_a, (Real)1.0, delta_omega_a, -friction_factor, I_r_cross_t_a, 3);
 
-            Real r_cross_t_a[3];
-            cudaPhysics::cross3(r_cross_t_a, r_world_a, t);
-            Real I_r_cross_t_a[3];
-            cudaPhysics::matVec3(I_r_cross_t_a, inv_I_world_a, r_cross_t_a);
-            Real w_t_a = inv_m_a + cudaPhysics::dot3(r_cross_t_a, I_r_cross_t_a);
-
-            Real w_t_b = static_cast<Real>(0.0);
-            Real I_r_cross_t_b[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
             if (body_id_b >= 0)
             {
-                Real r_cross_t_b[3];
-                Real neg_t[3];
-                cudaPhysics::vecMul3(neg_t, static_cast<Real>(-1.0), t);
-                cudaPhysics::cross3(r_cross_t_b, r_world_b, neg_t);
-                cudaPhysics::matVec3(I_r_cross_t_b, inv_I_world_b, r_cross_t_b);
-                w_t_b = inv_m_b + cudaPhysics::dot3(r_cross_t_b, I_r_cross_t_b);
-            }
-
-            Real w_t_total = w_t_a + w_t_b;
-            if (w_t_total >= static_cast<Real>(1e-10))
-            {
-                Real friction_factor = friction_impulse / w_t_total;
-                cudaPhysics::axpby(delta_p_a, (Real)1.0, delta_p_a, -friction_factor * inv_m_a, t, 3);
-                cudaPhysics::axpby(delta_omega_a, (Real)1.0, delta_omega_a, -friction_factor, I_r_cross_t_a, 3);
-
-                if (body_id_b >= 0)
-                {
-                    cudaPhysics::axpby(delta_p_b, (Real)1.0, delta_p_b, friction_factor * inv_m_b, t, 3);
-                    cudaPhysics::axpby(delta_omega_b, (Real)1.0, delta_omega_b, -friction_factor, I_r_cross_t_b, 3);
-                }
+                cudaPhysics::axpby(delta_p_b, (Real)1.0, delta_p_b, friction_factor * inv_m_b, t, 3);
+                cudaPhysics::axpby(delta_omega_b, (Real)1.0, delta_omega_b, -friction_factor, I_r_cross_t_b, 3);
             }
         }
 
@@ -558,8 +559,8 @@ RigidSolver<Real>::RigidSolver(
 
     cudaMalloc(&m_data.dev_position_prev, sizeof(Real) * m_data.num_bodies * 3);
     cudaMalloc(&m_data.dev_orientation_prev, sizeof(Real) * m_data.num_bodies * 4);
-    cudaMalloc(&m_data.dev_linear_velocity_prev, sizeof(Real) * m_data.num_bodies * 3);
-    cudaMalloc(&m_data.dev_angular_velocity_prev, sizeof(Real) * m_data.num_bodies * 3);
+    cudaMalloc(&m_data.dev_linear_velocity_before_constraint, sizeof(Real) * m_data.num_bodies * 3);
+    cudaMalloc(&m_data.dev_angular_velocity_before_constraint, sizeof(Real) * m_data.num_bodies * 3);
 
     cudaMalloc(&m_data.dev_delta_position, sizeof(Real) * m_data.num_bodies * 3);
     cudaMalloc(&m_data.dev_delta_omega, sizeof(Real) * m_data.num_bodies * 3);
@@ -611,10 +612,10 @@ RigidSolver<Real>::~RigidSolver()
         cudaFree(m_data.dev_position_prev);
     if (m_data.dev_orientation_prev)
         cudaFree(m_data.dev_orientation_prev);
-    if (m_data.dev_linear_velocity_prev)
-        cudaFree(m_data.dev_linear_velocity_prev);
-    if (m_data.dev_angular_velocity_prev)
-        cudaFree(m_data.dev_angular_velocity_prev);
+    if (m_data.dev_linear_velocity_before_constraint)
+        cudaFree(m_data.dev_linear_velocity_before_constraint);
+    if (m_data.dev_angular_velocity_before_constraint)
+        cudaFree(m_data.dev_angular_velocity_before_constraint);
     if (m_data.dev_delta_position)
         cudaFree(m_data.dev_delta_position);
     if (m_data.dev_delta_omega)

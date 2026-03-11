@@ -25,8 +25,8 @@ struct RigidSolverData
 
     Real *dev_position_prev;
     Real *dev_orientation_prev;
-    Real *dev_linear_velocity_prev;
-    Real *dev_angular_velocity_prev;
+    Real *dev_linear_velocity_before_constraint;
+    Real *dev_angular_velocity_before_constraint;
 
     Real *dev_delta_position;
     Real *dev_delta_omega;
