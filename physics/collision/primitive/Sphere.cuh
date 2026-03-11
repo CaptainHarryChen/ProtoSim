@@ -54,8 +54,7 @@ namespace BodyCollisionKernel
         int body_id_sphere, int body_id_box,
         const Real *pos_sphere, const Real *orient_sphere, Real radius,
         const Real *pos_box, const Real *orient_box, Real hx, Real hy, Real hz,
-        Real epsilon,
-        bool swap_order)
+        Real epsilon)
     {
         Real orient_box_conj[4];
         cudaPhysics::quatConjugate(orient_box_conj, orient_box);
@@ -71,7 +70,7 @@ namespace BodyCollisionKernel
         closest_local[2] = max(-hz, min(hz, sphere_center_local[2]));
 
         Real diff_local[3];
-        cudaPhysics::vecSubs3(diff_local, sphere_center_local, closest_local);
+        cudaPhysics::vecSubs3(diff_local, closest_local, sphere_center_local);
         Real dist = cudaPhysics::len3(diff_local);
 
         if (dist >= radius)
@@ -112,7 +111,7 @@ namespace BodyCollisionKernel
         cudaPhysics::quatRotateVector(n_world, orient_box, n_local);
 
         Real contact_on_sphere[3];
-        cudaPhysics::vecMul3(contact_on_sphere, -radius, n_world);
+        cudaPhysics::vecMul3(contact_on_sphere, radius, n_world);
         cudaPhysics::vecAdd3(contact_on_sphere, pos_sphere, contact_on_sphere);
 
         Real contact_on_box[3];
@@ -126,15 +125,6 @@ namespace BodyCollisionKernel
         cudaPhysics::get_local_point(contact_a, pos_sphere, orient_sphere_conj, contact_on_sphere);
         cudaPhysics::get_local_point(contact_b, pos_box, orient_box_conj, contact_on_box);
 
-        if (swap_order)
-        {
-            Real neg_n[3];
-            cudaPhysics::vecMul3(neg_n, static_cast<Real>(-1.0), n_world);
-            return CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_box, body_id_sphere, contact_b, contact_a, neg_n);
-        }
-        else
-        {
-            return CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_sphere, body_id_box, contact_a, contact_b, n_world);
-        }
+        return CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_sphere, body_id_box, contact_a, contact_b, n_world);
     }
 }

@@ -185,33 +185,39 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->AddBox(
+    scene->AddSphere(
         glm::vec3(0.0f, 2.0f, 0.0f),
         glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-        glm::vec3(0.5f, 0.5f, 0.5f),
+        0.5f,
         1.0f,
         {glm::vec3(0.8f, 0.2f, 0.2f), glm::vec3(0.1f, 0.5f, 0.1f)});
-    
-    scene->AddBox(
-        glm::vec3(0.0f, 3.0f, 0.0f),
+    scene->AddSphere(
+        glm::vec3(-0.1f, 4.0f, 0.0f),
         glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-        glm::vec3(0.3f, 0.2f, 0.8f),
-        1.0f,
-        {glm::vec3(0.2f, 0.2f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
+        0.3f,
+        0.5f,
+        {glm::vec3(0.8f, 0.8f, 0.2f), glm::vec3(0.1f, 0.3f, 0.1f)});
     
-    scene->AddBox(
-        glm::vec3(0.5f, 4.0f, 0.0f),
-        glm::angleAxis(glm::radians(30.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        1.0f,
-        {glm::vec3(0.5f, 0.2f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    // scene->AddBox(
+    //     glm::vec3(0.0f, 3.0f, 0.0f),
+    //     glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+    //     glm::vec3(0.3f, 0.2f, 0.8f),
+    //     1.0f,
+    //     {glm::vec3(0.2f, 0.2f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    
+    // scene->AddBox(
+    //     glm::vec3(0.5f, 4.0f, 0.0f),
+    //     glm::angleAxis(glm::radians(30.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+    //     glm::vec3(0.5f, 0.5f, 0.5f),
+    //     1.0f,
+    //     {glm::vec3(0.5f, 0.2f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
 
-    scene->AddBox(
-        glm::vec3(1.5f, 3.0f, 0.0f),
-        glm::angleAxis(glm::radians(30.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
-        glm::vec3(0.3f, 0.6f, 0.3f),
-        2.0f,
-        {glm::vec3(0.2f, 0.8f, 0.2f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    // scene->AddBox(
+    //     glm::vec3(1.5f, 3.0f, 0.0f),
+    //     glm::angleAxis(glm::radians(30.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+    //     glm::vec3(0.3f, 0.6f, 0.3f),
+    //     2.0f,
+    //     {glm::vec3(0.2f, 0.8f, 0.2f), glm::vec3(0.1f, 0.5f, 0.1f)});
 
     // scene->AddSphere(
     //     glm::vec3(-1.7f, 2.0f, 0.0f),

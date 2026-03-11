@@ -164,10 +164,10 @@ namespace RigidSolverKernel
         cudaPhysics::vecSubs3(a_to_b, world_point_a, world_point_b);
         Real penetration = cudaPhysics::dot3(col.normal, a_to_b);
 
-        // printf("i:%d, body_id_a:%d, body_id_b:%d, world_point_a:(%f, %f, %f), world_point_b:(%f, %f, %f), normal:(%f, %f, %f), penetration:%f\n",
-        //     i, body_id_a, body_id_b, world_point_a[0], world_point_a[1], world_point_a[2],
-        //     world_point_b[0], world_point_b[1], world_point_b[2], 
-        //      col.normal[0], col.normal[1], col.normal[2], penetration);
+        printf("i:%d, body_id_a:%d, body_id_b:%d, world_point_a:(%f, %f, %f), world_point_b:(%f, %f, %f), normal:(%f, %f, %f), penetration:%f\n",
+            i, body_id_a, body_id_b, world_point_a[0], world_point_a[1], world_point_a[2],
+            world_point_b[0], world_point_b[1], world_point_b[2], 
+             col.normal[0], col.normal[1], col.normal[2], penetration);
 
         if (penetration <= static_cast<Real>(0.0))
             return;
