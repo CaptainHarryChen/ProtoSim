@@ -126,42 +126,19 @@ namespace GroundCollisionKernel
     {
         Real corners[8][3] = {
             {-hx, -hy, -hz}, {hx, -hy, -hz}, {-hx, hy, -hz}, {hx, hy, -hz}, {-hx, -hy, hz}, {hx, -hy, hz}, {-hx, hy, hz}, {hx, hy, hz}};
-
         Real world_corners[8][3];
-        Real min_y = static_cast<Real>(1e30);
 
         for (int c = 0; c < 8; ++c)
         {
             Real rotated_corner[3];
             cudaPhysics::quatRotateVector(rotated_corner, orient, corners[c]);
             cudaPhysics::vecAdd3(world_corners[c], rotated_corner, pos);
-
-            if (world_corners[c][1] < min_y)
-                min_y = world_corners[c][1];
-        }
-
-        Real penetration = ground_height - min_y;
-        if (penetration <= static_cast<Real>(0.0))
-            return 0;
-
-        Real lowest_corners[8][3];
-        int num_lowest = 0;
-        Real y_threshold = min_y;
-
-        for (int c = 0; c < 8; ++c)
-        {
-            if (world_corners[c][1] <= y_threshold)
-            {
-                cudaPhysics::vecCopy3(lowest_corners[num_lowest], world_corners[c]);
-                num_lowest++;
-            }
         }
 
         int num_contacts = 0;
-        for (int i = 0; i < num_lowest && i < MAX_MANIFOLD_POINTS; ++i)
-        {
-            num_contacts += add_collision_point(collisions, collision_count, max_collisions, body_id, pos, orient, lowest_corners[i], ground_height);
-        }
+        for (int i = 0; i < 8 && num_contacts < MAX_MANIFOLD_POINTS; ++i)
+            if (world_corners[i][1] < ground_height)
+                num_contacts += add_collision_point(collisions, collision_count, max_collisions, body_id, pos, orient, world_corners[i], ground_height);
 
         return num_contacts;
     }

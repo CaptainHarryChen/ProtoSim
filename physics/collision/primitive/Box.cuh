@@ -7,25 +7,10 @@ namespace BodyCollisionKernel
     template <typename Real>
     __device__ void get_box_axis(Real *axis, const Real *orient, int axis_idx)
     {
-        if (axis_idx == 0)
-        {
-            axis[0] = static_cast<Real>(1.0);
-            axis[1] = static_cast<Real>(0.0);
-            axis[2] = static_cast<Real>(0.0);
-        }
-        else if (axis_idx == 1)
-        {
-            axis[0] = static_cast<Real>(0.0);
-            axis[1] = static_cast<Real>(1.0);
-            axis[2] = static_cast<Real>(0.0);
-        }
-        else
-        {
-            axis[0] = static_cast<Real>(0.0);
-            axis[1] = static_cast<Real>(0.0);
-            axis[2] = static_cast<Real>(1.0);
-        }
-        cudaPhysics::quatRotateVector(axis, orient, axis);
+        Real basis[3] = {static_cast<Real>(axis_idx == 0),
+                         static_cast<Real>(axis_idx == 1),
+                         static_cast<Real>(axis_idx == 2)};
+        cudaPhysics::quatRotateVector(axis, orient, basis);
     }
 
     template <typename Real>
@@ -78,115 +63,59 @@ namespace BodyCollisionKernel
     }
 
     template <typename Real>
-    __device__ void get_box_face_vertices(Real vertices[4][3], const Real *pos, const Real *orient, Real hx, Real hy, Real hz, int face_idx)
+    __device__ void get_face_vertices(Real vertices[4][3], const Real *pos, const Real *orient, const Real *extents, int face_idx)
     {
-        int sign = (face_idx >= 3) ? -1 : 1;
         int axis = face_idx % 3;
+        int sign = (face_idx < 3) ? 1 : -1;
 
-        Real local_verts[4][3];
-        if (axis == 0)
-        {
-            local_verts[0][0] = sign * hx;
-            local_verts[0][1] = -hy;
-            local_verts[0][2] = -hz;
-            local_verts[1][0] = sign * hx;
-            local_verts[1][1] = hy;
-            local_verts[1][2] = -hz;
-            local_verts[2][0] = sign * hx;
-            local_verts[2][1] = hy;
-            local_verts[2][2] = hz;
-            local_verts[3][0] = sign * hx;
-            local_verts[3][1] = -hy;
-            local_verts[3][2] = hz;
-        }
-        else if (axis == 1)
-        {
-            local_verts[0][0] = -hx;
-            local_verts[0][1] = sign * hy;
-            local_verts[0][2] = -hz;
-            local_verts[1][0] = hx;
-            local_verts[1][1] = sign * hy;
-            local_verts[1][2] = -hz;
-            local_verts[2][0] = hx;
-            local_verts[2][1] = sign * hy;
-            local_verts[2][2] = hz;
-            local_verts[3][0] = -hx;
-            local_verts[3][1] = sign * hy;
-            local_verts[3][2] = hz;
-        }
-        else
-        {
-            local_verts[0][0] = -hx;
-            local_verts[0][1] = -hy;
-            local_verts[0][2] = sign * hz;
-            local_verts[1][0] = hx;
-            local_verts[1][1] = -hy;
-            local_verts[1][2] = sign * hz;
-            local_verts[2][0] = hx;
-            local_verts[2][1] = hy;
-            local_verts[2][2] = sign * hz;
-            local_verts[3][0] = -hx;
-            local_verts[3][1] = hy;
-            local_verts[3][2] = sign * hz;
-        }
+        int t1 = (axis + 1) % 3;
+        int t2 = (axis + 2) % 3;
+
+        Real face_ext = extents[axis] * sign;
 
         for (int i = 0; i < 4; ++i)
         {
+            int s1 = (i == 1 || i == 2) ? 1 : -1;
+            int s2 = (i == 2 || i == 3) ? 1 : -1;
+
+            Real local_vert[3];
+            local_vert[axis] = face_ext;
+            local_vert[t1] = extents[t1] * s1;
+            local_vert[t2] = extents[t2] * s2;
+
             Real rotated[3];
-            cudaPhysics::quatRotateVector(rotated, orient, local_verts[i]);
+            cudaPhysics::quatRotateVector(rotated, orient, local_vert);
             cudaPhysics::vecAdd3(vertices[i], pos, rotated);
         }
     }
 
     template <typename Real>
-    __device__ Real distance_point_to_plane(const Real *point, const Real *plane_point, const Real *plane_normal)
-    {
-        Real diff[3];
-        cudaPhysics::vecSubs3(diff, point, plane_point);
-        return cudaPhysics::dot3(diff, plane_normal);
-    }
-
-    template <typename Real>
-    __device__ void project_point_onto_plane(Real *projected, const Real *point, const Real *plane_point, const Real *plane_normal)
-    {
-        Real dist = distance_point_to_plane(point, plane_point, plane_normal);
-        projected[0] = point[0] - dist * plane_normal[0];
-        projected[1] = point[1] - dist * plane_normal[1];
-        projected[2] = point[2] - dist * plane_normal[2];
-    }
-
-    template <typename Real>
-    __device__ int clip_polygon_by_plane(Real output[8][3], const Real input[8][3], int num_input, const Real *plane_point, const Real *plane_normal, Real epsilon)
+    __device__ int clip_polygon_by_plane(Real output[8][3], const Real input[8][3], int num_input,
+                                         const Real *plane_point, const Real *plane_normal, Real epsilon)
     {
         if (num_input == 0)
             return 0;
-
-        Real distances[8];
-        bool inside[8];
-
-        for (int i = 0; i < num_input; ++i)
-        {
-            distances[i] = distance_point_to_plane(input[i], plane_point, plane_normal);
-            inside[i] = (distances[i] >= -epsilon);
-        }
 
         int num_output = 0;
         for (int i = 0; i < num_input; ++i)
         {
             int j = (i + 1) % num_input;
 
-            if (inside[i])
+            Real d_i = cudaPhysics::dot3(input[i], plane_normal) - cudaPhysics::dot3(plane_point, plane_normal);
+            Real d_j = cudaPhysics::dot3(input[j], plane_normal) - cudaPhysics::dot3(plane_point, plane_normal);
+
+            bool inside_i = (d_i <= epsilon);
+
+            if (inside_i)
             {
                 cudaPhysics::vecCopy3(output[num_output], input[i]);
                 num_output++;
             }
 
-            if (inside[i] != inside[j])
+            if ((d_i > epsilon) != (d_j > epsilon))
             {
-                Real t = distances[i] / (distances[i] - distances[j]);
-                output[num_output][0] = input[i][0] + t * (input[j][0] - input[i][0]);
-                output[num_output][1] = input[i][1] + t * (input[j][1] - input[i][1]);
-                output[num_output][2] = input[i][2] + t * (input[j][2] - input[i][2]);
+                Real t = d_i / (d_i - d_j);
+                cudaPhysics::axpby(output[num_output], static_cast<Real>(1.0 - t), input[i], t, input[j], 3);
                 num_output++;
             }
         }
@@ -195,56 +124,233 @@ namespace BodyCollisionKernel
     }
 
     template <typename Real>
-    __device__ int clip_polygon_by_box_face(Real output[8][3], const Real input[8][3], int num_input,
-                                            const Real *face_center, const Real *face_tangent1, const Real *face_tangent2,
-                                            Real extent1, Real extent2, Real epsilon)
+    __device__ int generate_face_contacts(
+        CollisionInfo<Real> *collisions,
+        int *collision_count,
+        unsigned int max_collisions,
+        int body_id_a, int body_id_b,
+        const Real *pos_ref, const Real *orient_ref, const Real *extents_ref,
+        const Real *pos_inc, const Real *orient_inc, const Real *extents_inc,
+        const Real *orient_ref_conj, const Real *orient_inc_conj,
+        const Real axes_ref[3][3],
+        int ref_face_idx,
+        const Real *n,
+        Real epsilon)
     {
-        Real temp1[8][3], temp2[8][3];
-        int num_temp1 = num_input;
+        int ref_axis = ref_face_idx % 3;
+        int ref_sign = (ref_face_idx < 3) ? 1 : -1;
 
-        for (int i = 0; i < num_input; ++i)
-            cudaPhysics::vecCopy3(temp1[i], input[i]);
+        Real ref_normal[3];
+        cudaPhysics::vecCopy3(ref_normal, axes_ref[ref_axis]);
+        if (ref_sign < 0)
+            cudaPhysics::vecMul3(ref_normal, static_cast<Real>(-1.0), ref_normal);
 
-        for (int edge = 0; edge < 4; ++edge)
+        int t1 = (ref_axis + 1) % 3;
+        int t2 = (ref_axis + 2) % 3;
+
+        Real ref_face_center[3];
+        cudaPhysics::axpby(ref_face_center, static_cast<Real>(1.0), pos_ref, extents_ref[ref_axis], ref_normal, 3);
+
+        Real inc_axes[3][3];
+        for (int i = 0; i < 3; ++i)
+            get_box_axis(inc_axes[i], orient_inc, i);
+
+        printf("ref_face_idx: %d ref_normal: %f, %f, %f ref_face_center: %f, %f, %f \ninc_axes: %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
+               ref_face_idx, ref_normal[0], ref_normal[1], ref_normal[2],
+               ref_face_center[0], ref_face_center[1], ref_face_center[2],
+               inc_axes[0][0], inc_axes[0][1], inc_axes[0][2],
+               inc_axes[1][0], inc_axes[1][1], inc_axes[1][2],
+               inc_axes[2][0], inc_axes[2][1], inc_axes[2][2]);
+
+        Real min_dot = static_cast<Real>(1e30);
+        int inc_face_idx = 0;
+        for (int i = 0; i < 6; ++i)
         {
-            if (num_temp1 == 0)
-                return 0;
+            int axis = i % 3;
+            int sign = (i < 3) ? 1 : -1;
 
-            Real edge_point[3], edge_normal[3];
-            int sign = (edge < 2) ? 1 : -1;
-            int axis = edge % 2;
+            Real inc_normal[3];
+            cudaPhysics::vecCopy3(inc_normal, inc_axes[axis]);
+            if (sign < 0)
+                cudaPhysics::vecMul3(inc_normal, static_cast<Real>(-1.0), inc_normal);
 
-            if (axis == 0)
+            Real dot_val = cudaPhysics::dot3(ref_normal, inc_normal);
+            if (dot_val < min_dot)
             {
-                edge_point[0] = face_center[0] + sign * extent1 * face_tangent1[0];
-                edge_point[1] = face_center[1] + sign * extent1 * face_tangent1[1];
-                edge_point[2] = face_center[2] + sign * extent1 * face_tangent1[2];
-
-                cudaPhysics::cross3(edge_normal, face_tangent1, face_tangent2);
-                if (sign < 0)
-                    cudaPhysics::vecMul3(edge_normal, static_cast<Real>(-1.0), edge_normal);
+                min_dot = dot_val;
+                inc_face_idx = i;
             }
-            else
-            {
-                edge_point[0] = face_center[0] + sign * extent2 * face_tangent2[0];
-                edge_point[1] = face_center[1] + sign * extent2 * face_tangent2[1];
-                edge_point[2] = face_center[2] + sign * extent2 * face_tangent2[2];
-
-                cudaPhysics::cross3(edge_normal, face_tangent2, face_tangent1);
-                if (sign < 0)
-                    cudaPhysics::vecMul3(edge_normal, static_cast<Real>(-1.0), edge_normal);
-            }
-
-            num_temp1 = clip_polygon_by_plane(temp2, temp1, num_temp1, edge_point, edge_normal, epsilon);
-
-            for (int i = 0; i < num_temp1; ++i)
-                cudaPhysics::vecCopy3(temp1[i], temp2[i]);
         }
 
-        for (int i = 0; i < num_temp1; ++i)
-            cudaPhysics::vecCopy3(output[i], temp1[i]);
+        Real inc_verts[8][3];
+        get_face_vertices(inc_verts, pos_inc, orient_inc, extents_inc, inc_face_idx);
 
-        return num_temp1;
+        printf("inc_verts: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
+               inc_verts[0][0], inc_verts[0][1], inc_verts[0][2],
+               inc_verts[1][0], inc_verts[1][1], inc_verts[1][2],
+               inc_verts[2][0], inc_verts[2][1], inc_verts[2][2],
+               inc_verts[3][0], inc_verts[3][1], inc_verts[3][2]);
+
+        Real polygon[8][3];
+        int num_verts = 4;
+        for (int i = 0; i < 4; ++i)
+            cudaPhysics::vecCopy3(polygon[i], inc_verts[i]);
+
+        Real temp[8][3];
+        Real side_normals[4][3];
+        Real side_points[4][3];
+
+        cudaPhysics::vecCopy3(side_normals[0], axes_ref[t1]);
+        cudaPhysics::vecMul3(side_normals[1], (Real)-1, axes_ref[t1]);
+        cudaPhysics::vecCopy3(side_normals[2], axes_ref[t2]);
+        cudaPhysics::vecMul3(side_normals[3], (Real)-1, axes_ref[t2]);
+        cudaPhysics::axpby(side_points[0], (Real)1, ref_face_center, extents_ref[t1], axes_ref[t1], 3);
+        cudaPhysics::axpby(side_points[1], (Real)1, ref_face_center, -extents_ref[t1], axes_ref[t1], 3);
+        cudaPhysics::axpby(side_points[2], (Real)1, ref_face_center, extents_ref[t2], axes_ref[t2], 3);
+        cudaPhysics::axpby(side_points[3], (Real)1, ref_face_center, -extents_ref[t2], axes_ref[t2], 3);
+
+        printf("side_normals: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
+               side_normals[0][0], side_normals[0][1], side_normals[0][2],
+               side_normals[1][0], side_normals[1][1], side_normals[1][2],
+               side_normals[2][0], side_normals[2][1], side_normals[2][2],
+               side_normals[3][0], side_normals[3][1], side_normals[3][2]);
+        printf("side_points: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
+               side_points[0][0], side_points[0][1], side_points[0][2],
+               side_points[1][0], side_points[1][1], side_points[1][2],
+               side_points[2][0], side_points[2][1], side_points[2][2],
+               side_points[3][0], side_points[3][1], side_points[3][2]);
+
+        for (int i = 0; i < 4; ++i)
+        {
+            num_verts = clip_polygon_by_plane(temp, polygon, num_verts, side_points[i], side_normals[i], epsilon);
+            for (int j = 0; j < num_verts; ++j)
+                cudaPhysics::vecCopy3(polygon[j], temp[j]);
+        }
+        printf("num_verts: %d\n polygon: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f;\n",
+               num_verts,
+               polygon[0][0], polygon[0][1], polygon[0][2],
+               polygon[1][0], polygon[1][1], polygon[1][2],
+               polygon[2][0], polygon[2][1], polygon[2][2],
+               polygon[3][0], polygon[3][1], polygon[3][2],
+               polygon[4][0], polygon[4][1], polygon[4][2],
+               polygon[5][0], polygon[5][1], polygon[5][2],
+               polygon[6][0], polygon[6][1], polygon[6][2],
+               polygon[7][0], polygon[7][1], polygon[7][2]);
+
+        int num_contacts = 0;
+        for (int i = 0; i < num_verts && num_contacts < MAX_MANIFOLD_POINTS; ++i)
+        {
+            Real penetration = cudaPhysics::dot3(ref_normal, ref_face_center) - cudaPhysics::dot3(ref_normal, polygon[i]);
+
+            if (penetration >= 0)
+            {
+                Real contact_a[3], contact_b[3];
+
+                Real projected[3];
+                cudaPhysics::axpby(projected, static_cast<Real>(1.0), polygon[i], penetration, ref_normal, 3);
+
+                cudaPhysics::get_local_point(contact_a, pos_ref, orient_ref_conj, projected);
+                cudaPhysics::get_local_point(contact_b, pos_inc, orient_inc_conj, polygon[i]);
+
+                num_contacts += CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_a, body_id_b, contact_a, contact_b, ref_normal);
+            }
+        }
+
+        return num_contacts;
+    }
+
+    template <typename Real>
+    __device__ int generate_edge_contacts(
+        CollisionInfo<Real> *collisions,
+        int *collision_count,
+        unsigned int max_collisions,
+        int body_id_a, int body_id_b,
+        const Real *pos_a, const Real *orient_a, const Real *extents_a,
+        const Real *pos_b, const Real *orient_b, const Real *extents_b,
+        const Real *orient_a_conj, const Real *orient_b_conj,
+        int edge_axis_a, int edge_axis_b,
+        const Real *n,
+        Real epsilon)
+    {
+        Real axes_a[3][3], axes_b[3][3];
+
+        for (int i = 0; i < 3; i++)
+        {
+            get_box_axis(axes_a[i], orient_a, i);
+            get_box_axis(axes_b[i], orient_b, i);
+        }
+
+        Real dA[3], dB[3];
+        cudaPhysics::vecCopy3(dA, axes_a[edge_axis_a]);
+        cudaPhysics::vecCopy3(dB, axes_b[edge_axis_b]);
+
+        int t1 = (edge_axis_a + 1) % 3;
+        int t2 = (edge_axis_a + 2) % 3;
+
+        int u1 = (edge_axis_b + 1) % 3;
+        int u2 = (edge_axis_b + 2) % 3;
+
+        Real pA[3], pB[3];
+        Real localA[3] = {0, 0, 0};
+        Real localB[3] = {0, 0, 0};
+        Real sA1 = cudaPhysics::dot3(n, axes_a[t1]) > 0 ? 1 : -1;
+        Real sA2 = cudaPhysics::dot3(n, axes_a[t2]) > 0 ? 1 : -1;
+        Real sB1 = cudaPhysics::dot3(n, axes_b[u1]) > 0 ? -1 : 1;
+        Real sB2 = cudaPhysics::dot3(n, axes_b[u2]) > 0 ? -1 : 1;
+        localA[t1] = sA1 * extents_a[t1];
+        localA[t2] = sA2 * extents_a[t2];
+        localB[u1] = sB1 * extents_b[u1];
+        localB[u2] = sB2 * extents_b[u2];
+
+        cudaPhysics::quatRotateVector(pA, orient_a, localA);
+        cudaPhysics::vecAdd3(pA, pos_a, pA);
+
+        cudaPhysics::quatRotateVector(pB, orient_b, localB);
+        cudaPhysics::vecAdd3(pB, pos_b, pB);
+
+        printf("pA: %f, %f, %f; pB: %f, %f, %f\ndA: %f, %f, %f; dB: %f, %f, %f\n", pA[0], pA[1], pA[2], pB[0], pB[1], pB[2], dA[0], dA[1], dA[2], dB[0], dB[1], dB[2]);
+
+        Real r[3];
+        cudaPhysics::vecSubs3(r, pA, pB);
+
+        Real a = cudaPhysics::dot3(dA, dA);
+        Real e = cudaPhysics::dot3(dB, dB);
+        Real b = cudaPhysics::dot3(dA, dB);
+        Real c = cudaPhysics::dot3(dA, r);
+        Real f = cudaPhysics::dot3(dB, r);
+
+        Real denom = a * e - b * b;
+
+        if (fabs(denom) < epsilon)
+            return 0;
+
+        Real t = (b * f - c * e) / denom;
+        Real s = (a * f - b * c) / denom;
+
+        Real extentA = extents_a[edge_axis_a];
+        Real extentB = extents_b[edge_axis_b];
+
+        t = max(-extentA, min(extentA, t));
+        s = max(-extentB, min(extentB, s));
+
+        Real cpA[3], cpB[3];
+
+        cudaPhysics::axpby(cpA, (Real)1.0, pA, t, dA, 3);
+        cudaPhysics::axpby(cpB, (Real)1.0, pB, s, dB, 3);
+
+        Real contact_world[3];
+        cudaPhysics::axpby(contact_world, (Real)0.5, cpA, (Real)0.5, cpB, 3);
+
+        Real contact_a[3], contact_b[3];
+
+        cudaPhysics::get_local_point(contact_a, pos_a, orient_a_conj, contact_world);
+        cudaPhysics::get_local_point(contact_b, pos_b, orient_b_conj, contact_world);
+
+        return CollisionDataUtils::add_collision_info(
+            collisions, collision_count, max_collisions,
+            body_id_a, body_id_b,
+            contact_a, contact_b,
+            n);
     }
 
     template <typename Real>
@@ -268,6 +374,7 @@ namespace BodyCollisionKernel
         Real min_axis[3];
         int min_axis_type = 0;
         int min_axis_idx = 0;
+        int min_axis_idx_j = 0;
 
         for (int i = 0; i < 3; ++i)
         {
@@ -319,18 +426,20 @@ namespace BodyCollisionKernel
                     min_overlap = overlap;
                     cudaPhysics::vecCopy3(min_axis, cross_axis);
                     min_axis_type = 2;
+                    min_axis_idx = i;
+                    min_axis_idx_j = j;
                 }
             }
         }
 
+        if (min_overlap <= epsilon)
+            return 0;
+
         Real d[3];
         cudaPhysics::vecSubs3(d, pos_b, pos_a);
-        if (cudaPhysics::dot3(d, min_axis) < static_cast<Real>(0.0))
-        {
-            min_axis[0] = -min_axis[0];
-            min_axis[1] = -min_axis[1];
-            min_axis[2] = -min_axis[2];
-        }
+        Real sign = cudaPhysics::dot3(d, min_axis) < 0.0 ? -1.0 : 1.0;
+        cudaPhysics::vecMul3(min_axis, sign, min_axis);
+        printf("min_axis: %f, %f, %f\n", min_axis[0], min_axis[1], min_axis[2]);
 
         Real len = cudaPhysics::len3(min_axis);
         if (len < epsilon)
@@ -343,211 +452,70 @@ namespace BodyCollisionKernel
         cudaPhysics::quatConjugate(orient_a_conj, orient_a);
         cudaPhysics::quatConjugate(orient_b_conj, orient_b);
 
+        Real extents_a[3] = {hx_a, hy_a, hz_a};
+        Real extents_b[3] = {hx_b, hy_b, hz_b};
+
         int num_contacts = 0;
 
-        if (min_axis_type == 0)
+        if (min_axis_type == 2)
         {
-            int face_idx = min_axis_idx;
-            Real face_center[3];
-            Real face_normal[3];
-            Real face_tangent1[3], face_tangent2[3];
-            Real extent1, extent2;
-
-            cudaPhysics::vecCopy3(face_normal, axes_a[face_idx]);
-            Real sign_n = (cudaPhysics::dot3(n, face_normal) > 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
-            cudaPhysics::vecMul3(face_normal, sign_n, face_normal);
-
-            int tangent_idx1 = (face_idx + 1) % 3;
-            int tangent_idx2 = (face_idx + 2) % 3;
-            cudaPhysics::vecCopy3(face_tangent1, axes_a[tangent_idx1]);
-            cudaPhysics::vecCopy3(face_tangent2, axes_a[tangent_idx2]);
-
-            if (face_idx == 0)
-            {
-                extent1 = hy_a;
-                extent2 = hz_a;
-                face_center[0] = pos_a[0] + sign_n * hx_a * face_normal[0];
-                face_center[1] = pos_a[1] + sign_n * hx_a * face_normal[1];
-                face_center[2] = pos_a[2] + sign_n * hx_a * face_normal[2];
-            }
-            else if (face_idx == 1)
-            {
-                extent1 = hx_a;
-                extent2 = hz_a;
-                face_center[0] = pos_a[0] + sign_n * hy_a * face_normal[0];
-                face_center[1] = pos_a[1] + sign_n * hy_a * face_normal[1];
-                face_center[2] = pos_a[2] + sign_n * hy_a * face_normal[2];
-            }
-            else
-            {
-                extent1 = hx_a;
-                extent2 = hy_a;
-                face_center[0] = pos_a[0] + sign_n * hz_a * face_normal[0];
-                face_center[1] = pos_a[1] + sign_n * hz_a * face_normal[1];
-                face_center[2] = pos_a[2] + sign_n * hz_a * face_normal[2];
-            }
-
-            Real incident_verts[8][3];
-            get_box_face_vertices(incident_verts, pos_b, orient_b, hx_b, hy_b, hz_b, 0);
-
-            Real best_verts[8][3];
-            Real best_dist = static_cast<Real>(1e30);
-            for (int face = 0; face < 6; ++face)
-            {
-                Real verts[8][3];
-                get_box_face_vertices(verts, pos_b, orient_b, hx_b, hy_b, hz_b, face);
-
-                Real avg_dist = static_cast<Real>(0.0);
-                for (int v = 0; v < 4; ++v)
-                {
-                    avg_dist += distance_point_to_plane(verts[v], face_center, face_normal);
-                }
-                avg_dist /= static_cast<Real>(4.0);
-
-                if (abs(avg_dist) < abs(best_dist))
-                {
-                    best_dist = avg_dist;
-                    for (int v = 0; v < 4; ++v)
-                        cudaPhysics::vecCopy3(best_verts[v], verts[v]);
-                }
-            }
-
-            Real clipped[8][3];
-            int num_clipped = clip_polygon_by_box_face(clipped, best_verts, 4, face_center, face_tangent1, face_tangent2, extent1, extent2, epsilon);
-
-            for (int i = 0; i < num_clipped && num_contacts < MAX_MANIFOLD_POINTS; ++i)
-            {
-                Real dist = distance_point_to_plane(clipped[i], face_center, face_normal);
-                if (dist < static_cast<Real>(0.0))
-                {
-                    Real contact_a[3], contact_b[3];
-
-                    Real projected[3];
-                    project_point_onto_plane(projected, clipped[i], face_center, face_normal);
-                    cudaPhysics::get_local_point(contact_a, pos_a, orient_a_conj, projected);
-                    cudaPhysics::get_local_point(contact_b, pos_b, orient_b_conj, clipped[i]);
-
-                    Real contact_normal[3];
-                    cudaPhysics::vecMul3(contact_normal, static_cast<Real>(-1.0), face_normal);
-
-                    num_contacts += CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_a, body_id_b, contact_a, contact_b, contact_normal);
-                }
-            }
-        }
-        else if (min_axis_type == 1)
-        {
-            int face_idx = min_axis_idx;
-            Real face_center[3];
-            Real face_normal[3];
-            Real face_tangent1[3], face_tangent2[3];
-            Real extent1, extent2;
-
-            cudaPhysics::vecCopy3(face_normal, axes_b[face_idx]);
-            Real sign_n = (cudaPhysics::dot3(n, face_normal) < 0) ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
-            cudaPhysics::vecMul3(face_normal, sign_n, face_normal);
-
-            int tangent_idx1 = (face_idx + 1) % 3;
-            int tangent_idx2 = (face_idx + 2) % 3;
-            cudaPhysics::vecCopy3(face_tangent1, axes_b[tangent_idx1]);
-            cudaPhysics::vecCopy3(face_tangent2, axes_b[tangent_idx2]);
-
-            if (face_idx == 0)
-            {
-                extent1 = hy_b;
-                extent2 = hz_b;
-                face_center[0] = pos_b[0] + sign_n * hx_b * face_normal[0];
-                face_center[1] = pos_b[1] + sign_n * hx_b * face_normal[1];
-                face_center[2] = pos_b[2] + sign_n * hx_b * face_normal[2];
-            }
-            else if (face_idx == 1)
-            {
-                extent1 = hx_b;
-                extent2 = hz_b;
-                face_center[0] = pos_b[0] + sign_n * hy_b * face_normal[0];
-                face_center[1] = pos_b[1] + sign_n * hy_b * face_normal[1];
-                face_center[2] = pos_b[2] + sign_n * hy_b * face_normal[2];
-            }
-            else
-            {
-                extent1 = hx_b;
-                extent2 = hy_b;
-                face_center[0] = pos_b[0] + sign_n * hz_b * face_normal[0];
-                face_center[1] = pos_b[1] + sign_n * hz_b * face_normal[1];
-                face_center[2] = pos_b[2] + sign_n * hz_b * face_normal[2];
-            }
-
-            Real incident_verts[8][3];
-            get_box_face_vertices(incident_verts, pos_a, orient_a, hx_a, hy_a, hz_a, 0);
-
-            Real best_verts[8][3];
-            Real best_dist = static_cast<Real>(1e30);
-            for (int face = 0; face < 6; ++face)
-            {
-                Real verts[8][3];
-                get_box_face_vertices(verts, pos_a, orient_a, hx_a, hy_a, hz_a, face);
-
-                Real avg_dist = static_cast<Real>(0.0);
-                for (int v = 0; v < 4; ++v)
-                {
-                    avg_dist += distance_point_to_plane(verts[v], face_center, face_normal);
-                }
-                avg_dist /= static_cast<Real>(4.0);
-
-                if (abs(avg_dist) < abs(best_dist))
-                {
-                    best_dist = avg_dist;
-                    for (int v = 0; v < 4; ++v)
-                        cudaPhysics::vecCopy3(best_verts[v], verts[v]);
-                }
-            }
-
-            Real clipped[8][3];
-            int num_clipped = clip_polygon_by_box_face(clipped, best_verts, 4, face_center, face_tangent1, face_tangent2, extent1, extent2, epsilon);
-
-            for (int i = 0; i < num_clipped && num_contacts < MAX_MANIFOLD_POINTS; ++i)
-            {
-                Real dist = distance_point_to_plane(clipped[i], face_center, face_normal);
-                if (dist < static_cast<Real>(0.0))
-                {
-                    Real contact_a[3], contact_b[3];
-
-                    cudaPhysics::get_local_point(contact_a, pos_a, orient_a_conj, clipped[i]);
-
-                    Real projected[3];
-                    project_point_onto_plane(projected, clipped[i], face_center, face_normal);
-                    cudaPhysics::get_local_point(contact_b, pos_b, orient_b_conj, projected);
-
-                    num_contacts += CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_a, body_id_b, contact_a, contact_b, n);
-                }
-            }
+            num_contacts = generate_edge_contacts(
+                collisions, collision_count, max_collisions,
+                body_id_a, body_id_b,
+                pos_a, orient_a, extents_a,
+                pos_b, orient_b, extents_b,
+                orient_a_conj, orient_b_conj,
+                min_axis_idx, min_axis_idx_j,
+                n, epsilon);
         }
         else
         {
-            Real support_a[3], support_b[3];
+            int input_a_id, input_b_id;
+            const Real *pos_ref, *pos_inc;
+            const Real *orient_ref, *orient_inc;
+            const Real *extents_ref, *extents_inc;
+            const Real *orient_ref_conj, *orient_inc_conj;
+            const Real(*axes_ref)[3];
+            int ref_face_idx;
 
-            Real n_local_a[3], n_local_b[3];
-            cudaPhysics::quatRotateVector(n_local_a, orient_a_conj, n);
-            cudaPhysics::quatRotateVector(n_local_b, orient_b_conj, n);
+            if (min_axis_type == 0)
+            {
+                input_a_id = body_id_a;
+                input_b_id = body_id_b;
+                pos_ref = pos_a;
+                pos_inc = pos_b;
+                orient_ref = orient_a;
+                orient_inc = orient_b;
+                extents_ref = extents_a;
+                extents_inc = extents_b;
+                orient_ref_conj = orient_a_conj;
+                orient_inc_conj = orient_b_conj;
+                axes_ref = axes_a;
+                ref_face_idx = min_axis_idx + (sign > 0.0 ? 0 : 3);
+            }
+            else
+            {
+                input_a_id = body_id_b;
+                input_b_id = body_id_a;
+                pos_ref = pos_b;
+                pos_inc = pos_a;
+                orient_ref = orient_b;
+                orient_inc = orient_a;
+                extents_ref = extents_b;
+                extents_inc = extents_a;
+                orient_ref_conj = orient_b_conj;
+                orient_inc_conj = orient_a_conj;
+                axes_ref = axes_b;
+                ref_face_idx = min_axis_idx + (sign < 0.0 ? 0 : 3);
+            }
 
-            support_a[0] = n_local_a[0] > 0 ? hx_a : -hx_a;
-            support_a[1] = n_local_a[1] > 0 ? hy_a : -hy_a;
-            support_a[2] = n_local_a[2] > 0 ? hz_a : -hz_a;
-
-            support_b[0] = n_local_b[0] < 0 ? hx_b : -hx_b;
-            support_b[1] = n_local_b[1] < 0 ? hy_b : -hy_b;
-            support_b[2] = n_local_b[2] < 0 ? hz_b : -hz_b;
-
-            Real world_support_a[3], world_support_b[3];
-            cudaPhysics::quatRotateVector(world_support_a, orient_a, support_a);
-            cudaPhysics::vecAdd3(world_support_a, pos_a, world_support_a);
-            cudaPhysics::quatRotateVector(world_support_b, orient_b, support_b);
-            cudaPhysics::vecAdd3(world_support_b, pos_b, world_support_b);
-
-            Real contact_a[3], contact_b[3];
-            cudaPhysics::get_local_point(contact_a, pos_a, orient_a_conj, world_support_a);
-            cudaPhysics::get_local_point(contact_b, pos_b, orient_b_conj, world_support_b);
-
-            num_contacts = CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_a, body_id_b, contact_a, contact_b, n);
+            num_contacts = generate_face_contacts(
+                collisions, collision_count, max_collisions,
+                input_a_id, input_b_id,
+                pos_ref, orient_ref, extents_ref,
+                pos_inc, orient_inc, extents_inc,
+                orient_ref_conj, orient_inc_conj,
+                axes_ref, ref_face_idx, n, epsilon);
         }
 
         return num_contacts;
