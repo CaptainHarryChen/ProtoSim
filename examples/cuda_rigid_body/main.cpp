@@ -57,7 +57,9 @@ public:
         m_shape_params.push_back(half_extents.z);
 
         auto mesh = viewer::PrimitiveGenerator::GenerateBox(half_extents);
-        mesh->AddRenderer(std::make_shared<viewer::PbrRenderer>(render_material));
+        auto pbrRenderer = std::make_shared<viewer::PbrRenderer>(render_material);
+        pbrRenderer->SetEnableShadow(false);
+        mesh->AddRenderer(pbrRenderer);
         mesh->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
         m_rigid_objects.push_back(mesh);
         viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(mesh);

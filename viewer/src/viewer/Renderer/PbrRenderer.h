@@ -16,8 +16,11 @@ public:
 
     virtual void Draw(const CameraInfo& camera, const std::vector<LightInfo>& light_infos, const std::vector<ShadowMappingInfo>& shadow_mapping_infos, const RenderObject* object) const override;
 
+    void SetEnableShadow(bool enable);
+
 protected:
     std::vector<glm::vec3> m_material;  // pbr [<albedo>, <metallic, roughness, ao>]
+    bool m_enableShadow = true;
 };
 
 }  // namespace viewer

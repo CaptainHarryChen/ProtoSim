@@ -16,7 +16,7 @@ PbrRenderer::PbrRenderer(const std::vector<glm::vec3>& material)
 void PbrRenderer::Draw(const CameraInfo& camera, const std::vector<LightInfo>& light_infos, const std::vector<ShadowMappingInfo>& shadow_mapping_infos, const RenderObject* object) const
 {
     assert(light_infos.size() <= PbrRenderer::MAX_LIGHTS);
-    bool enable_shadow = shadow_mapping_infos.size() > 0;
+    bool enable_shadow = m_enableShadow && shadow_mapping_infos.size() > 0;
     if (enable_shadow)
         assert(shadow_mapping_infos.size() == light_infos.size());
 
@@ -51,6 +51,11 @@ void PbrRenderer::Draw(const CameraInfo& camera, const std::vector<LightInfo>& l
         m_shader->setFloat("far_plane_of_depth_map[" + std::to_string(i) + "]", shadow_mapping_infos[i].far_plane);
     }
     object->DrawVAO();
+}
+
+void PbrRenderer::SetEnableShadow(bool enable)
+{
+    m_enableShadow = enable;
 }
 
 }  // namespace viewer
