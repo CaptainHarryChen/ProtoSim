@@ -65,13 +65,14 @@ void main()
         radius * projScale / -topSphereCenter.z;
     float bottomRadiusScreen =
         radius * projScale / -bottomSphereCenter.z;
+    float maxRadiusScreen = max(topRadiusScreen, bottomRadiusScreen);
     vec2 dir = normalize(bottomNDC - topNDC);
     vec2 normal = vec2(-dir.y, dir.x);
 
-    vec2 p1 = topNDC    + normal * topRadiusScreen - dir * topRadiusScreen;
-    vec2 p2 = topNDC    - normal * topRadiusScreen - dir * topRadiusScreen;
-    vec2 p3 = bottomNDC + normal * bottomRadiusScreen + dir * bottomRadiusScreen;
-    vec2 p4 = bottomNDC - normal * bottomRadiusScreen + dir * bottomRadiusScreen;
+    vec2 p1 = topNDC    + normal * maxRadiusScreen - dir * maxRadiusScreen;
+    vec2 p2 = topNDC    - normal * maxRadiusScreen - dir * maxRadiusScreen;
+    vec2 p3 = bottomNDC + normal * maxRadiusScreen + dir * maxRadiusScreen;
+    vec2 p4 = bottomNDC - normal * maxRadiusScreen + dir * maxRadiusScreen;
 
     float minZ = min(topClip.z / topClip.w, bottomClip.z / bottomClip.w);
 

@@ -137,8 +137,8 @@ void main()
     gl_FragDepth = depth;
     float FragRadius = spherecenterdepth - centerdepth;
 
-    mat3 mv_inv = mat3(inverse(view * model));
-    vec3 N = mv_inv * normalize(nHit);
+    mat3 view_inv = mat3(inverse(view));
+    vec3 N = view_inv * normalize(nHit);
     vec3 V = normalize(viewPos - FragPos);
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, albedoIn, metallicIn);
