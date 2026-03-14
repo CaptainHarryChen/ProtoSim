@@ -101,10 +101,6 @@ namespace BodyCollisionKernel
         cudaPhysics::vecCopy3(segment[0], capsule_top);
         cudaPhysics::vecCopy3(segment[1], capsule_bottom);
 
-        printf("ref_face_center: %f, %f, %f ref_normal: %f, %f, %f capsule_top: %f, %f, %f capsule_bottom: %f, %f, %f\n", 
-            ref_face_center[0], ref_face_center[1], ref_face_center[2], ref_normal[0], ref_normal[1], ref_normal[2],
-            capsule_top[0], capsule_top[1], capsule_top[2], capsule_bottom[0], capsule_bottom[1], capsule_bottom[2]);
-
         Real clipped[2][3];
         int num_points = 2;
 
@@ -137,7 +133,6 @@ namespace BodyCollisionKernel
             for (int j = 0; j < num_points; ++j)
                 cudaPhysics::vecCopy3(segment[j], clipped[j]);
         }
-        printf("segment: {%f, %f, %f}; {%f, %f, %f}\n", segment[0][0], segment[0][1], segment[0][2], segment[1][0], segment[1][1], segment[1][2]);
 
         int num_contacts = 0;
         for (int i = 0; i < num_points && num_contacts < MAX_MANIFOLD_POINTS; ++i)
@@ -224,12 +219,6 @@ namespace BodyCollisionKernel
         Real closest_capsule[3], closest_box[3];
         cudaPhysics::axpby(closest_capsule, static_cast<Real>(1.0), capsule_pos, t, capsule_axis, 3);
         cudaPhysics::axpby(closest_box, static_cast<Real>(1.0), box_edge_point, s, dB, 3);
-
-        printf("box_edge_point: %f, %f, %f capsule_pos: %f, %f, %f\nclosest_box: %f, %f, %f closest_capsule: %f, %f, %f\n",
-             box_edge_point[0], box_edge_point[1], box_edge_point[2], 
-             capsule_pos[0], capsule_pos[1], capsule_pos[2],
-             closest_box[0], closest_box[1], closest_box[2], 
-             closest_capsule[0], closest_capsule[1], closest_capsule[2]);
 
         Real contact_on_capsule[3];
         cudaPhysics::axpby(contact_on_capsule, static_cast<Real>(1.0), closest_capsule, radius, n, 3);
@@ -422,8 +411,6 @@ namespace BodyCollisionKernel
 
         Real n[3];
         cudaPhysics::vecMul3(n, static_cast<Real>(1.0) / len, min_axis);
-
-        printf("min_overlap: %f, min_axis_type: %d, min_axis_idx: %d, min_axis: %f, %f, %f\n", min_overlap, min_axis_type, min_axis_idx, min_axis[0], min_axis[1], min_axis[2]);
 
         Real box_orient_conj[4];
         cudaPhysics::quatConjugate(box_orient_conj, orient_box);

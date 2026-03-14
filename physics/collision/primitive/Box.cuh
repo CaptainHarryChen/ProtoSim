@@ -155,13 +155,6 @@ namespace BodyCollisionKernel
         for (int i = 0; i < 3; ++i)
             get_box_axis(inc_axes[i], orient_inc, i);
 
-        printf("ref_face_idx: %d ref_normal: %f, %f, %f ref_face_center: %f, %f, %f \ninc_axes: %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
-               ref_face_idx, ref_normal[0], ref_normal[1], ref_normal[2],
-               ref_face_center[0], ref_face_center[1], ref_face_center[2],
-               inc_axes[0][0], inc_axes[0][1], inc_axes[0][2],
-               inc_axes[1][0], inc_axes[1][1], inc_axes[1][2],
-               inc_axes[2][0], inc_axes[2][1], inc_axes[2][2]);
-
         Real min_dot = static_cast<Real>(1e30);
         int inc_face_idx = 0;
         for (int i = 0; i < 6; ++i)
@@ -185,12 +178,6 @@ namespace BodyCollisionKernel
         Real inc_verts[8][3];
         get_face_vertices(inc_verts, pos_inc, orient_inc, extents_inc, inc_face_idx);
 
-        printf("inc_verts: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
-               inc_verts[0][0], inc_verts[0][1], inc_verts[0][2],
-               inc_verts[1][0], inc_verts[1][1], inc_verts[1][2],
-               inc_verts[2][0], inc_verts[2][1], inc_verts[2][2],
-               inc_verts[3][0], inc_verts[3][1], inc_verts[3][2]);
-
         Real polygon[8][3];
         int num_verts = 4;
         for (int i = 0; i < 4; ++i)
@@ -209,33 +196,12 @@ namespace BodyCollisionKernel
         cudaPhysics::axpby(side_points[2], (Real)1, ref_face_center, extents_ref[t2], axes_ref[t2], 3);
         cudaPhysics::axpby(side_points[3], (Real)1, ref_face_center, -extents_ref[t2], axes_ref[t2], 3);
 
-        printf("side_normals: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
-               side_normals[0][0], side_normals[0][1], side_normals[0][2],
-               side_normals[1][0], side_normals[1][1], side_normals[1][2],
-               side_normals[2][0], side_normals[2][1], side_normals[2][2],
-               side_normals[3][0], side_normals[3][1], side_normals[3][2]);
-        printf("side_points: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f\n",
-               side_points[0][0], side_points[0][1], side_points[0][2],
-               side_points[1][0], side_points[1][1], side_points[1][2],
-               side_points[2][0], side_points[2][1], side_points[2][2],
-               side_points[3][0], side_points[3][1], side_points[3][2]);
-
         for (int i = 0; i < 4; ++i)
         {
             num_verts = clip_polygon_by_plane(temp, polygon, num_verts, side_points[i], side_normals[i], epsilon);
             for (int j = 0; j < num_verts; ++j)
                 cudaPhysics::vecCopy3(polygon[j], temp[j]);
         }
-        printf("num_verts: %d\n polygon: %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f; %f, %f, %f;\n",
-               num_verts,
-               polygon[0][0], polygon[0][1], polygon[0][2],
-               polygon[1][0], polygon[1][1], polygon[1][2],
-               polygon[2][0], polygon[2][1], polygon[2][2],
-               polygon[3][0], polygon[3][1], polygon[3][2],
-               polygon[4][0], polygon[4][1], polygon[4][2],
-               polygon[5][0], polygon[5][1], polygon[5][2],
-               polygon[6][0], polygon[6][1], polygon[6][2],
-               polygon[7][0], polygon[7][1], polygon[7][2]);
 
         int num_contacts = 0;
         for (int i = 0; i < num_verts && num_contacts < MAX_MANIFOLD_POINTS; ++i)
@@ -307,8 +273,6 @@ namespace BodyCollisionKernel
 
         cudaPhysics::quatRotateVector(pB, orient_b, localB);
         cudaPhysics::vecAdd3(pB, pos_b, pB);
-
-        printf("pA: %f, %f, %f; pB: %f, %f, %f\ndA: %f, %f, %f; dB: %f, %f, %f\n", pA[0], pA[1], pA[2], pB[0], pB[1], pB[2], dA[0], dA[1], dA[2], dB[0], dB[1], dB[2]);
 
         Real r[3];
         cudaPhysics::vecSubs3(r, pA, pB);
@@ -439,7 +403,6 @@ namespace BodyCollisionKernel
         cudaPhysics::vecSubs3(d, pos_b, pos_a);
         Real sign = cudaPhysics::dot3(d, min_axis) < 0.0 ? -1.0 : 1.0;
         cudaPhysics::vecMul3(min_axis, sign, min_axis);
-        printf("min_axis: %f, %f, %f\n", min_axis[0], min_axis[1], min_axis[2]);
 
         Real len = cudaPhysics::len3(min_axis);
         if (len < epsilon)

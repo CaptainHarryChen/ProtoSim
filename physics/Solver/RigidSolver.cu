@@ -164,11 +164,6 @@ namespace RigidSolverKernel
         cudaPhysics::vecSubs3(a_to_b, world_point_a, world_point_b);
         Real penetration = cudaPhysics::dot3(col.normal, a_to_b);
 
-        printf("i:%d, body_id_a:%d, body_id_b:%d, world_point_a:(%f, %f, %f), world_point_b:(%f, %f, %f), normal:(%f, %f, %f), penetration:%f\n",
-            i, body_id_a, body_id_b, world_point_a[0], world_point_a[1], world_point_a[2],
-            world_point_b[0], world_point_b[1], world_point_b[2], 
-             col.normal[0], col.normal[1], col.normal[2], penetration);
-
         if (penetration <= static_cast<Real>(0.0))
             return;
 
@@ -444,9 +439,6 @@ namespace RigidSolverKernel
         Real friction_coef = data.m_friction;
         Real max_friction_impulse = abs(normal_impulse) * friction_coef;
         Real friction_impulse = min(tangent_speed, max_friction_impulse);
-
-        printf("body_id_a:%d, body_id_b:%d, vn:%f, vn_prev:%f, restitution:%f, bounce:%f, correction_len:%f, normal_impulse:%f, tangent_speed:%f, max_friction_impulse:%f, friction_impulse:%f\n",
-            body_id_a, body_id_b, vn, vn_prev, restitution, bounce, correction_len, normal_impulse, tangent_speed, max_friction_impulse, friction_impulse);
 
         Real t[3];
         cudaPhysics::vecMul3(t, static_cast<Real>(1.0) / tangent_speed, tangent_vel);
