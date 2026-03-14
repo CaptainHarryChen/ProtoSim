@@ -101,6 +101,10 @@ namespace BodyCollisionKernel
         cudaPhysics::vecCopy3(segment[0], capsule_top);
         cudaPhysics::vecCopy3(segment[1], capsule_bottom);
 
+        printf("ref_face_center: %f, %f, %f ref_normal: %f, %f, %f capsule_top: %f, %f, %f capsule_bottom: %f, %f, %f\n", 
+            ref_face_center[0], ref_face_center[1], ref_face_center[2], ref_normal[0], ref_normal[1], ref_normal[2],
+            capsule_top[0], capsule_top[1], capsule_top[2], capsule_bottom[0], capsule_bottom[1], capsule_bottom[2]);
+
         Real clipped[2][3];
         int num_points = 2;
 
@@ -133,16 +137,19 @@ namespace BodyCollisionKernel
             for (int j = 0; j < num_points; ++j)
                 cudaPhysics::vecCopy3(segment[j], clipped[j]);
         }
+        printf("segment: {%f, %f, %f}; {%f, %f, %f}\n", segment[0][0], segment[0][1], segment[0][2], segment[1][0], segment[1][1], segment[1][2]);
 
         int num_contacts = 0;
         for (int i = 0; i < num_points && num_contacts < MAX_MANIFOLD_POINTS; ++i)
         {
-            Real dist_to_plane = cudaPhysics::dot3(ref_normal, ref_face_center) - cudaPhysics::dot3(ref_normal, segment[i]);
+            Real face_to_seg[3];
+            cudaPhysics::vecSubs3(face_to_seg, segment[i], ref_face_center);
+            Real dist_to_plane = cudaPhysics::dot3(ref_normal, face_to_seg);
 
-            if (dist_to_plane >= -radius)
+            if (dist_to_plane < radius)
             {
                 Real contact_on_box[3];
-                cudaPhysics::axpby(contact_on_box, static_cast<Real>(1.0), segment[i], dist_to_plane, ref_normal, 3);
+                cudaPhysics::axpby(contact_on_box, static_cast<Real>(1.0), segment[i], -dist_to_plane, ref_normal, 3);
 
                 Real contact_on_capsule[3];
                 cudaPhysics::axpby(contact_on_capsule, static_cast<Real>(1.0), segment[i], radius, n, 3);
@@ -180,8 +187,8 @@ namespace BodyCollisionKernel
         int t1 = (edge_axis_idx + 1) % 3;
         int t2 = (edge_axis_idx + 2) % 3;
 
-        Real s1 = cudaPhysics::dot3(n, box_axes[t1]) > 0 ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
-        Real s2 = cudaPhysics::dot3(n, box_axes[t2]) > 0 ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
+        Real s1 = cudaPhysics::dot3(n, box_axes[t1]) < 0 ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
+        Real s2 = cudaPhysics::dot3(n, box_axes[t2]) < 0 ? static_cast<Real>(1.0) : static_cast<Real>(-1.0);
 
         Real local_edge[3] = {static_cast<Real>(0.0), static_cast<Real>(0.0), static_cast<Real>(0.0)};
         local_edge[t1] = s1 * box_extents[t1];
@@ -218,15 +225,18 @@ namespace BodyCollisionKernel
         cudaPhysics::axpby(closest_capsule, static_cast<Real>(1.0), capsule_pos, t, capsule_axis, 3);
         cudaPhysics::axpby(closest_box, static_cast<Real>(1.0), box_edge_point, s, dB, 3);
 
-        Real contact_world[3];
-        cudaPhysics::axpby(contact_world, static_cast<Real>(0.5), closest_capsule, static_cast<Real>(0.5), closest_box, 3);
+        printf("box_edge_point: %f, %f, %f capsule_pos: %f, %f, %f\nclosest_box: %f, %f, %f closest_capsule: %f, %f, %f\n",
+             box_edge_point[0], box_edge_point[1], box_edge_point[2], 
+             capsule_pos[0], capsule_pos[1], capsule_pos[2],
+             closest_box[0], closest_box[1], closest_box[2], 
+             closest_capsule[0], closest_capsule[1], closest_capsule[2]);
 
         Real contact_on_capsule[3];
         cudaPhysics::axpby(contact_on_capsule, static_cast<Real>(1.0), closest_capsule, radius, n, 3);
 
         Real local_capsule[3], local_box[3];
         cudaPhysics::get_local_point(local_capsule, capsule_pos, capsule_orient_conj, contact_on_capsule);
-        cudaPhysics::get_local_point(local_box, box_pos, box_orient_conj, contact_world);
+        cudaPhysics::get_local_point(local_box, box_pos, box_orient_conj, closest_box);
 
         return CollisionDataUtils::add_collision_info(
             collisions, collision_count, max_collisions,
@@ -402,7 +412,7 @@ namespace BodyCollisionKernel
             return 0;
 
         Real d[3];
-        cudaPhysics::vecSubs3(d, pos_capsule, pos_box);
+        cudaPhysics::vecSubs3(d, pos_box, pos_capsule);
         Real sign = cudaPhysics::dot3(d, min_axis) < static_cast<Real>(0.0) ? static_cast<Real>(-1.0) : static_cast<Real>(1.0);
         cudaPhysics::vecMul3(min_axis, sign, min_axis);
 
@@ -412,6 +422,8 @@ namespace BodyCollisionKernel
 
         Real n[3];
         cudaPhysics::vecMul3(n, static_cast<Real>(1.0) / len, min_axis);
+
+        printf("min_overlap: %f, min_axis_type: %d, min_axis_idx: %d, min_axis: %f, %f, %f\n", min_overlap, min_axis_type, min_axis_idx, min_axis[0], min_axis[1], min_axis[2]);
 
         Real box_orient_conj[4];
         cudaPhysics::quatConjugate(box_orient_conj, orient_box);
@@ -425,7 +437,7 @@ namespace BodyCollisionKernel
 
         if (min_axis_type == 0)
         {
-            int ref_face_idx = min_axis_idx + (sign > static_cast<Real>(0.0) ? 0 : 3);
+            int ref_face_idx = min_axis_idx + (sign < static_cast<Real>(0.0) ? 0 : 3);
 
             num_contacts = generate_capsule_face_contacts(
                 collisions, collision_count, max_collisions,
