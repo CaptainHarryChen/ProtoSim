@@ -136,29 +136,83 @@ namespace BodyCollisionKernel
         }
 
         int num_contacts = 0;
-        for (int i = 0; i < num_points && num_contacts < MAX_MANIFOLD_POINTS; ++i)
+        if (num_points == 0)
         {
-            Real face_to_seg[3];
-            cudaPhysics::vecSubs3(face_to_seg, segment[i], ref_face_center);
-            Real dist_to_plane = cudaPhysics::dot3(ref_normal, face_to_seg);
+            Real top[3], bottom[3];
+            cudaPhysics::axpby(top, static_cast<Real>(1.0), capsule_pos, half_height, capsule_axis, 3);
+            cudaPhysics::axpby(bottom, static_cast<Real>(1.0), capsule_pos, -half_height, capsule_axis, 3);
 
-            if (dist_to_plane < radius)
-            {
-                Real contact_on_box[3];
-                cudaPhysics::axpby(contact_on_box, static_cast<Real>(1.0), segment[i], -dist_to_plane, ref_normal, 3);
+            auto sphere_box_collision = [&](const Real *sphere_center) -> int {
+                Real local_sphere[3];
+                Real diff[3];
+                cudaPhysics::vecSubs3(diff, sphere_center, box_pos);
+                cudaPhysics::quatRotateVector(local_sphere, box_orient_conj, diff);
+
+                Real closest_local[3];
+                closest_local[0] = max(-box_extents[0], min(box_extents[0], local_sphere[0]));
+                closest_local[1] = max(-box_extents[1], min(box_extents[1], local_sphere[1]));
+                closest_local[2] = max(-box_extents[2], min(box_extents[2], local_sphere[2]));
+
+                Real diff_local[3];
+                cudaPhysics::vecSubs3(diff_local, closest_local, local_sphere);
+                Real dist = cudaPhysics::len3(diff_local);
+
+                if (dist >= radius || dist < epsilon)
+                    return 0;
+
+                Real n_local[3];
+                cudaPhysics::vecMul3(n_local, static_cast<Real>(1.0) / dist, diff_local);
+
+                Real n_world[3];
+                cudaPhysics::quatRotateVector(n_world, box_orient, n_local);
 
                 Real contact_on_capsule[3];
-                cudaPhysics::axpby(contact_on_capsule, static_cast<Real>(1.0), segment[i], radius, n, 3);
+                cudaPhysics::vecMul3(contact_on_capsule, radius, n_world);
+                cudaPhysics::vecAdd3(contact_on_capsule, sphere_center, contact_on_capsule);
+
+                Real contact_on_box[3];
+                cudaPhysics::quatRotateVector(contact_on_box, box_orient, closest_local);
+                cudaPhysics::vecAdd3(contact_on_box, box_pos, contact_on_box);
 
                 Real local_capsule[3], local_box[3];
                 cudaPhysics::get_local_point(local_capsule, capsule_pos, capsule_orient_conj, contact_on_capsule);
                 cudaPhysics::get_local_point(local_box, box_pos, box_orient_conj, contact_on_box);
 
-                num_contacts += CollisionDataUtils::add_collision_info(
+                return CollisionDataUtils::add_collision_info(
                     collisions, collision_count, max_collisions,
                     body_id_capsule, body_id_box,
                     local_capsule, local_box,
-                    n);
+                    n_world);
+            };
+            num_contacts += sphere_box_collision(top);
+            num_contacts += sphere_box_collision(bottom);
+        }
+        else
+        {
+            for (int i = 0; i < num_points && num_contacts < MAX_MANIFOLD_POINTS; ++i)
+            {
+                Real face_to_seg[3];
+                cudaPhysics::vecSubs3(face_to_seg, segment[i], ref_face_center);
+                Real dist_to_plane = cudaPhysics::dot3(ref_normal, face_to_seg);
+
+                if (dist_to_plane < radius)
+                {
+                    Real contact_on_box[3];
+                    cudaPhysics::axpby(contact_on_box, static_cast<Real>(1.0), segment[i], -dist_to_plane, ref_normal, 3);
+
+                    Real contact_on_capsule[3];
+                    cudaPhysics::axpby(contact_on_capsule, static_cast<Real>(1.0), segment[i], radius, n, 3);
+
+                    Real local_capsule[3], local_box[3];
+                    cudaPhysics::get_local_point(local_capsule, capsule_pos, capsule_orient_conj, contact_on_capsule);
+                    cudaPhysics::get_local_point(local_box, box_pos, box_orient_conj, contact_on_box);
+
+                    num_contacts += CollisionDataUtils::add_collision_info(
+                        collisions, collision_count, max_collisions,
+                        body_id_capsule, body_id_box,
+                        local_capsule, local_box,
+                        n);
+                }
             }
         }
 
@@ -194,32 +248,19 @@ namespace BodyCollisionKernel
         cudaPhysics::quatRotateVector(box_edge_point, box_orient, local_edge);
         cudaPhysics::vecAdd3(box_edge_point, box_pos, box_edge_point);
 
-        Real dB[3];
-        cudaPhysics::vecCopy3(dB, box_axes[edge_axis_idx]);
+        Real box_edge_start[3], box_edge_end[3];
+        cudaPhysics::axpby(box_edge_start, static_cast<Real>(1.0), box_edge_point, -box_extents[edge_axis_idx], box_axes[edge_axis_idx], 3);
+        cudaPhysics::axpby(box_edge_end, static_cast<Real>(1.0), box_edge_point, box_extents[edge_axis_idx], box_axes[edge_axis_idx], 3);
 
-        Real r[3];
-        cudaPhysics::vecSubs3(r, capsule_pos, box_edge_point);
-
-        Real a = cudaPhysics::dot3(capsule_axis, capsule_axis);
-        Real e = cudaPhysics::dot3(dB, dB);
-        Real b = cudaPhysics::dot3(capsule_axis, dB);
-        Real c = cudaPhysics::dot3(capsule_axis, r);
-        Real f = cudaPhysics::dot3(dB, r);
-
-        Real denom = a * e - b * b;
-
-        if (fabs(denom) < epsilon)
-            return 0;
-
-        Real t = (b * f - c * e) / denom;
-        Real s = (a * f - b * c) / denom;
-
-        t = max(-half_height, min(half_height, t));
-        s = max(-box_extents[edge_axis_idx], min(box_extents[edge_axis_idx], s));
+        Real capsule_bottom[3], capsule_top[3];
+        cudaPhysics::axpby(capsule_bottom, static_cast<Real>(1.0), capsule_pos, -half_height, capsule_axis, 3);
+        cudaPhysics::axpby(capsule_top, static_cast<Real>(1.0), capsule_pos, half_height, capsule_axis, 3);
 
         Real closest_capsule[3], closest_box[3];
-        cudaPhysics::axpby(closest_capsule, static_cast<Real>(1.0), capsule_pos, t, capsule_axis, 3);
-        cudaPhysics::axpby(closest_box, static_cast<Real>(1.0), box_edge_point, s, dB, 3);
+        Real dist = cudaPhysics::segment_to_segment_distance(closest_capsule, closest_box, capsule_bottom, capsule_top, box_edge_start, box_edge_end);
+
+        if (dist >= radius || dist < epsilon)
+            return 0;
 
         Real contact_on_capsule[3];
         cudaPhysics::axpby(contact_on_capsule, static_cast<Real>(1.0), closest_capsule, radius, n, 3);
@@ -357,22 +398,6 @@ namespace BodyCollisionKernel
             }
         }
 
-        {
-            Real overlap;
-            if (!test_axis_capsule_box(overlap, rotated_axis,
-                                        pos_capsule, rotated_axis, half_height, radius_capsule,
-                                        pos_box, orient_box, hx, hy, hz, epsilon))
-                return 0;
-
-            if (overlap < min_overlap)
-            {
-                min_overlap = overlap;
-                cudaPhysics::vecCopy3(min_axis, rotated_axis);
-                min_axis_type = 1;
-                min_axis_idx = 0;
-            }
-        }
-
         for (int i = 0; i < 3; ++i)
         {
             Real cross_axis[3];
@@ -392,7 +417,7 @@ namespace BodyCollisionKernel
             {
                 min_overlap = overlap;
                 cudaPhysics::vecCopy3(min_axis, cross_axis);
-                min_axis_type = 2;
+                min_axis_type = 1;
                 min_axis_idx = i;
             }
         }
@@ -436,63 +461,6 @@ namespace BodyCollisionKernel
                 box_axes,
                 ref_face_idx,
                 n, epsilon);
-        }
-        else if (min_axis_type == 1)
-        {
-            Real top[3], bottom[3];
-            cudaPhysics::axpby(top, static_cast<Real>(1.0), pos_capsule, half_height, rotated_axis, 3);
-            cudaPhysics::axpby(bottom, static_cast<Real>(1.0), pos_capsule, -half_height, rotated_axis, 3);
-
-            Real dist_top_sq = static_cast<Real>(0.0);
-            Real dist_bottom_sq = static_cast<Real>(0.0);
-            for (int i = 0; i < 3; ++i)
-            {
-                dist_top_sq += (top[i] - pos_box[i]) * (top[i] - pos_box[i]);
-                dist_bottom_sq += (bottom[i] - pos_box[i]) * (bottom[i] - pos_box[i]);
-            }
-
-            Real sphere_center[3];
-            if (dist_top_sq < dist_bottom_sq)
-                cudaPhysics::vecCopy3(sphere_center, top);
-            else
-                cudaPhysics::vecCopy3(sphere_center, bottom);
-
-            Real local_sphere[3];
-            Real diff[3];
-            cudaPhysics::vecSubs3(diff, sphere_center, pos_box);
-            cudaPhysics::quatRotateVector(local_sphere, box_orient_conj, diff);
-
-            Real clamped[3];
-            clamped[0] = max(-hx, min(hx, local_sphere[0]));
-            clamped[1] = max(-hy, min(hy, local_sphere[1]));
-            clamped[2] = max(-hz, min(hz, local_sphere[2]));
-
-            Real diff_local[3];
-            cudaPhysics::vecSubs3(diff_local, local_sphere, clamped);
-            Real dist = cudaPhysics::len3(diff_local);
-
-            if (dist >= radius_capsule)
-                return 0;
-
-            Real contact_on_box_local[3];
-            cudaPhysics::vecCopy3(contact_on_box_local, clamped);
-
-            Real contact_on_box[3];
-            cudaPhysics::quatRotateVector(contact_on_box, orient_box, contact_on_box_local);
-            cudaPhysics::vecAdd3(contact_on_box, pos_box, contact_on_box);
-
-            Real contact_on_capsule[3];
-            cudaPhysics::axpby(contact_on_capsule, static_cast<Real>(1.0), sphere_center, -radius_capsule, n, 3);
-
-            Real local_capsule[3], local_box[3];
-            cudaPhysics::get_local_point(local_capsule, pos_capsule, capsule_orient_conj, contact_on_capsule);
-            cudaPhysics::get_local_point(local_box, pos_box, box_orient_conj, contact_on_box);
-
-            num_contacts = CollisionDataUtils::add_collision_info(
-                collisions, collision_count, max_collisions,
-                body_id_capsule, body_id_box,
-                local_capsule, local_box,
-                n);
         }
         else
         {
