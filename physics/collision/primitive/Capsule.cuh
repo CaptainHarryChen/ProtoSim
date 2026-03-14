@@ -1,5 +1,6 @@
 #pragma once
 #include <Math/algebra.cuh>
+#include <Math/geometry.cuh>
 #include <collision/CollisionDataUtils.cuh>
 #include <collision/primitive/Box.cuh>
 
@@ -321,8 +322,7 @@ namespace BodyCollisionKernel
         int body_id_capsule, int body_id_box,
         const Real *pos_capsule, const Real *orient_capsule, Real radius_capsule, Real half_height,
         const Real *pos_box, const Real *orient_box, Real hx, Real hy, Real hz,
-        Real epsilon,
-        bool swap_order)
+        Real epsilon)
     {
         Real capsule_axis[3] = {static_cast<Real>(0.0), static_cast<Real>(1.0), static_cast<Real>(0.0)};
         Real rotated_axis[3];
@@ -508,23 +508,6 @@ namespace BodyCollisionKernel
                 n, epsilon);
         }
 
-        if (swap_order && num_contacts > 0)
-        {
-            // for (int i = *collision_count - num_contacts; i < *collision_count; ++i)
-            // {
-            //     Real temp[3];
-            //     cudaPhysics::vecCopy3(temp, collisions[i].contact_a);
-            //     cudaPhysics::vecCopy3(collisions[i].contact_a, collisions[i].contact_b);
-            //     cudaPhysics::vecCopy3(collisions[i].contact_b, temp);
-
-            //     int temp_id = collisions[i].body_id_a;
-            //     collisions[i].body_id_a = collisions[i].body_id_b;
-            //     collisions[i].body_id_b = temp_id;
-
-            //     cudaPhysics::vecMul3(collisions[i].normal, static_cast<Real>(-1.0), collisions[i].normal);
-            // }
-        }
-
         return num_contacts;
     }
 
@@ -538,10 +521,13 @@ namespace BodyCollisionKernel
         const Real *pos_b, const Real *orient_b, Real radius_b, Real half_height_b,
         Real epsilon)
     {
+        Real orient_a_conj[4], orient_b_conj[4];
+        cudaPhysics::quatConjugate(orient_a_conj, orient_a);
+        cudaPhysics::quatConjugate(orient_b_conj, orient_b);
+
         Real axis_a[3] = {static_cast<Real>(0.0), static_cast<Real>(1.0), static_cast<Real>(0.0)};
         Real rotated_axis_a[3];
         cudaPhysics::quatRotateVector(rotated_axis_a, orient_a, axis_a);
-
         Real top_a[3], bottom_a[3];
         cudaPhysics::axpby(top_a, static_cast<Real>(1.0), pos_a, half_height_a, rotated_axis_a, 3);
         cudaPhysics::axpby(bottom_a, static_cast<Real>(1.0), pos_a, -half_height_a, rotated_axis_a, 3);
@@ -549,71 +535,65 @@ namespace BodyCollisionKernel
         Real axis_b[3] = {static_cast<Real>(0.0), static_cast<Real>(1.0), static_cast<Real>(0.0)};
         Real rotated_axis_b[3];
         cudaPhysics::quatRotateVector(rotated_axis_b, orient_b, axis_b);
-
         Real top_b[3], bottom_b[3];
         cudaPhysics::axpby(top_b, static_cast<Real>(1.0), pos_b, half_height_b, rotated_axis_b, 3);
         cudaPhysics::axpby(bottom_b, static_cast<Real>(1.0), pos_b, -half_height_b, rotated_axis_b, 3);
 
-        Real d1[3], d2[3], r[3];
-        cudaPhysics::vecSubs3(d1, top_a, bottom_a);
-        cudaPhysics::vecSubs3(d2, top_b, bottom_b);
-        cudaPhysics::vecSubs3(r, bottom_a, bottom_b);
+        Real cross_a_b[3];
+        cudaPhysics::cross3(cross_a_b, rotated_axis_a, rotated_axis_b);
+        Real cross_len = cudaPhysics::len3(cross_a_b);
 
-        Real a = cudaPhysics::dot3(d1, d1);
-        Real b = cudaPhysics::dot3(d1, d2);
-        Real c = cudaPhysics::dot3(d2, d2);
-        Real d = cudaPhysics::dot3(d1, r);
-        Real e = cudaPhysics::dot3(d2, r);
+        Real sum_radius = radius_a + radius_b;
+        int num_contacts = 0;
 
-        Real denom = a * c - b * b;
+        auto add_contact = [&](const Real *point_on_a, const Real *point_on_b) -> int {
+            Real diff[3];
+            cudaPhysics::vecSubs3(diff, point_on_b, point_on_a);
+            Real dist = cudaPhysics::len3(diff);
 
-        Real s, t;
-        if (denom < epsilon)
+            if (dist >= sum_radius || dist < epsilon)
+                return 0;
+
+            Real n[3];
+            cudaPhysics::vecMul3(n, static_cast<Real>(1.0) / dist, diff);
+
+            Real contact_on_a[3];
+            cudaPhysics::vecMul3(contact_on_a, radius_a, n);
+            cudaPhysics::vecAdd3(contact_on_a, point_on_a, contact_on_a);
+
+            Real contact_on_b[3];
+            cudaPhysics::vecMul3(contact_on_b, -radius_b, n);
+            cudaPhysics::vecAdd3(contact_on_b, point_on_b, contact_on_b);
+
+            Real local_a[3], local_b[3];
+            cudaPhysics::get_local_point(local_a, pos_a, orient_a_conj, contact_on_a);
+            cudaPhysics::get_local_point(local_b, pos_b, orient_b_conj, contact_on_b);
+
+            return CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_a, body_id_b, local_a, local_b, n);
+        };
+
+        if (cross_len < epsilon)
         {
-            s = static_cast<Real>(0.0);
-            t = (b > c ? d / b : e / c);
+            Real closest[3];
+            Real dist = cudaPhysics::point_to_segment_distance(closest, top_a, bottom_b, top_b);
+            num_contacts += add_contact(top_a, closest);
+
+            dist = cudaPhysics::point_to_segment_distance(closest, bottom_a, bottom_b, top_b);
+            num_contacts += add_contact(bottom_a, closest);
+
+            dist = cudaPhysics::point_to_segment_distance(closest, top_b, bottom_a, top_a);
+            num_contacts += add_contact(closest, top_b);
+
+            dist = cudaPhysics::point_to_segment_distance(closest, bottom_b, bottom_a, top_a);
+            num_contacts += add_contact(closest, bottom_b);
         }
         else
         {
-            s = (b * e - c * d) / denom;
-            t = (a * e - b * d) / denom;
+            Real closest_a[3], closest_b[3];
+            Real dist = cudaPhysics::segment_to_segment_distance(closest_a, closest_b, bottom_a, top_a, bottom_b, top_b);
+            num_contacts += add_contact(closest_a, closest_b);
         }
 
-        s = max(static_cast<Real>(0.0), min(static_cast<Real>(1.0), s));
-        t = max(static_cast<Real>(0.0), min(static_cast<Real>(1.0), t));
-
-        Real closest_a[3], closest_b[3];
-        cudaPhysics::axpby(closest_a, static_cast<Real>(1.0), bottom_a, s, d1, 3);
-        cudaPhysics::axpby(closest_b, static_cast<Real>(1.0), bottom_b, t, d2, 3);
-
-        Real diff[3];
-        cudaPhysics::vecSubs3(diff, closest_b, closest_a);
-        Real dist = cudaPhysics::len3(diff);
-
-        Real sum_radius = radius_a + radius_b;
-
-        if (dist >= sum_radius || dist < epsilon)
-            return 0;
-
-        Real n[3];
-        cudaPhysics::vecMul3(n, static_cast<Real>(1.0) / dist, diff);
-
-        Real contact_on_a[3];
-        cudaPhysics::vecMul3(contact_on_a, radius_a, n);
-        cudaPhysics::vecAdd3(contact_on_a, closest_a, contact_on_a);
-
-        Real contact_on_b[3];
-        cudaPhysics::vecMul3(contact_on_b, -radius_b, n);
-        cudaPhysics::vecAdd3(contact_on_b, closest_b, contact_on_b);
-
-        Real orient_a_conj[4], orient_b_conj[4];
-        cudaPhysics::quatConjugate(orient_a_conj, orient_a);
-        cudaPhysics::quatConjugate(orient_b_conj, orient_b);
-
-        Real contact_a[3], contact_b[3];
-        cudaPhysics::get_local_point(contact_a, pos_a, orient_a_conj, contact_on_a);
-        cudaPhysics::get_local_point(contact_b, pos_b, orient_b_conj, contact_on_b);
-
-        return CollisionDataUtils::add_collision_info(collisions, collision_count, max_collisions, body_id_a, body_id_b, contact_a, contact_b, n);
+        return num_contacts;
     }
 }

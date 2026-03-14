@@ -14,6 +14,7 @@
 
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <cstdlib>
 
 template <typename Real>
 class RigidBodyScene : public SimulationScene<Real>
@@ -183,6 +184,66 @@ public:
     }
 };
 
+template <typename Real>
+void GenerateRandomScene(std::shared_ptr<RigidBodyScene<Real>> scene)
+{
+    const int gridSize = 4;
+    const float cellSize = 1.5f;
+    const float startHeight = 5.0f;
+    srand(321);
+
+    for (int i = 0; i < gridSize; ++i)
+    {
+        for (int j = 0; j < gridSize; ++j)
+        {
+            for (int k = 0; k < gridSize; ++k)
+            {
+                float x = (i - gridSize / 2.0f + 0.5f) * cellSize;
+                float y = startHeight + j * cellSize;
+                float z = (k - gridSize / 2.0f + 0.5f) * cellSize;
+                glm::vec3 position(x, y, z);
+
+                int shapeType = rand() % 3;
+                float randomScale = 0.3f + (rand() % 50) / 100.0f;
+                float mass = 0.5f + (rand() % 15) / 10.0f;
+
+                glm::vec3 color;
+                if (shapeType == 0)
+                {
+                    color = glm::vec3(0.8f, 0.3f, 0.3f);
+                    scene->AddBox(
+                        position,
+                        glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+                        glm::vec3(randomScale, randomScale * 0.8f, randomScale * 1.2f),
+                        mass,
+                        {color, glm::vec3(0.1f, 0.5f, 0.1f)});
+                }
+                else if (shapeType == 1)
+                {
+                    // color = glm::vec3(0.3f, 0.3f, 0.8f);
+                    // scene->AddSphere(
+                    //     position,
+                    //     glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+                    //     randomScale,
+                    //     mass,
+                    //     {color, glm::vec3(0.1f, 0.3f, 0.1f)});
+                }
+                else
+                {
+                    color = glm::vec3(0.3f, 0.8f, 0.3f);
+                    scene->AddCapsule(
+                        position,
+                        glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+                        randomScale * 0.5f,
+                        randomScale,
+                        mass,
+                        {color, glm::vec3(0.1f, 0.5f, 0.1f)});
+                }
+            }
+        }
+    }
+}
+
 int main()
 {
     using Real = float;
@@ -194,63 +255,37 @@ int main()
     scene->SetupScene();
     app->AddObject(scene);
 
-    scene->AddBox(
-        glm::vec3(0.0f, 2.0f, 0.0f),
-        glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        1.0f,
-        {glm::vec3(0.8f, 0.2f, 0.2f), glm::vec3(0.1f, 0.5f, 0.1f)});
-    
-    scene->AddBox(
-        glm::vec3(0.0f, 3.0f, 0.0f),
-        glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-        glm::vec3(0.3f, 0.2f, 0.8f),
-        1.0f,
-        {glm::vec3(0.2f, 0.2f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
-    
-    scene->AddBox(
-        glm::vec3(0.5f, 4.0f, 0.0f),
-        glm::angleAxis(glm::radians(30.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        1.0f,
-        {glm::vec3(0.5f, 0.2f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    GenerateRandomScene(scene);
 
-    scene->AddBox(
-        glm::vec3(1.5f, 3.0f, 0.0f),
-        glm::angleAxis(glm::radians(30.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
-        glm::vec3(0.3f, 0.6f, 0.3f),
-        2.0f,
-        {glm::vec3(0.2f, 0.8f, 0.2f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    // scene->AddCapsule(
+    //     glm::vec3(0.0f, 2.0f, 0.0f),
+    //     glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+    //     0.5f,
+    //     1.0f,
+    //     0.5f,
+    //     {glm::vec3(0.3f, 0.8f, 0.3f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    // scene->AddCapsule(
+    //     glm::vec3(0.1f, 6.0f, 0.1f),
+    //     glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+    //     0.3f,
+    //     0.8f,
+    //     0.5f,
+    //     {glm::vec3(0.3f, 0.8f, 0.3f), glm::vec3(0.1f, 0.5f, 0.1f)});
 
-    scene->AddSphere(
-        glm::vec3(-1.7f, 2.0f, 0.0f),
-        glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-        0.5f,
-        1.0f,
-        {glm::vec3(0.2f, 0.2f, 0.8f), glm::vec3(0.1f, 0.3f, 0.1f)});
-
-    scene->AddSphere(
-        glm::vec3(-1.5f, 4.0f, 0.0f),
-        glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-        0.3f,
-        0.5f,
-        {glm::vec3(0.8f, 0.8f, 0.2f), glm::vec3(0.1f, 0.3f, 0.1f)});
-
-    scene->AddCapsule(
-        glm::vec3(0.0f, 6.0f, 0.5f),
-        glm::angleAxis(glm::radians(45.0f), glm::vec3(1.0f, 0.0f, 0.0f)),
-        0.25f,
-        0.5f,
-        1.5f,
-        {glm::vec3(0.8f, 0.4f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
-
-    scene->AddCapsule(
-        glm::vec3(0.5f, 7.0f, -0.5f),
-        glm::angleAxis(glm::radians(60.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-        0.2f,
-        0.4f,
-        1.0f,
-        {glm::vec3(0.4f, 0.8f, 0.8f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    // scene->AddCapsule(
+    //     glm::vec3(0.0f, 2.0f, 0.0f),
+    //     glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+    //     0.5f,
+    //     1.0f,
+    //     0.5f,
+    //     {glm::vec3(0.3f, 0.8f, 0.3f), glm::vec3(0.1f, 0.5f, 0.1f)});
+    // scene->AddCapsule(
+    //     glm::vec3(0.0f, 3.5f, 0.0f),
+    //     glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+    //     0.3f,
+    //     1.0f,
+    //     0.5f,
+    //     {glm::vec3(0.3f, 0.8f, 0.3f), glm::vec3(0.1f, 0.5f, 0.1f)});
 
     scene->SortByShape();
 

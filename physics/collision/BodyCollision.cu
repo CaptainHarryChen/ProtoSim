@@ -59,13 +59,13 @@ namespace BodyCollisionKernel
         {
             return collide_capsule_box(collisions, collision_count, max_collisions, body_id_a, body_id_b,
                                        pos_a, orient_a, params_a[0], params_a[1],
-                                       pos_b, orient_b, params_b[0], params_b[1], params_b[2], epsilon, false);
+                                       pos_b, orient_b, params_b[0], params_b[1], params_b[2], epsilon);
         }
         else if (shape_a == RIGID_BODY_BOX && shape_b == RIGID_BODY_CAPSULE)
         {
             return collide_capsule_box(collisions, collision_count, max_collisions, body_id_b, body_id_a,
                                        pos_b, orient_b, params_b[0], params_b[1],
-                                       pos_a, orient_a, params_a[0], params_a[1], params_a[2], epsilon, true);
+                                       pos_a, orient_a, params_a[0], params_a[1], params_a[2], epsilon);
         }
         else if (shape_a == RIGID_BODY_CAPSULE && shape_b == RIGID_BODY_CAPSULE)
         {
