@@ -29,6 +29,10 @@ public:
 
     std::vector<std::shared_ptr<viewer::RenderObject>> m_rigid_objects;
 
+    bool m_enableHighlightRolling = false;
+
+    void SetHighlightRolling(bool enable) { m_enableHighlightRolling = enable; }
+
     void AddBox(glm::vec3 position, glm::quat orientation,
                 glm::vec3 half_extents, Real mass,
                 std::vector<glm::vec3> render_material)
@@ -85,8 +89,9 @@ public:
         std::vector<viewer::Particle> particles = {
             {glm::vec3(0.0f, 0.0f, 0.0f), render_material[0]}};
         auto batch = std::make_shared<viewer::ParticleBatch>(particles);
-        batch->AddRenderer(std::make_shared<viewer::SphereRenderer>(
-            glm::vec2(render_material[1].x, render_material[1].y), radius));
+        auto sphereRenderer = std::make_shared<viewer::SphereRenderer>(
+            glm::vec2(render_material[1].x, render_material[1].y), radius, m_enableHighlightRolling);
+        batch->AddRenderer(sphereRenderer);
         batch->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
         m_rigid_objects.push_back(batch);
         viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(batch);
@@ -116,8 +121,9 @@ public:
         m_shape_params.push_back(0);
 
         auto capsule = std::make_shared<viewer::SingleCapsule>(render_material[0]);
-        capsule->AddRenderer(std::make_shared<viewer::CapsuleRenderer>(
-            glm::vec2(render_material[1].x, render_material[1].y), radius, half_height));
+        auto capsuleRenderer = std::make_shared<viewer::CapsuleRenderer>(
+            glm::vec2(render_material[1].x, render_material[1].y), radius, half_height, m_enableHighlightRolling);
+        capsule->AddRenderer(capsuleRenderer);
         capsule->m_model_mat = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(orientation);
         m_rigid_objects.push_back(capsule);
         viewer::GLFWApp::GetInstance()->GetRenderSystem()->AddRenderObject(capsule);
@@ -182,6 +188,7 @@ int main()
     auto app = viewer::GLFWApp::GetInstance("Rigid Body Solver Example", 1600, 900);
 
     auto scene = std::make_shared<RigidBodyScene<Real>>();
+    scene->SetHighlightRolling(true);
     scene->SetupScene();
     app->AddObject(scene);
 

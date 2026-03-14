@@ -21,6 +21,7 @@ const float PI = 3.14159265359;
 
 uniform float roughnessIn;
 uniform float metallicIn;
+uniform bool u_highlightRolling;
 
 in VS_OUT
 {
@@ -282,11 +283,21 @@ void main()
     float depth = fragDepthFromView(u_projMatrix, depthRange, pHit);
     gl_FragDepth = depth;
 
+    vec3 albedo = albedoIn;
+    if (u_highlightRolling)
+    {
+        vec3 highlightColor = albedoIn;
+        vec3 otherColor = vec3(0.9);
+        float dotProduct = dot(normalize(pHit - v_capsuleCenterView), normalize(mat3(view) * mat3(model) * vec3(1.0, 0.0, 0.0)));
+        vec3 halfColor = dotProduct > 0.0 ? highlightColor : otherColor;
+        albedo = halfColor;
+    }
+
     mat3 view_inv = mat3(inverse(view));
     vec3 N = view_inv * normalize(nHit);
     vec3 V = normalize(viewPos - FragPos);
     vec3 F0 = vec3(0.04);
-    F0 = mix(F0, albedoIn, metallicIn);
+    F0 = mix(F0, albedo, metallicIn);
     vec3 Lo = vec3(0.0);
 
     for (int i = 0; i < nLights; ++i)
@@ -307,10 +318,10 @@ void main()
         vec3 kD = vec3(1.0) - kS;
         kD *= 1.0 - metallicIn;
         float NdotL = max(dot(N, L), 0.0);
-        Lo += (kD * albedoIn / PI + specular) * radiance * NdotL;
+        Lo += (kD * albedo / PI + specular) * radiance * NdotL;
     }
 
-    vec3 ambient = vec3(0.1) * albedoIn;
+    vec3 ambient = vec3(0.1) * albedo;
     vec3 color = ambient + Lo * 2.0f;
 
     color = pow(color, vec3(1.0 / 2.2));

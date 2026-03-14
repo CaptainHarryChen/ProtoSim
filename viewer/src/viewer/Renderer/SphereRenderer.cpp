@@ -6,7 +6,7 @@
 
 namespace viewer {
 
-SphereRenderer::SphereRenderer(const glm::vec2& material, float radius) : m_material(material), m_radius(radius)
+SphereRenderer::SphereRenderer(const glm::vec2& material, float radius, bool highlightRolling) : m_material(material), m_radius(radius), m_highlightRolling(highlightRolling)
 {
     m_shader = std::make_shared<Shader>("sphere_raycast", true);
 }
@@ -33,6 +33,7 @@ void SphereRenderer::Draw(const CameraInfo& camera, const std::vector<LightInfo>
     }
     m_shader->setFloat("metalicIn", m_material.x);
     m_shader->setFloat("roughnessIn", m_material.y);
+    m_shader->setBool("u_highlightRolling", m_highlightRolling);
 
     object->DrawVAO();
 }

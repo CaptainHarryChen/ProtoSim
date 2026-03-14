@@ -11,7 +11,7 @@ class CapsuleRenderer : public Renderer
     static const int MAX_LIGHTS = 4;
 
 public:
-    CapsuleRenderer(const glm::vec2 &material, float radius, float half_height);
+    CapsuleRenderer(const glm::vec2 &material, float radius, float half_height, bool highlightRolling = false);
     virtual ~CapsuleRenderer() = default;
 
     virtual void Draw(const CameraInfo &camera, const std::vector<LightInfo> &light_infos,
@@ -24,6 +24,7 @@ protected:
     glm::vec2 m_material;
     float m_radius;
     float m_half_height;
+    bool  m_highlightRolling = false;
 };
 
 }

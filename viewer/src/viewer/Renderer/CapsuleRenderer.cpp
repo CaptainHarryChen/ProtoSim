@@ -7,8 +7,8 @@
 namespace viewer
 {
 
-CapsuleRenderer::CapsuleRenderer(const glm::vec2 &material, float radius, float half_height)
-    : m_material(material), m_radius(radius), m_half_height(half_height)
+CapsuleRenderer::CapsuleRenderer(const glm::vec2 &material, float radius, float half_height, bool highlightRolling)
+    : m_material(material), m_radius(radius), m_half_height(half_height), m_highlightRolling(highlightRolling)
 {
     m_shader = std::make_shared<Shader>("capsule_raycast", true);
 }
@@ -38,6 +38,7 @@ void CapsuleRenderer::Draw(const CameraInfo &camera, const std::vector<LightInfo
     }
     m_shader->setFloat("metalicIn", m_material.x);
     m_shader->setFloat("roughnessIn", m_material.y);
+    m_shader->setBool("u_highlightRolling", m_highlightRolling);
 
     object->DrawVAO();
 }
