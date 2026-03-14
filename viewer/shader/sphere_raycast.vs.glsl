@@ -15,5 +15,6 @@ void main()
 {
     gl_Position = view * model * vec4(a_position, 1.0);
     albedoIn = color;
-    FragPos = mat3(model) * a_position;
+    vec4 pos = model * vec4(a_position, 1.0);
+    FragPos = pos.xyz / pos.w;
 }
