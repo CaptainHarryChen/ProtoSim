@@ -1,5 +1,6 @@
 #pragma once
 #include <Math/algebra.cuh>
+#include <Math/geometry.cuh>
 #include <collision/CollisionDataUtils.cuh>
 
 namespace BodyCollisionKernel
@@ -101,8 +102,11 @@ namespace BodyCollisionKernel
         {
             int j = (i + 1) % num_input;
 
-            Real d_i = cudaPhysics::dot3(input[i], plane_normal) - cudaPhysics::dot3(plane_point, plane_normal);
-            Real d_j = cudaPhysics::dot3(input[j], plane_normal) - cudaPhysics::dot3(plane_point, plane_normal);
+            Real temp[3];
+            cudaPhysics::vecSubs3(temp, input[i], plane_point);
+            Real d_i = cudaPhysics::dot3(temp, plane_normal);
+            cudaPhysics::vecSubs3(temp, input[j], plane_point);
+            Real d_j = cudaPhysics::dot3(temp, plane_normal);
 
             bool inside_i = (d_i <= epsilon);
 
@@ -112,7 +116,7 @@ namespace BodyCollisionKernel
                 num_output++;
             }
 
-            if ((d_i > epsilon) != (d_j > epsilon))
+            if ((d_i > epsilon) != (d_j > epsilon) && fabs(d_i - d_j) > epsilon)
             {
                 Real t = d_i / (d_i - d_j);
                 cudaPhysics::axpby(output[num_output], static_cast<Real>(1.0 - t), input[i], t, input[j], 3);
@@ -206,7 +210,9 @@ namespace BodyCollisionKernel
         int num_contacts = 0;
         for (int i = 0; i < num_verts && num_contacts < MAX_MANIFOLD_POINTS; ++i)
         {
-            Real penetration = cudaPhysics::dot3(ref_normal, ref_face_center) - cudaPhysics::dot3(ref_normal, polygon[i]);
+            Real polygon_to_face[3];
+            cudaPhysics::vecSubs3(polygon_to_face, ref_face_center, polygon[i]);
+            Real penetration = cudaPhysics::dot3(ref_normal, polygon_to_face);
 
             if (penetration >= 0)
             {
@@ -246,17 +252,12 @@ namespace BodyCollisionKernel
             get_box_axis(axes_b[i], orient_b, i);
         }
 
-        Real dA[3], dB[3];
-        cudaPhysics::vecCopy3(dA, axes_a[edge_axis_a]);
-        cudaPhysics::vecCopy3(dB, axes_b[edge_axis_b]);
-
         int t1 = (edge_axis_a + 1) % 3;
         int t2 = (edge_axis_a + 2) % 3;
 
         int u1 = (edge_axis_b + 1) % 3;
         int u2 = (edge_axis_b + 2) % 3;
 
-        Real pA[3], pB[3];
         Real localA[3] = {0, 0, 0};
         Real localB[3] = {0, 0, 0};
         Real sA1 = cudaPhysics::dot3(n, axes_a[t1]) > 0 ? 1 : -1;
@@ -268,47 +269,25 @@ namespace BodyCollisionKernel
         localB[u1] = sB1 * extents_b[u1];
         localB[u2] = sB2 * extents_b[u2];
 
+        Real pA[3], pB[3];
         cudaPhysics::quatRotateVector(pA, orient_a, localA);
         cudaPhysics::vecAdd3(pA, pos_a, pA);
-
         cudaPhysics::quatRotateVector(pB, orient_b, localB);
         cudaPhysics::vecAdd3(pB, pos_b, pB);
 
-        Real r[3];
-        cudaPhysics::vecSubs3(r, pA, pB);
-
-        Real a = cudaPhysics::dot3(dA, dA);
-        Real e = cudaPhysics::dot3(dB, dB);
-        Real b = cudaPhysics::dot3(dA, dB);
-        Real c = cudaPhysics::dot3(dA, r);
-        Real f = cudaPhysics::dot3(dB, r);
-
-        Real denom = a * e - b * b;
-
-        if (fabs(denom) < epsilon)
-            return 0;
-
-        Real t = (b * f - c * e) / denom;
-        Real s = (a * f - b * c) / denom;
-
-        Real extentA = extents_a[edge_axis_a];
-        Real extentB = extents_b[edge_axis_b];
-
-        t = max(-extentA, min(extentA, t));
-        s = max(-extentB, min(extentB, s));
+        Real edge_a_start[3], edge_a_end[3];
+        Real edge_b_start[3], edge_b_end[3];
+        cudaPhysics::axpby(edge_a_start, static_cast<Real>(1.0), pA, -extents_a[edge_axis_a], axes_a[edge_axis_a], 3);
+        cudaPhysics::axpby(edge_a_end, static_cast<Real>(1.0), pA, extents_a[edge_axis_a], axes_a[edge_axis_a], 3);
+        cudaPhysics::axpby(edge_b_start, static_cast<Real>(1.0), pB, -extents_b[edge_axis_b], axes_b[edge_axis_b], 3);
+        cudaPhysics::axpby(edge_b_end, static_cast<Real>(1.0), pB, extents_b[edge_axis_b], axes_b[edge_axis_b], 3);
 
         Real cpA[3], cpB[3];
-
-        cudaPhysics::axpby(cpA, (Real)1.0, pA, t, dA, 3);
-        cudaPhysics::axpby(cpB, (Real)1.0, pB, s, dB, 3);
-
-        Real contact_world[3];
-        cudaPhysics::axpby(contact_world, (Real)0.5, cpA, (Real)0.5, cpB, 3);
+        cudaPhysics::segment_to_segment_distance(cpA, cpB, edge_a_start, edge_a_end, edge_b_start, edge_b_end);
 
         Real contact_a[3], contact_b[3];
-
-        cudaPhysics::get_local_point(contact_a, pos_a, orient_a_conj, contact_world);
-        cudaPhysics::get_local_point(contact_b, pos_b, orient_b_conj, contact_world);
+        cudaPhysics::get_local_point(contact_a, pos_a, orient_a_conj, cpA);
+        cudaPhysics::get_local_point(contact_b, pos_b, orient_b_conj, cpB);
 
         return CollisionDataUtils::add_collision_info(
             collisions, collision_count, max_collisions,

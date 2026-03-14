@@ -158,11 +158,40 @@ namespace RigidSolverKernel
 
             cudaPhysics::quatRotateVector(r_world_b, orient_b, col.local_point_b);
             cudaPhysics::vecAdd3(world_point_b, pos_b, r_world_b);
+
+            // Real a_to_b[3];
+            // cudaPhysics::vecSubs3(a_to_b, world_point_a, world_point_b);
+            // Real penetration = cudaPhysics::dot3(col.normal, a_to_b);
+            // printf("body_id_a: %d body_id_b: %d world_point_a: %f, %f, %f world_point_b: %f, %f, %f normal: %f, %f, %f penetration: %f\n", 
+            //     body_id_a, body_id_b, 
+            //     world_point_a[0], world_point_a[1], world_point_a[2], 
+            //     world_point_b[0], world_point_b[1], world_point_b[2], 
+            //     col.normal[0], col.normal[1], col.normal[2], penetration);
         }
 
         Real a_to_b[3];
         cudaPhysics::vecSubs3(a_to_b, world_point_a, world_point_b);
         Real penetration = cudaPhysics::dot3(col.normal, a_to_b);
+
+        // if (penetration > 0.1)
+        // printf("body_id_a: %d body_id_b: %d world_point_a: %f, %f, %f world_point_b: %f, %f, %f normal: %f, %f, %f penetration: %f\n", 
+        //     body_id_a, body_id_b, 
+        //     world_point_a[0], world_point_a[1], world_point_a[2], 
+        //     world_point_b[0], world_point_b[1], world_point_b[2], 
+        //     col.normal[0], col.normal[1], col.normal[2], penetration);
+
+        // if (penetration > 0.1)
+        // {
+        //     Real *pos_b = &data.dev_position[body_id_b * 3];
+        //     Real *orient_b = &data.dev_orientation[body_id_b * 4];
+        //     printf("box_a:\n\tglm::vec3(%f, %f, %f),\n\tglm::quat(%f, %f, %f, %f),\n\tglm::vec3(%f, %f, %f),\nbox_b:\n\tglm::vec3(%f, %f, %f),\n\tglm::quat(%f, %f, %f, %f),\n\tglm::vec3(%f, %f, %f),\n", 
+        //         pos_a[0], pos_a[1], pos_a[2], 
+        //         orient_a[0], orient_a[1], orient_a[2], orient_a[3], 
+        //         data.dev_shape_param[body_id_a * 3 + 0], data.dev_shape_param[body_id_a * 3 + 1], data.dev_shape_param[body_id_a * 3 + 2],
+        //         pos_b[0], pos_b[1], pos_b[2], 
+        //         orient_b[0], orient_b[1], orient_b[2], orient_b[3], 
+        //         data.dev_shape_param[body_id_b * 3 + 0], data.dev_shape_param[body_id_b * 3 + 1], data.dev_shape_param[body_id_b * 3 + 2]);
+        // }
 
         if (penetration <= static_cast<Real>(0.0))
             return;
@@ -564,13 +593,13 @@ RigidSolver<Real>::RigidSolver(
 
     RigidSolverKernel::compute_inertia_tensor<Real><<<CUDA_GRID_SIZE(m_data.num_bodies), CUDA_BLOCK_SIZE>>>(m_data);
 
-    m_data.m_time_step = static_cast<Real>(0.002);
+    m_data.m_time_step = static_cast<Real>(0.01);
     m_data.m_gravity[0] = static_cast<Real>(0.0);
     m_data.m_gravity[1] = static_cast<Real>(-9.8);
     m_data.m_gravity[2] = static_cast<Real>(0.0);
     m_data.m_damping = static_cast<Real>(0.9999);
-    m_data.m_restitution = static_cast<Real>(0.3);
-    m_data.m_friction = static_cast<Real>(0.5);
+    m_data.m_restitution = static_cast<Real>(0.1);
+    m_data.m_friction = static_cast<Real>(0.9);
     m_data.m_num_substeps = 1;
     m_data.m_num_solver_iterations = 10;
 }

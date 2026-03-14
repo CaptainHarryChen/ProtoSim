@@ -187,10 +187,10 @@ public:
 template <typename Real>
 void GenerateRandomScene(std::shared_ptr<RigidBodyScene<Real>> scene)
 {
-    const int gridSize = 5;
+    const int gridSize = 10;
     const float cellSize = 1.5f;
     const float startHeight = 5.0f;
-    srand(12);
+    srand(123);
 
     for (int i = 0; i < gridSize; ++i)
     {
@@ -203,7 +203,7 @@ void GenerateRandomScene(std::shared_ptr<RigidBodyScene<Real>> scene)
                 float z = (k - gridSize / 2.0f + 0.5f) * cellSize;
                 glm::vec3 position(x, y, z);
 
-                int shapeType = rand() % 1;
+                int shapeType = rand() % 3;
                 float maxDim = cellSize * 0.4f;
                 float randomScale = 0.2f + (rand() % 50) / 100.0f * maxDim;
                 randomScale = std::min(randomScale, maxDim);
@@ -265,19 +265,6 @@ int main()
     app->AddObject(scene);
 
     GenerateRandomScene(scene);
-    // scene->AddBox(
-    //     glm::vec3(0.0f, 2.0f, 0.0f),
-    //     glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-    //     glm::vec3(0.5f, 0.5f, 0.5f),
-    //     1.0f,
-    //     {glm::vec3(0.3f, 0.8f, 0.3f), glm::vec3(0.1f, 0.5f, 0.1f)});
-    // scene->AddCapsule(
-    //     glm::vec3(0.6f, 4.0f, 0.0f),
-    //     glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-    //     0.3f,
-    //     0.8f,
-    //     0.5f,
-    //     {glm::vec3(0.3f, 0.8f, 0.3f), glm::vec3(0.1f, 0.5f, 0.1f)});
 
     scene->SortByShape();
 
@@ -296,6 +283,7 @@ int main()
         solver->GetDevicePositions(),
         solver->GetDeviceOrientations(),
         static_cast<unsigned int>(scene->m_masses.size()));
+    scene->SetStepPerFrame(5);
     scene->AddConnector(model_connector);
 
     app->Run();
